@@ -8,6 +8,10 @@
     "editor.formatOnSave": true,
     "editor.defaultFormatter": "golang.go"
   },
+  "go.useLanguageServer": false,
+  "go.buildOnSave": "off",
+  "go.vetOnSave": "off",
+  "go.lintOnSave": "off",
   "files.exclude": {
     "**/plz-out": true,
     "**/.please": true

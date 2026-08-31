@@ -119,29 +119,39 @@ To build all targets:
 
 ## Development & IDE Setup (Go / VSCode)
 
-Please.build calculates package import paths relative to the repository root
-when `ImportPath` is not set or set to `""`.
+Please.build manages the Go toolchain and builds Go targets hermetically using
+root-relative package import paths (e.g.,
+`import "tools/please_rust/testrunner"`).
 
-In this repository:
+Because Please manages the builds rather than the native Go CLI/`go.mod`,
+`.vscode/settings.json` is configured to disable background `gopls` / `go build`
+checking while preserving formatting on save:
 
-- `tools/please_rust/...` imports packages using root-relative paths:
-  ```go
-  import "tools/please_rust/testrunner"
-  ```
-- VSCode's Go language server (`gopls`) looks for a Go module matching the root
-  import path. A minimal `go.mod` in the repository root defines:
-  ```
-  module tools
-  go 1.22
-  ```
-  This allows `tools/...` imports to resolve directly without requiring a full
-  URL or domain prefix in both Please and VSCode.
-
-If VSCode displays `cannot find package ... in GOROOT`:
-
-1. Ensure `go.mod` is present in the repository root with `module tools`.
-2. Reload the VSCode window or run `Ctrl+Shift+P` ->
-   `Go: Restart Language Server`.
+```json
+{
+  "editor.rulers": [80],
+  "editor.formatOnSave": true,
+  "[markdown]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[go]": {
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "golang.go"
+  },
+  "go.useLanguageServer": false,
+  "go.buildOnSave": "off",
+  "go.vetOnSave": "off",
+  "go.lintOnSave": "off",
+  "files.exclude": {
+    "**/plz-out": true,
+    "**/.please": true
+  },
+  "search.exclude": {
+    "**/plz-out": true,
+    "**/.please": true
+  }
+}
+```
 
 ---
 

@@ -134,7 +134,7 @@ convention:
 
 Restructure the Rust rules into a standard Please plugin structure:
 
-```
+```txt
 plugins/rust/ (or build_defs/rust/ formatted as a Please plugin)
 ├── .plzconfig
 ├── BUILD
@@ -208,17 +208,22 @@ needs custom toolchains.
 1. **Tool Unit Tests**:
    - Test `plz_rust` parsing, CLI arguments, and JUnit XML generation.
 2. **Repository Build & Test**:
+
    ```bash
    ./pleasew build //...
    ./pleasew test //...
    ```
+
 3. **Clean Cache Test** (verify no reliance on pre-existing host state or
    lingering paths):
+
    ```bash
    ./pleasew clean
    ./pleasew test //...
    ```
+
 4. **Third-Party Notices & Formatting**:
+
    ```bash
    find analyzer -name "*.rs" -exec rustfmt --check {} +
    ./pleasew run //scripts:generate_notices -- THIRD_PARTY_NOTICES.md
