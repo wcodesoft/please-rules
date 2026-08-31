@@ -1,0 +1,39 @@
+; Please config file
+[please]
+version = >=17.0.0
+
+[Plugin "go"]
+Target = //plugins:go
+ImportPath = github.com/please-build/rust-rules
+GoTool = //third_party/go:toolchain|go
+Stdlib = //third_party/go:std
+
+[PluginDefinition]
+Name = rust
+
+[PluginConfig "please_rust_tool"]
+ConfigKey = PleaseRustTool
+DefaultValue = //tools/please_rust
+Help = A path or build label for the please_rust tool
+Inherit = true
+
+[PluginConfig "rustc_tool"]
+ConfigKey = RustcTool
+DefaultValue = rustc
+Help = Path to the rustc compiler to use
+Inherit = true
+
+[PluginConfig "cargo_tool"]
+ConfigKey = CargoTool
+DefaultValue = cargo
+Help = Path to the cargo executable to use
+Inherit = true
+
+[PluginConfig "default_edition"]
+ConfigKey = DefaultEdition
+DefaultValue = 2021
+Help = Default Rust edition (2021, 2024, etc.)
+Inherit = true
+
+
+

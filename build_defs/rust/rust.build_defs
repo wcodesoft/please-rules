@@ -1,0 +1,201 @@
+"""
+Please build definitions for Rust rules.
+"""
+
+def _rust_tool():
+    return CONFIG.get("RUST.PLEASE_RUST_TOOL", "//tools/please_rust")
+
+def _rustc_path():
+    return CONFIG.get("RUST.RUSTC_TOOL", "")
+
+def _cargo_path():
+    return CONFIG.get("RUST.CARGO_TOOL", "")
+
+def _default_edition():
+    return CONFIG.get("RUST.DEFAULT_EDITION", "2021")
+
+def rust_library(
+    name: str,
+    srcs: list = None,
+    deps: list = None,
+    edition: str = None,
+    flags: list = None,
+    crate_name: str = None,
+    visibility: list = None,
+    test_only: bool = False,
+    labels: list = None,
+):
+    """
+    Compiles a Rust static library (.rlib).
+    """
+    srcs = srcs or []
+    deps = deps or []
+    flags = flags or []
+    edition = edition or _default_edition()
+    crate = crate_name or name
+
+    main_src = srcs[0] if len(srcs) == 1 else "src/lib.rs"
+    if main_src not in srcs and len(srcs) > 0:
+        main_src = srcs[0]
+
+    out_file = f"lib{crate}.rlib"
+    flags_str = " ".join(flags)
+    rustc_arg = f"--rustc '{_rustc_path()}'" if _rustc_path() else ""
+
+    cmd = f"""
+    $TOOL compile \\
+      --crate-name {crate} \\
+      --crate-type rlib \\
+      --edition {edition} \\
+      --out $OUT \\
+      --main-src "{main_src}" \\
+      --version "${CARGO_PKG_VERSION:-}" \\
+      --flags "{flags_str}" \\
+      {rustc_arg} \\
+      ${SRCS:-} ${DEPS:-}
+    """
+
+    return build_rule(
+        name = name,
+        srcs = srcs,
+        deps = deps,
+        outs = [out_file],
+        cmd = cmd,
+        tools = {"TOOL": [_rust_tool()]},
+        visibility = visibility,
+        test_only = test_only,
+        labels = labels or ["rust"],
+        building_description = f"Compiling Rust library {crate}...",
+    )
+
+def rust_bin(
+    name: str,
+    srcs: list = None,
+    deps: list = None,
+    edition: str = None,
+    flags: list = None,
+    crate_name: str = None,
+    visibility: list = None,
+    test_only: bool = False,
+    labels: list = None,
+):
+    """
+    Compiles a Rust binary executable.
+    """
+    srcs = srcs or []
+    deps = deps or []
+    flags = flags or []
+    edition = edition or _default_edition()
+    crate = crate_name or name
+
+    main_src = srcs[0] if len(srcs) == 1 else "src/main.rs"
+    if main_src not in srcs and len(srcs) > 0:
+        main_src = srcs[0]
+
+    flags_str = " ".join(flags)
+    rustc_arg = f"--rustc '{_rustc_path()}'" if _rustc_path() else ""
+
+    cmd = f"""
+    $TOOL compile \\
+      --crate-name {crate} \\
+      --crate-type bin \\
+      --edition {edition} \\
+      --out $OUT \\
+      --main-src "{main_src}" \\
+      --version "${CARGO_PKG_VERSION:-}" \\
+      --flags "{flags_str}" \\
+      {rustc_arg} \\
+      ${SRCS:-} ${DEPS:-}
+    """
+
+    return build_rule(
+        name = name,
+        srcs = srcs,
+        deps = deps,
+        outs = [name],
+        cmd = cmd,
+        binary = True,
+        tools = {"TOOL": [_rust_tool()]},
+        visibility = visibility,
+        test_only = test_only,
+        labels = labels or ["rust"],
+        building_description = f"Compiling Rust binary {name}...",
+    )
+
+def rust_test(
+    name: str,
+    srcs: list = None,
+    deps: list = None,
+    edition: str = None,
+    flags: list = None,
+    crate_name: str = None,
+    visibility: list = None,
+    labels: list = None,
+    data: list = None,
+    size: str = "medium",
+    timeout: int = 0,
+    flaky: bool = False,
+):
+    """
+    Compiles and executes a Rust test suite using Please's test runner.
+    """
+    srcs = srcs or []
+    deps = deps or []
+    flags = flags or []
+    edition = edition or _default_edition()
+    crate = crate_name or name
+
+    main_src = srcs[0] if len(srcs) == 1 else "src/lib.rs"
+    if main_src not in srcs and len(srcs) > 0:
+        main_src = srcs[0]
+
+    flags_str = " ".join(flags)
+    rustc_arg = f"--rustc '{_rustc_path()}'" if _rustc_path() else ""
+
+    cmd = f"""
+    $TOOL compile \\
+      --crate-name {crate} \\
+      --crate-type test \\
+      --edition {edition} \\
+      --out $OUT \\
+      --main-src "{main_src}" \\
+      --version "${CARGO_PKG_VERSION:-}" \\
+      --flags "{flags_str}" \\
+      {rustc_arg} \\
+      ${SRCS:-} ${DEPS:-}
+    """
+
+    test_cmd = "$TEST"
+
+    return build_rule(
+        name = name,
+        srcs = srcs,
+        deps = deps,
+        outs = [name],
+        cmd = cmd,
+        test_cmd = test_cmd,
+        binary = True,
+        test = True,
+        tools = {
+            "TOOL": [_rust_tool()],
+        },
+        visibility = visibility,
+        labels = labels or ["rust"],
+        data = data,
+        size = size,
+        test_timeout = timeout,
+        flaky = flaky,
+        building_description = f"Compiling Rust test {name}...",
+    )
+
+def rust_crate(
+    name: str,
+    version: str = "",
+    features: list = None,
+    deps: list = None,
+    visibility: list = ["PUBLIC"],
+):
+    """
+    Placeholder/metadata rule for third-party crates fetched via plz_rust fetch.
+    """
+    pass

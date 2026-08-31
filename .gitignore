@@ -1,0 +1,15 @@
+# Build & Editor Artifacts
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Language / Package Manager Artifacts
+target/
+Cargo.lock
+
+# Entries below this point are managed by Please (DO NOT EDIT)
+plz-out
+.plzconfig.local
