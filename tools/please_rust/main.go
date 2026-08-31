@@ -68,6 +68,7 @@ func main() {
 		crateName := fetchCmd.String("crate", "", "Name of the single crate to fetch")
 		version := fetchCmd.String("version", "", "Version of the single crate to fetch")
 		featuresFlag := fetchCmd.String("features", "", "Comma-separated features for the crate")
+		procMacro := fetchCmd.Bool("proc-macro", false, "Whether this crate is a proc macro")
 		buildFile := fetchCmd.String("build-file", "", "Path to BUILD file containing rust_crate declarations")
 		outDir := fetchCmd.String("out-dir", "", "Directory to output built rlibs")
 
@@ -86,7 +87,7 @@ func main() {
 			if *featuresFlag != "" {
 				features = strings.Split(*featuresFlag, ",")
 			}
-			if err := fetch.FetchCrate(*cargo, *rustc, *crateName, *version, features, *outDir); err != nil {
+			if err := fetch.FetchCrate(*cargo, *rustc, *crateName, *version, features, *procMacro, *outDir); err != nil {
 				fmt.Fprintf(os.Stderr, "Fetch crate error: %v\n", err)
 				os.Exit(1)
 			}

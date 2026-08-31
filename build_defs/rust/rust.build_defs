@@ -61,6 +61,7 @@ def rust_library(
         deps = deps,
         outs = [out_file],
         cmd = cmd,
+        needs_transitive_deps = True,
         tools = {"TOOL": [_rust_tool()]},
         visibility = visibility,
         test_only = test_only,
@@ -115,6 +116,7 @@ def rust_bin(
         outs = [name],
         cmd = cmd,
         binary = True,
+        needs_transitive_deps = True,
         tools = {"TOOL": [_rust_tool()]},
         visibility = visibility,
         test_only = test_only,
@@ -176,6 +178,7 @@ def rust_test(
         test_cmd = test_cmd,
         binary = True,
         test = True,
+        needs_transitive_deps = True,
         tools = {
             "TOOL": [_rust_tool()],
         },
@@ -190,27 +193,48 @@ def rust_test(
 
 def rust_crate(
     name: str,
+    crate_name: str = "",
+    pkg_name: str = "",
     version: str = "",
     features: list = None,
     deps: list = None,
+    proc_macro: bool = False,
+    meta: bool = False,
+    license: str = "",
+    repository: str = "",
     visibility: list = ["PUBLIC"],
 ):
     """
     Downloads and compiles a third-party Rust crate using cargo/plz_rust fetch.
+    Supports regular crates (.rlib), procedural macros (.so), and meta-crates.
     """
     features = features or []
     deps = deps or []
-    sanitized = name.replace("-", "_")
-    out_file = f"lib{sanitized}.rlib"
+    vis = visibility or ["PUBLIC"]
+
+    if meta or not version:
+        return filegroup(
+            name = name,
+            deps = deps,
+            visibility = vis,
+            labels = ["rust", "rust_crate", "meta"],
+        )
+
+    crate = (crate_name or name).replace("-", "_")
+    pkg = (pkg_name or name)
+    ext = ".so" if proc_macro else ".rlib"
+    out_file = f"lib{crate}{ext}"
     features_str = ",".join(features)
     cargo_arg = f"--cargo '{_cargo_path()}'" if _cargo_path() else ""
     rustc_arg = f"--rustc '{_rustc_path()}'" if _rustc_path() else ""
+    proc_macro_arg = "--proc-macro" if proc_macro else ""
 
     cmd = f"""
     $TOOL fetch \\
-      --crate {name} \\
+      --crate {pkg} \\
       --version "{version}" \\
       --features "{features_str}" \\
+      {proc_macro_arg} \\
       --out-dir "$TMP_DIR/output" \\
       {cargo_arg} \\
       {rustc_arg}
@@ -222,8 +246,9 @@ def rust_crate(
         outs = [out_file],
         deps = deps,
         cmd = cmd,
+        needs_transitive_deps = True,
         tools = {"TOOL": [_rust_tool()]},
-        visibility = visibility,
+        visibility = vis,
         labels = ["rust", "rust_crate"],
         building_description = f"Fetching Rust crate {name} ({version})...",
     )

@@ -33,7 +33,7 @@ func GenerateCargoToml(crates []CrateReq) string {
 	return sb.String()
 }
 
-// sanitizeEnv ensures PATH and HOME/CARGO_HOME are available when cargo runs in sandbox.
+// getCargoEnv ensures PATH and HOME/CARGO_HOME are available when cargo runs in sandbox.
 func getCargoEnv(cargoPath string, rustcOverride string) []string {
 	env := os.Environ()
 	cargoDir := filepath.Dir(cargoPath)
@@ -58,7 +58,6 @@ func getCargoEnv(cargoPath string, rustcOverride string) []string {
 
 	updatedPath := strings.Join(append(extraPaths, pathVar), string(os.PathListSeparator))
 
-	// Replace or append PATH
 	pathSet := false
 	for i, e := range env {
 		if strings.HasPrefix(e, "PATH=") {
@@ -75,7 +74,7 @@ func getCargoEnv(cargoPath string, rustcOverride string) []string {
 }
 
 // FetchCrate downloads and compiles a single third-party crate into outDir.
-func FetchCrate(cargoOverride string, rustcOverride string, name string, version string, features []string, outDir string) error {
+func FetchCrate(cargoOverride string, rustcOverride string, name string, version string, features []string, procMacro bool, outDir string) error {
 	cargoPath, err := toolchain.FindCargo(cargoOverride)
 	if err != nil {
 		return err
@@ -124,31 +123,39 @@ func FetchCrate(cargoOverride string, rustcOverride string, name string, version
 	}
 
 	sanitizedName := strings.ReplaceAll(name, "-", "_")
+	ext := ".rlib"
+	if procMacro {
+		ext = ".so"
+	}
+
+	exact := fmt.Sprintf("lib%s%s", sanitizedName, ext)
 	prefix := fmt.Sprintf("lib%s-", sanitizedName)
-	exact := fmt.Sprintf("lib%s.rlib", sanitizedName)
 
 	copied := 0
 	for _, entry := range entries {
-		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".rlib") {
-			src := filepath.Join(targetDeps, entry.Name())
-			data, err := os.ReadFile(src)
-			if err != nil {
-				return err
-			}
+		eName := entry.Name()
+		if !entry.IsDir() {
+			if strings.HasSuffix(eName, ".rlib") || strings.HasSuffix(eName, ".so") || strings.HasSuffix(eName, ".dylib") {
+				src := filepath.Join(targetDeps, eName)
+				data, err := os.ReadFile(src)
+				if err != nil {
+					return err
+				}
 
-			dest := filepath.Join(outDir, entry.Name())
-			_ = os.WriteFile(dest, data, 0644)
+				dest := filepath.Join(outDir, eName)
+				_ = os.WriteFile(dest, data, 0644)
 
-			if entry.Name() == exact || strings.HasPrefix(entry.Name(), prefix) {
-				canonical := filepath.Join(outDir, exact)
-				_ = os.WriteFile(canonical, data, 0644)
-				copied++
+				if (strings.HasPrefix(eName, prefix) || eName == exact) && strings.HasSuffix(eName, ext) {
+					canonical := filepath.Join(outDir, exact)
+					_ = os.WriteFile(canonical, data, 0644)
+					copied++
+				}
 			}
 		}
 	}
 
 	if copied == 0 {
-		return fmt.Errorf("could not find built .rlib for crate %s in %s", name, targetDeps)
+		return fmt.Errorf("could not find built %s for crate %s in %s", ext, name, targetDeps)
 	}
 
 	return nil
@@ -227,7 +234,7 @@ func FetchAll(cargoOverride string, rustcOverride string, buildFilePath string, 
 	}
 
 	for _, entry := range entries {
-		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".rlib") {
+		if !entry.IsDir() && (strings.HasSuffix(entry.Name(), ".rlib") || strings.HasSuffix(entry.Name(), ".so") || strings.HasSuffix(entry.Name(), ".dylib")) {
 			src := filepath.Join(targetDeps, entry.Name())
 			data, err := os.ReadFile(src)
 			if err != nil {

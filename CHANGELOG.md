@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-08-31
+
+### Added
+
+- Added `proc_macro` support to `rust_crate` for compiling procedural macro
+  shared libraries (`.so`).
+- Added `meta = True` support to `rust_crate` for aggregator/virtual crates.
+- Added metadata parameters (`crate_name`, `pkg_name`, `license`, `repository`)
+  to `rust_crate`.
+- Enabled transitive dependency propagation (`needs_transitive_deps = True`) on
+  all Rust build rules (`rust_library`, `rust_bin`, `rust_test`, `rust_crate`).
+
 ## [0.1.0] - 2026-08-31
 
 ### Added

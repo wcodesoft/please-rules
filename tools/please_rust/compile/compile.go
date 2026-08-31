@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"tools/please_rust/toolchain"
@@ -28,18 +29,20 @@ func sanitizeCrateName(name string) string {
 	return strings.ReplaceAll(name, "-", "_")
 }
 
+var hashSuffixRegex = regexp.MustCompile(`-[0-9a-fA-F]{16}$`)
+
 // extractCrateName derives the crate name from a library artifact filename.
 func extractCrateName(filename string) string {
 	base := filepath.Base(filename)
 	ext := filepath.Ext(base)
 	trimmed := strings.TrimSuffix(base, ext)
 	trimmed = strings.TrimPrefix(trimmed, "lib")
+	trimmed = hashSuffixRegex.ReplaceAllString(trimmed, "")
 	return sanitizeCrateName(trimmed)
 }
 
 // resolveMainSrc finds the actual entrypoint source file among inputs and current directory.
 func resolveMainSrc(mainSrc string, crateType string, inputs []string) string {
-	// If mainSrc explicitly exists as a file, return it
 	if mainSrc != "" {
 		if _, err := os.Stat(mainSrc); err == nil {
 			return mainSrc
@@ -53,7 +56,6 @@ func resolveMainSrc(mainSrc string, crateType string, inputs []string) string {
 		}
 	}
 
-	// Look for standard root/package level files first: lib.rs, main.rs, then src/lib.rs, src/main.rs
 	preferredNames := []string{"lib.rs", "main.rs", "src/lib.rs", "src/main.rs"}
 	if crateType == "bin" {
 		preferredNames = []string{"main.rs", "src/main.rs", "lib.rs", "src/lib.rs"}
@@ -72,7 +74,6 @@ func resolveMainSrc(mainSrc string, crateType string, inputs []string) string {
 		}
 	}
 
-	// If only one .rs file exists in inputs, use it directly
 	for _, input := range inputs {
 		if filepath.Ext(input) == ".rs" {
 			if _, err := os.Stat(input); err == nil {
@@ -81,7 +82,6 @@ func resolveMainSrc(mainSrc string, crateType string, inputs []string) string {
 		}
 	}
 
-	// Check any .rs file in the working directory
 	if entries, err := os.ReadDir("."); err == nil {
 		for _, e := range entries {
 			if !e.IsDir() && filepath.Ext(e.Name()) == ".rs" {
@@ -99,9 +99,10 @@ func discoverDepFiles(inputs []string) []string {
 	var deps []string
 
 	addDep := func(p string) {
-		if !seen[p] {
-			seen[p] = true
-			deps = append(deps, p)
+		clean := filepath.Clean(p)
+		if !seen[clean] {
+			seen[clean] = true
+			deps = append(deps, clean)
 		}
 	}
 
@@ -180,11 +181,14 @@ func BuildRustcArgs(opts Options, realBinaryOut string) ([]string, error) {
 		}
 		cName := extractCrateName(depPath)
 		if cName != "" && cName != sanitizeCrateName(opts.CrateName) {
-			if _, exists := externMap[cName]; !exists {
+			if existing, exists := externMap[cName]; !exists || (!strings.Contains(filepath.Base(depPath), "-") && strings.Contains(filepath.Base(existing), "-")) {
 				externMap[cName] = depPath
-				externs = append(externs, externDef{crate: cName, path: depPath})
 			}
 		}
+	}
+
+	for cName, path := range externMap {
+		externs = append(externs, externDef{crate: cName, path: path})
 	}
 
 	for dir := range searchDirs {
@@ -318,6 +322,7 @@ func Run(opts Options) error {
 	}
 
 	if err := cmd.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "DEBUG: rustc command failed: %s %s\n", rustcPath, strings.Join(args, " "))
 		return fmt.Errorf("rustc compilation failed: %w", err)
 	}
 
