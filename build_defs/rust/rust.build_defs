@@ -196,6 +196,35 @@ def rust_crate(
     visibility: list = ["PUBLIC"],
 ):
     """
-    Placeholder/metadata rule for third-party crates fetched via plz_rust fetch.
+    Downloads and compiles a third-party Rust crate using cargo/plz_rust fetch.
     """
-    pass
+    features = features or []
+    deps = deps or []
+    sanitized = name.replace("-", "_")
+    out_file = f"lib{sanitized}.rlib"
+    features_str = ",".join(features)
+    cargo_arg = f"--cargo '{_cargo_path()}'" if _cargo_path() else ""
+    rustc_arg = f"--rustc '{_rustc_path()}'" if _rustc_path() else ""
+
+    cmd = f"""
+    $TOOL fetch \\
+      --crate {name} \\
+      --version "{version}" \\
+      --features "{features_str}" \\
+      --out-dir "$TMP_DIR/output" \\
+      {cargo_arg} \\
+      {rustc_arg}
+    cp "$TMP_DIR/output/{out_file}" "$OUT"
+    """
+
+    return build_rule(
+        name = name,
+        outs = [out_file],
+        deps = deps,
+        cmd = cmd,
+        tools = {"TOOL": [_rust_tool()]},
+        visibility = visibility,
+        labels = ["rust", "rust_crate"],
+        building_description = f"Fetching Rust crate {name} ({version})...",
+    )
+

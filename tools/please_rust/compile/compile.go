@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/please-build/rust-rules/tools/please_rust/toolchain"
+	"tools/please_rust/toolchain"
 )
 
 // Options specifies the parameters needed to compile a Rust target.

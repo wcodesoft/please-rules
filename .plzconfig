@@ -4,7 +4,7 @@ version = >=17.0.0
 
 [Plugin "go"]
 Target = //plugins:go
-ImportPath = github.com/please-build/rust-rules
+ImportPath = ""
 GoTool = //third_party/go:toolchain|go
 Stdlib = //third_party/go:std
 

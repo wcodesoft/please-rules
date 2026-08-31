@@ -4,10 +4,11 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 
-	"github.com/please-build/rust-rules/tools/please_rust/compile"
-	"github.com/please-build/rust-rules/tools/please_rust/fetch"
-	"github.com/please-build/rust-rules/tools/please_rust/testrunner"
+	"tools/please_rust/compile"
+	"tools/please_rust/fetch"
+	"tools/please_rust/testrunner"
 )
 
 func printUsage() {
@@ -63,7 +64,11 @@ func main() {
 	case "fetch":
 		fetchCmd := flag.NewFlagSet("fetch", flag.ExitOnError)
 		cargo := fetchCmd.String("cargo", "", "Path to cargo executable")
-		buildFile := fetchCmd.String("build-file", "BUILD", "Path to BUILD file containing rust_crate declarations")
+		rustc := fetchCmd.String("rustc", "", "Path to rustc executable")
+		crateName := fetchCmd.String("crate", "", "Name of the single crate to fetch")
+		version := fetchCmd.String("version", "", "Version of the single crate to fetch")
+		featuresFlag := fetchCmd.String("features", "", "Comma-separated features for the crate")
+		buildFile := fetchCmd.String("build-file", "", "Path to BUILD file containing rust_crate declarations")
 		outDir := fetchCmd.String("out-dir", "", "Directory to output built rlibs")
 
 		if err := fetchCmd.Parse(os.Args[2:]); err != nil {
@@ -76,8 +81,22 @@ func main() {
 			os.Exit(1)
 		}
 
-		if err := fetch.Fetch(*cargo, *buildFile, *outDir); err != nil {
-			fmt.Fprintf(os.Stderr, "Fetch error: %v\n", err)
+		if *crateName != "" {
+			var features []string
+			if *featuresFlag != "" {
+				features = strings.Split(*featuresFlag, ",")
+			}
+			if err := fetch.FetchCrate(*cargo, *rustc, *crateName, *version, features, *outDir); err != nil {
+				fmt.Fprintf(os.Stderr, "Fetch crate error: %v\n", err)
+				os.Exit(1)
+			}
+		} else if *buildFile != "" {
+			if err := fetch.FetchAll(*cargo, *rustc, *buildFile, *outDir); err != nil {
+				fmt.Fprintf(os.Stderr, "Fetch all error: %v\n", err)
+				os.Exit(1)
+			}
+		} else {
+			fmt.Fprintf(os.Stderr, "Either --crate or --build-file must be specified\n")
 			os.Exit(1)
 		}
 

@@ -1,6 +1,5 @@
 # Build & Editor Artifacts
 .idea/
-.vscode/
 *.swp
 *.swo
 *~
