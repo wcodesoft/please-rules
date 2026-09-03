@@ -157,7 +157,11 @@ checking while preserving formatting on save:
 
 ## Documentation
 
-Detailed design documents, implementation plans, and architectural decisions are
+Detailed design documents, rule references, usage guides, and architectural details are
 located in the [`docs/`](docs/) directory:
 
-- [Rust Rules Plugin Plan](docs/rust_rules_plugin_plan.md)
+- [Documentation Index](docs/README.md)
+- [Architecture & Design](docs/architecture.md)
+- [Rule Reference](docs/rules.md)
+- [Toolchain Dependencies](docs/dependencies.md)
+- [Usage Guide](docs/usage.md)
