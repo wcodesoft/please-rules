@@ -38,8 +38,11 @@ def rust_library(
 
     resolved_main_src = main or main_src
     if not resolved_main_src:
-        resolved_main_src = srcs[0] if len(srcs) == 1 else "src/lib.rs"
-        if resolved_main_src not in srcs and len(srcs) > 0:
+        for cand in ["src/lib.rs", "lib.rs", "mod.rs", "src/mod.rs"]:
+            if cand in srcs:
+                resolved_main_src = cand
+                break
+        if not resolved_main_src and len(srcs) > 0:
             resolved_main_src = srcs[0]
 
     out_file = f"lib{crate}.rlib"
@@ -159,8 +162,11 @@ def rust_test(
 
     resolved_main_src = main or main_src
     if not resolved_main_src:
-        resolved_main_src = srcs[0] if len(srcs) == 1 else "src/lib.rs"
-        if resolved_main_src not in srcs and len(srcs) > 0:
+        for cand in ["src/lib.rs", "lib.rs", "mod.rs", "src/mod.rs"]:
+            if cand in srcs:
+                resolved_main_src = cand
+                break
+        if not resolved_main_src and len(srcs) > 0:
             resolved_main_src = srcs[0]
 
     flags_str = " ".join(flags)
