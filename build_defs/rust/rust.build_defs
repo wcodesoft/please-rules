@@ -12,7 +12,7 @@ def _cargo_path():
     return ""
 
 def _default_edition():
-    return "2021"
+    return "2024"
 
 def rust_library(
     name: str,
