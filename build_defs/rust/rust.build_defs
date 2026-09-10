@@ -3,16 +3,20 @@ Please build definitions for Rust rules.
 """
 
 def _rust_tool():
-    return CONFIG.get("RUST.PLEASE_RUST_TOOL", "//tools/please_rust")
+    tool = getattr(getattr(CONFIG, "RUST", None), "PLEASE_RUST_TOOL", None)
+    return tool if tool else "///rust//tools/please_rust"
 
 def _rustc_path():
-    return CONFIG.get("RUST.RUSTC_TOOL", "")
+    path = getattr(getattr(CONFIG, "RUST", None), "RUSTC_TOOL", None)
+    return path if path else ""
 
 def _cargo_path():
-    return CONFIG.get("RUST.CARGO_TOOL", "")
+    path = getattr(getattr(CONFIG, "RUST", None), "CARGO_TOOL", None)
+    return path if path else ""
 
 def _default_edition():
-    return CONFIG.get("RUST.DEFAULT_EDITION", "2021")
+    edition = getattr(getattr(CONFIG, "RUST", None), "DEFAULT_EDITION", None)
+    return edition if edition else "2021"
 
 def rust_library(
     name: str,
@@ -21,6 +25,8 @@ def rust_library(
     edition: str = None,
     flags: list = None,
     crate_name: str = None,
+    main: str = None,
+    main_src: str = None,
     visibility: list = None,
     test_only: bool = False,
     labels: list = None,
@@ -34,9 +40,11 @@ def rust_library(
     edition = edition or _default_edition()
     crate = crate_name or name
 
-    main_src = srcs[0] if len(srcs) == 1 else "src/lib.rs"
-    if main_src not in srcs and len(srcs) > 0:
-        main_src = srcs[0]
+    resolved_main_src = main or main_src
+    if not resolved_main_src:
+        resolved_main_src = srcs[0] if len(srcs) == 1 else "src/lib.rs"
+        if resolved_main_src not in srcs and len(srcs) > 0:
+            resolved_main_src = srcs[0]
 
     out_file = f"lib{crate}.rlib"
     flags_str = " ".join(flags)
@@ -48,7 +56,7 @@ def rust_library(
       --crate-type rlib \\
       --edition {edition} \\
       --out $OUT \\
-      --main-src "{main_src}" \\
+      --main-src "{resolved_main_src}" \\
       --version "${CARGO_PKG_VERSION:-}" \\
       --flags "{flags_str}" \\
       {rustc_arg} \\
@@ -76,6 +84,8 @@ def rust_bin(
     edition: str = None,
     flags: list = None,
     crate_name: str = None,
+    main: str = None,
+    main_src: str = None,
     visibility: list = None,
     test_only: bool = False,
     labels: list = None,
@@ -89,9 +99,11 @@ def rust_bin(
     edition = edition or _default_edition()
     crate = crate_name or name
 
-    main_src = srcs[0] if len(srcs) == 1 else "src/main.rs"
-    if main_src not in srcs and len(srcs) > 0:
-        main_src = srcs[0]
+    resolved_main_src = main or main_src
+    if not resolved_main_src:
+        resolved_main_src = srcs[0] if len(srcs) == 1 else "src/main.rs"
+        if resolved_main_src not in srcs and len(srcs) > 0:
+            resolved_main_src = srcs[0]
 
     flags_str = " ".join(flags)
     rustc_arg = f"--rustc '{_rustc_path()}'" if _rustc_path() else ""
@@ -102,7 +114,7 @@ def rust_bin(
       --crate-type bin \\
       --edition {edition} \\
       --out $OUT \\
-      --main-src "{main_src}" \\
+      --main-src "{resolved_main_src}" \\
       --version "${CARGO_PKG_VERSION:-}" \\
       --flags "{flags_str}" \\
       {rustc_arg} \\
@@ -131,6 +143,8 @@ def rust_test(
     edition: str = None,
     flags: list = None,
     crate_name: str = None,
+    main: str = None,
+    main_src: str = None,
     visibility: list = None,
     labels: list = None,
     data: list = None,
@@ -147,9 +161,11 @@ def rust_test(
     edition = edition or _default_edition()
     crate = crate_name or name
 
-    main_src = srcs[0] if len(srcs) == 1 else "src/lib.rs"
-    if main_src not in srcs and len(srcs) > 0:
-        main_src = srcs[0]
+    resolved_main_src = main or main_src
+    if not resolved_main_src:
+        resolved_main_src = srcs[0] if len(srcs) == 1 else "src/lib.rs"
+        if resolved_main_src not in srcs and len(srcs) > 0:
+            resolved_main_src = srcs[0]
 
     flags_str = " ".join(flags)
     rustc_arg = f"--rustc '{_rustc_path()}'" if _rustc_path() else ""
@@ -160,7 +176,7 @@ def rust_test(
       --crate-type test \\
       --edition {edition} \\
       --out $OUT \\
-      --main-src "{main_src}" \\
+      --main-src "{resolved_main_src}" \\
       --version "${CARGO_PKG_VERSION:-}" \\
       --flags "{flags_str}" \\
       {rustc_arg} \\
