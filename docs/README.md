@@ -1,8 +1,11 @@
 # Rust Rules Documentation (`please-rules`)
 
-Welcome to the documentation for the Please build system Rust rules plugin (`please-rules`).
+Welcome to the documentation for the Please build system Rust rules plugin
+(`please-rules`).
 
-This plugin provides first-class, hermetic support for compiling, testing, and managing Rust crates and third-party dependencies using [Please](https://please.build).
+This plugin provides first-class, hermetic support for compiling, testing, and
+managing Rust crates and third-party dependencies using
+[Please](https://please.build).
 
 ---
 

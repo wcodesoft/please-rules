@@ -1,0 +1,11 @@
+{
+  "project": "please-rules",
+  "server": "http://localhost:8080",
+  "test_results_path": "plz-out/log/test_results.xml",
+  "thresholds": {
+    "cognitive_complexity": 15,
+    "cyclomatic_complexity": 10,
+    "lcom4": 1,
+    "duplication_pct": 5.0
+  }
+}

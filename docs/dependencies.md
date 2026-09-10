@@ -1,6 +1,8 @@
 # Toolchain Dependencies & Resolution
 
-This document details system requirements, toolchain discovery mechanisms, and third-party crate dependency management in the Please Rust plugin (`please-rules`).
+This document details system requirements, toolchain discovery mechanisms, and
+third-party crate dependency management in the Please Rust plugin
+(`please-rules`).
 
 ---
 
@@ -10,15 +12,19 @@ To compile and test Rust targets, the system requires:
 
 1. **Rust Toolchain**:
    - `rustc`: The standard Rust compiler executable.
-   - `cargo`: The Rust package manager (used by `please_rust fetch` to download and compile third-party crates).
+   - `cargo`: The Rust package manager (used by `please_rust fetch` to download
+     and compile third-party crates).
 2. **Go Toolchain**:
-   - Required by Please to build the `please_rust` helper binary (`//tools/please_rust`). Please manages Go toolchains hermetically via the `go-rules` plugin (`//plugins:go`).
+   - Required by Please to build the `please_rust` helper binary
+     (`//tools/please_rust`). Please manages Go toolchains hermetically via the
+     `go-rules` plugin (`//plugins:go`).
 
 ---
 
 ## Toolchain Resolution & Discovery
 
-When `please_rust` executes, it uses its built-in `toolchain` module to locate the host `rustc` and `cargo` executables.
+When `please_rust` executes, it uses its built-in `toolchain` module to locate
+the host `rustc` and `cargo` executables.
 
 ### Resolution Hierarchy
 
@@ -45,13 +51,15 @@ CargoTool = /usr/local/bin/cargo
 PleaseRustTool = //tools/please_rust
 ```
 
-When set, these configuration keys are automatically passed as `--rustc` and `--cargo` flags to `please_rust`.
+When set, these configuration keys are automatically passed as `--rustc` and
+`--cargo` flags to `please_rust`.
 
 ---
 
 ## Third-Party Crate Dependency Management
 
-Third-party dependencies are declared using the `rust_crate` rule, typically organized inside `third_party/rust/BUILD`.
+Third-party dependencies are declared using the `rust_crate` rule, typically
+organized inside `third_party/rust/BUILD`.
 
 ### 1. Simple Crate Dependency
 
@@ -66,7 +74,8 @@ rust_crate(
 
 ### 2. Crate with Features & Dependencies
 
-When a third-party crate depends on another crate or requires specific Cargo features:
+When a third-party crate depends on another crate or requires specific Cargo
+features:
 
 ```starlark
 rust_crate(
@@ -106,8 +115,12 @@ rust_crate(
 
 ### How `rust_crate` Works Under the Hood
 
-1. Please invokes `$TOOL fetch` with parameters `--crate`, `--version`, `--features`, and `--out-dir`.
-2. `please_rust fetch` constructs a isolated temporary workspace directory and creates a minimal `Cargo.toml`.
+1. Please invokes `$TOOL fetch` with parameters `--crate`, `--version`,
+   `--features`, and `--out-dir`.
+2. `please_rust fetch` constructs a isolated temporary workspace directory and
+   creates a minimal `Cargo.toml`.
 3. It runs `cargo build --release` using Cargo.
-4. The generated `.rlib` (or `.so` for procedural macros) is placed in Please's target output directory (`plz-out/`).
-5. Dependent targets (`rust_library`, `rust_bin`) reference this artifact directly via `--extern` and `-L dependency=...`.
+4. The generated `.rlib` (or `.so` for procedural macros) is placed in Please's
+   target output directory (`plz-out/`).
+5. Dependent targets (`rust_library`, `rust_bin`) reference this artifact
+   directly via `--extern` and `-L dependency=...`.

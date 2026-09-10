@@ -1,6 +1,7 @@
 # Usage & Configuration Guide
 
-This guide covers how to set up, configure, and use the Please Rust plugin (`please-rules`) in your project repository.
+This guide covers how to set up, configure, and use the Please Rust plugin
+(`please-rules`) in your project repository.
 
 ---
 
@@ -48,18 +49,19 @@ DefaultEdition = 2021
 
 ### Options Summary
 
-| Config Key | Option Name | Default | Description |
-| :--- | :--- | :--- | :--- |
+| Config Key       | Option Name        | Default               | Description                                                |
+| :--------------- | :----------------- | :-------------------- | :--------------------------------------------------------- |
 | `PleaseRustTool` | `please_rust_tool` | `//tools/please_rust` | Path or target label for the `please_rust` Go helper tool. |
-| `RustcTool` | `rustc_tool` | `rustc` | Path or command name for `rustc`. |
-| `CargoTool` | `cargo_tool` | `cargo` | Path or command name for `cargo`. |
-| `DefaultEdition` | `default_edition` | `2021` | Default Rust edition (e.g. `2021`, `2024`). |
+| `RustcTool`      | `rustc_tool`       | `rustc`               | Path or command name for `rustc`.                          |
+| `CargoTool`      | `cargo_tool`       | `cargo`               | Path or command name for `cargo`.                          |
+| `DefaultEdition` | `default_edition`  | `2021`                | Default Rust edition (e.g. `2021`, `2024`).                |
 
 ---
 
 ## Project Structure Examples
 
-Source files are placed directly in the same directory as their corresponding `BUILD` file, without requiring a `src/` subfolder.
+Source files are placed directly in the same directory as their corresponding
+`BUILD` file, without requiring a `src/` subfolder.
 
 ### Single Crate Repository Layout
 

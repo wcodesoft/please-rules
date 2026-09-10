@@ -136,9 +136,37 @@ fi
 # If this exists at any version, let it handle any update.
 TARGET="${LOCATION}/please"
 
+run_please_and_hook() {
+    set +e
+    "${TARGET}" ${PLZ_ARGS:-} "${@}"
+    PLZ_EXIT=$?
+    set -e
+
+    # Hook: Auto-report test results to Veritas server on test / cover runs
+    is_test_run=false
+    for arg in "${@}"; do
+        case "${arg}" in
+            test|cover)
+                is_test_run=true
+                break
+                ;;
+        esac
+    done
+
+    if [ "${is_test_run}" = true ] && [ "${VERITAS_NO_HOOK:-}" != "1" ]; then
+        if [ -f "plz-out/log/test_results.xml" ]; then
+            if command -v veritas > /dev/null 2>&1; then
+                veritas report-tests plz-out/log/test_results.xml > /dev/null 2>&1 || true
+            fi
+        fi
+    fi
+
+    exit "${PLZ_EXIT}"
+}
+
 if [ -f "${TARGET}" ]; then
     # shellcheck disable=2086
-    exec "${TARGET}" ${PLZ_ARGS:-} "${@}"
+    run_please_and_hook "${@}"
 fi
 
 URL_BASE="$(read_config '^\s*downloadlocation' | cut -d '=' -f 2 | tr -d ' ')"
@@ -196,4 +224,4 @@ done
 
 printf >&2 '%bShould be good to go now, running plz...%b\n' "${GREEN}" "${RESET}"
 # shellcheck disable=2086
-exec "${TARGET}" ${PLZ_ARGS:-} "${@}"
+run_please_and_hook "${@}"

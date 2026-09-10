@@ -7,30 +7,36 @@ import (
 	"path/filepath"
 )
 
-// FindRustc resolves the path to the rustc binary.
-// It checks the provided override, PATH, and common standard installation paths.
-func FindRustc(override string) (string, error) {
-	if override != "" {
-		if path, err := exec.LookPath(override); err == nil {
-			return path, nil
+// findTool resolves the path to an executable tool (e.g. rustc, cargo).
+func findTool(override, name string) (string, error) {
+	checkPath := func(target string) string {
+		if path, err := exec.LookPath(target); err == nil {
+			return path
 		}
-		if _, err := os.Stat(override); err == nil {
-			return override, nil
+		if fi, err := os.Stat(target); err == nil && !fi.IsDir() {
+			return target
 		}
-		return "", fmt.Errorf("specified rustc '%s' not found", override)
+		return ""
 	}
 
-	if path, err := exec.LookPath("rustc"); err == nil {
-		return path, nil
+	if override != "" {
+		if found := checkPath(override); found != "" {
+			return found, nil
+		}
+		return "", fmt.Errorf("specified %s '%s' not found", name, override)
+	}
+
+	if found := checkPath(name); found != "" {
+		return found, nil
 	}
 
 	homeDir, _ := os.UserHomeDir()
 	candidatePaths := []string{
-		filepath.Join(homeDir, ".cargo", "bin", "rustc"),
-		"/home/linuxbrew/.linuxbrew/bin/rustc",
-		"/usr/local/bin/rustc",
-		"/usr/bin/rustc",
-		"/opt/homebrew/bin/rustc",
+		filepath.Join(homeDir, ".cargo", "bin", name),
+		filepath.Join("/home/linuxbrew/.linuxbrew/bin", name),
+		filepath.Join("/usr/local/bin", name),
+		filepath.Join("/usr/bin", name),
+		filepath.Join("/opt/homebrew/bin", name),
 	}
 
 	for _, p := range candidatePaths {
@@ -42,42 +48,16 @@ func FindRustc(override string) (string, error) {
 		}
 	}
 
-	return "", fmt.Errorf("rustc not found in PATH or standard locations (~/.cargo/bin, linuxbrew, /usr/local/bin). Please install rustc or specify --rustc")
+	return "", fmt.Errorf("%s not found in PATH or standard locations (~/.cargo/bin, linuxbrew, /usr/local/bin). Please install %s or specify --%s", name, name, name)
+}
+
+// FindRustc resolves the path to the rustc binary.
+// It checks the provided override, PATH, and common standard installation paths.
+func FindRustc(override string) (string, error) {
+	return findTool(override, "rustc")
 }
 
 // FindCargo resolves the path to the cargo binary.
 func FindCargo(override string) (string, error) {
-	if override != "" {
-		if path, err := exec.LookPath(override); err == nil {
-			return path, nil
-		}
-		if _, err := os.Stat(override); err == nil {
-			return override, nil
-		}
-		return "", fmt.Errorf("specified cargo '%s' not found", override)
-	}
-
-	if path, err := exec.LookPath("cargo"); err == nil {
-		return path, nil
-	}
-
-	homeDir, _ := os.UserHomeDir()
-	candidatePaths := []string{
-		filepath.Join(homeDir, ".cargo", "bin", "cargo"),
-		"/home/linuxbrew/.linuxbrew/bin/cargo",
-		"/usr/local/bin/cargo",
-		"/usr/bin/cargo",
-		"/opt/homebrew/bin/cargo",
-	}
-
-	for _, p := range candidatePaths {
-		if p == "" {
-			continue
-		}
-		if fi, err := os.Stat(p); err == nil && !fi.IsDir() {
-			return p, nil
-		}
-	}
-
-	return "", fmt.Errorf("cargo not found in PATH or standard locations (~/.cargo/bin, linuxbrew, /usr/local/bin). Please install cargo or specify --cargo")
+	return findTool(override, "cargo")
 }
