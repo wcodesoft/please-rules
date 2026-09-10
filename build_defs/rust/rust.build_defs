@@ -22,7 +22,6 @@ def rust_library(
     flags: list = None,
     crate_name: str = None,
     main: str = None,
-    main_src: str = None,
     visibility: list = None,
     test_only: bool = False,
     labels: list = None,
@@ -36,14 +35,14 @@ def rust_library(
     edition = edition or _default_edition()
     crate = crate_name or name
 
-    resolved_main_src = main or main_src
-    if not resolved_main_src:
+    resolved_main = main
+    if not resolved_main:
         for cand in ["src/lib.rs", "lib.rs", "mod.rs", "src/mod.rs"]:
             if cand in srcs:
-                resolved_main_src = cand
+                resolved_main = cand
                 break
-        if not resolved_main_src and len(srcs) > 0:
-            resolved_main_src = srcs[0]
+        if not resolved_main and len(srcs) > 0:
+            resolved_main = srcs[0]
 
     out_file = f"lib{crate}.rlib"
     flags_str = " ".join(flags)
@@ -55,7 +54,7 @@ def rust_library(
       --crate-type rlib \\
       --edition {edition} \\
       --out $OUT \\
-      --main-src "{resolved_main_src}" \\
+      --main-src "{resolved_main}" \\
       --version "${CARGO_PKG_VERSION:-}" \\
       --flags "{flags_str}" \\
       {rustc_arg} \\
@@ -84,7 +83,6 @@ def rust_bin(
     flags: list = None,
     crate_name: str = None,
     main: str = None,
-    main_src: str = None,
     visibility: list = None,
     test_only: bool = False,
     labels: list = None,
@@ -98,11 +96,11 @@ def rust_bin(
     edition = edition or _default_edition()
     crate = crate_name or name
 
-    resolved_main_src = main or main_src
-    if not resolved_main_src:
-        resolved_main_src = srcs[0] if len(srcs) == 1 else "src/main.rs"
-        if resolved_main_src not in srcs and len(srcs) > 0:
-            resolved_main_src = srcs[0]
+    resolved_main = main
+    if not resolved_main:
+        resolved_main = srcs[0] if len(srcs) == 1 else "src/main.rs"
+        if resolved_main not in srcs and len(srcs) > 0:
+            resolved_main = srcs[0]
 
     flags_str = " ".join(flags)
     rustc_arg = f"--rustc '{_rustc_path()}'" if _rustc_path() else ""
@@ -113,7 +111,7 @@ def rust_bin(
       --crate-type bin \\
       --edition {edition} \\
       --out $OUT \\
-      --main-src "{resolved_main_src}" \\
+      --main-src "{resolved_main}" \\
       --version "${CARGO_PKG_VERSION:-}" \\
       --flags "{flags_str}" \\
       {rustc_arg} \\
@@ -143,7 +141,6 @@ def rust_test(
     flags: list = None,
     crate_name: str = None,
     main: str = None,
-    main_src: str = None,
     visibility: list = None,
     labels: list = None,
     data: list = None,
@@ -160,14 +157,14 @@ def rust_test(
     edition = edition or _default_edition()
     crate = crate_name or name
 
-    resolved_main_src = main or main_src
-    if not resolved_main_src:
+    resolved_main = main
+    if not resolved_main:
         for cand in ["src/lib.rs", "lib.rs", "mod.rs", "src/mod.rs"]:
             if cand in srcs:
-                resolved_main_src = cand
+                resolved_main = cand
                 break
-        if not resolved_main_src and len(srcs) > 0:
-            resolved_main_src = srcs[0]
+        if not resolved_main and len(srcs) > 0:
+            resolved_main = srcs[0]
 
     flags_str = " ".join(flags)
     rustc_arg = f"--rustc '{_rustc_path()}'" if _rustc_path() else ""
@@ -178,7 +175,7 @@ def rust_test(
       --crate-type test \\
       --edition {edition} \\
       --out $OUT \\
-      --main-src "{resolved_main_src}" \\
+      --main-src "{resolved_main}" \\
       --version "${CARGO_PKG_VERSION:-}" \\
       --flags "{flags_str}" \\
       {rustc_arg} \\

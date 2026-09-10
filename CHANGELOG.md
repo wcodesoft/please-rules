@@ -6,6 +6,52 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.5] - 2026-09-10
+
+### Changed
+
+- Standardized entrypoint specification exclusively on `main` across
+  `rust_library`, `rust_bin`, and `rust_test`, removing redundant `main_src`
+  parameter.
+- Updated documentation and rule references to reflect the simplified rule
+  signatures.
+
+## [0.2.4] - 2026-09-10
+
+### Fixed
+
+- Prioritized `mod.rs` and `lib.rs` when auto-detecting crate entrypoint files
+  from `srcs`.
+
+## [0.2.3] - 2026-09-10
+
+### Changed
+
+- Comprehensive static code quality refactoring across `tools/please_rust`:
+  - Decomposed `resolveMainSrc`, `BuildRustcArgs`, `Run`, `FetchCrate`,
+    `FetchAll`, `getCargoEnv`, and CLI dispatching.
+  - Decreased maximum cognitive complexity from 39 to 13, and maximum cyclomatic
+    complexity from 23 to 10.
+  - Eliminated code duplication down to 2.0% across all Go utilities.
+- Simplified default configuration values in `build_defs/rust/rust.build_defs`
+  to ensure compatibility across all Please Starlark environments.
+
+## [0.2.2] - 2026-09-10
+
+### Fixed
+
+- Fixed Starlark configuration attribute resolution using
+  `hasattr(CONFIG, "RUST")` for robust defaults handling.
+
+## [0.2.1] - 2026-09-10
+
+### Added
+
+- Added `main` parameter support to `rust_library`, `rust_bin`, and `rust_test`
+  rules for explicit root entrypoint specification.
+- Integrated Veritas static code analysis and automated test telemetry via
+  `pleasew` test hook and Git post-commit quality upload.
+
 ## [0.2.0] - 2026-08-31
 
 ### Added

@@ -43,6 +43,7 @@ rust_library(
 | `edition`    | `str`  | `CONFIG.RUST.DEFAULT_EDITION` (`2021`) | Rust edition (e.g. `"2021"`, `"2024"`).                                                                        |
 | `flags`      | `list` | `[]`                                   | Additional flags passed directly to `rustc`.                                                                   |
 | `crate_name` | `str`  | `name`                                 | Custom name for the compiled crate.                                                                            |
+| `main`       | `str`  | `None`                                 | Explicit root entrypoint source file (e.g. `"src/lib.rs"`, `"lib.rs"`).                                        |
 | `visibility` | `list` | `None`                                 | Target visibility list.                                                                                        |
 | `test_only`  | `bool` | `False`                                | If `True`, target can only be depended on by test rules.                                                       |
 | `labels`     | `list` | `["rust"]`                             | Labels associated with the target.                                                                             |
@@ -81,6 +82,7 @@ rust_bin(
 | `edition`    | `str`  | `CONFIG.RUST.DEFAULT_EDITION` (`2021`) | Rust edition.                                                                        |
 | `flags`      | `list` | `[]`                                   | Additional compiler flags for `rustc`.                                               |
 | `crate_name` | `str`  | `name`                                 | Crate name for the binary target.                                                    |
+| `main`       | `str`  | `None`                                 | Explicit root entrypoint source file (e.g. `"src/main.rs"`, `"main.rs"`).            |
 | `visibility` | `list` | `None`                                 | Target visibility list.                                                              |
 | `test_only`  | `bool` | `False`                                | If `True`, target can only be depended on by test rules.                             |
 | `labels`     | `list` | `["rust"]`                             | Labels associated with the target.                                                   |
@@ -112,20 +114,21 @@ rust_test(
 
 ### `rust_test` Parameters
 
-| Parameter    | Type   | Default                                | Description                                                   |
-| :----------- | :----- | :------------------------------------- | :------------------------------------------------------------ |
-| `name`       | `str`  | _Required_                             | Name of the test target.                                      |
-| `srcs`       | `list` | `[]`                                   | Source files included in test compilation.                    |
-| `deps`       | `list` | `[]`                                   | Target dependencies required for the test.                    |
-| `edition`    | `str`  | `CONFIG.RUST.DEFAULT_EDITION` (`2021`) | Rust edition.                                                 |
-| `flags`      | `list` | `[]`                                   | Extra flags passed to `rustc`.                                |
-| `crate_name` | `str`  | `name`                                 | Crate name under test.                                        |
-| `visibility` | `list` | `None`                                 | Target visibility list.                                       |
-| `labels`     | `list` | `["rust"]`                             | Labels for the target.                                        |
-| `data`       | `list` | `None`                                 | Runtime data files needed by test execution.                  |
-| `size`       | `str`  | `"medium"`                             | Please test size category (`"small"`, `"medium"`, `"large"`). |
-| `timeout`    | `int`  | `0`                                    | Execution timeout in seconds (`0` indicates default timeout). |
-| `flaky`      | `bool` | `False`                                | Mark target as flaky for automatic retries.                   |
+| Parameter    | Type   | Default                                | Description                                                             |
+| :----------- | :----- | :------------------------------------- | :---------------------------------------------------------------------- |
+| `name`       | `str`  | _Required_                             | Name of the test target.                                                |
+| `srcs`       | `list` | `[]`                                   | Source files included in test compilation.                              |
+| `deps`       | `list` | `[]`                                   | Target dependencies required for the test.                              |
+| `edition`    | `str`  | `CONFIG.RUST.DEFAULT_EDITION` (`2021`) | Rust edition.                                                           |
+| `flags`      | `list` | `[]`                                   | Extra flags passed to `rustc`.                                          |
+| `crate_name` | `str`  | `name`                                 | Crate name under test.                                                  |
+| `main`       | `str`  | `None`                                 | Explicit root entrypoint source file (e.g. `"src/lib.rs"`, `"lib.rs"`). |
+| `visibility` | `list` | `None`                                 | Target visibility list.                                                 |
+| `labels`     | `list` | `["rust"]`                             | Labels for the target.                                                  |
+| `data`       | `list` | `None`                                 | Runtime data files needed by test execution.                            |
+| `size`       | `str`  | `"medium"`                             | Please test size category (`"small"`, `"medium"`, `"large"`).           |
+| `timeout`    | `int`  | `0`                                    | Execution timeout in seconds (`0` indicates default timeout).           |
+| `flaky`      | `bool` | `False`                                | Mark target as flaky for automatic retries.                             |
 
 ---
 
