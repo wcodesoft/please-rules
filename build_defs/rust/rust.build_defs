@@ -3,20 +3,16 @@ Please build definitions for Rust rules.
 """
 
 def _rust_tool():
-    tool = getattr(getattr(CONFIG, "RUST", None), "PLEASE_RUST_TOOL", None)
-    return tool if tool else "///rust//tools/please_rust"
+    return CONFIG.RUST.PLEASE_RUST_TOOL if hasattr(CONFIG, "RUST") and hasattr(CONFIG.RUST, "PLEASE_RUST_TOOL") and CONFIG.RUST.PLEASE_RUST_TOOL else "///rust//tools/please_rust"
 
 def _rustc_path():
-    path = getattr(getattr(CONFIG, "RUST", None), "RUSTC_TOOL", None)
-    return path if path else ""
+    return CONFIG.RUST.RUSTC_TOOL if hasattr(CONFIG, "RUST") and hasattr(CONFIG.RUST, "RUSTC_TOOL") and CONFIG.RUST.RUSTC_TOOL else ""
 
 def _cargo_path():
-    path = getattr(getattr(CONFIG, "RUST", None), "CARGO_TOOL", None)
-    return path if path else ""
+    return CONFIG.RUST.CARGO_TOOL if hasattr(CONFIG, "RUST") and hasattr(CONFIG.RUST, "CARGO_TOOL") and CONFIG.RUST.CARGO_TOOL else ""
 
 def _default_edition():
-    edition = getattr(getattr(CONFIG, "RUST", None), "DEFAULT_EDITION", None)
-    return edition if edition else "2021"
+    return CONFIG.RUST.DEFAULT_EDITION if hasattr(CONFIG, "RUST") and hasattr(CONFIG.RUST, "DEFAULT_EDITION") and CONFIG.RUST.DEFAULT_EDITION else "2021"
 
 def rust_library(
     name: str,
