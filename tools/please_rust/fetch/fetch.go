@@ -33,73 +33,59 @@ func GenerateCargoToml(crates []CrateReq) string {
 	return sb.String()
 }
 
-// getCargoEnv ensures PATH and HOME/CARGO_HOME are available when cargo runs in sandbox.
-func getCargoEnv(cargoPath string, rustcOverride string) []string {
-	env := os.Environ()
-	cargoDir := filepath.Dir(cargoPath)
-
-	var rustcDir string
-	if rustcPath, err := toolchain.FindRustc(rustcOverride); err == nil {
-		rustcDir = filepath.Dir(rustcPath)
-	}
-
-	pathVar := os.Getenv("PATH")
+// collectExtraPaths builds additional directory paths to prepend to PATH.
+func collectExtraPaths(cargoPath string, rustcOverride string) []string {
 	var extraPaths []string
+	cargoDir := filepath.Dir(cargoPath)
 	if cargoDir != "" && cargoDir != "." {
 		extraPaths = append(extraPaths, cargoDir)
 	}
-	if rustcDir != "" && rustcDir != "." && rustcDir != cargoDir {
-		extraPaths = append(extraPaths, rustcDir)
-	}
-	if home := os.Getenv("HOME"); home != "" {
-		cargoBin := filepath.Join(home, ".cargo", "bin")
-		extraPaths = append(extraPaths, cargoBin)
+
+	if rustcPath, err := toolchain.FindRustc(rustcOverride); err == nil {
+		rustcDir := filepath.Dir(rustcPath)
+		if rustcDir != "" && rustcDir != "." && rustcDir != cargoDir {
+			extraPaths = append(extraPaths, rustcDir)
+		}
 	}
 
+	if home := os.Getenv("HOME"); home != "" {
+		extraPaths = append(extraPaths, filepath.Join(home, ".cargo", "bin"))
+	}
+	return extraPaths
+}
+
+// getCargoEnv ensures PATH and HOME/CARGO_HOME are available when cargo runs in sandbox.
+func getCargoEnv(cargoPath string, rustcOverride string) []string {
+	env := os.Environ()
+	extraPaths := collectExtraPaths(cargoPath, rustcOverride)
+	pathVar := os.Getenv("PATH")
 	updatedPath := strings.Join(append(extraPaths, pathVar), string(os.PathListSeparator))
 
-	pathSet := false
 	for i, e := range env {
 		if strings.HasPrefix(e, "PATH=") {
 			env[i] = "PATH=" + updatedPath
-			pathSet = true
-			break
+			return env
 		}
 	}
-	if !pathSet {
-		env = append(env, "PATH="+updatedPath)
-	}
-
-	return env
+	return append(env, "PATH="+updatedPath)
 }
 
-// FetchCrate downloads and compiles a single third-party crate into outDir.
-func FetchCrate(cargoOverride string, rustcOverride string, name string, version string, features []string, procMacro bool, outDir string) error {
-	cargoPath, err := toolchain.FindCargo(cargoOverride)
+// buildCratesInSandbox generates a cargo project in a temp directory and builds the specified crates.
+func buildCratesInSandbox(cargoPath, rustcOverride string, crates []CrateReq) (string, func(), error) {
+	tmpDir, err := os.MkdirTemp("", "plz_rust_build_*")
 	if err != nil {
-		return err
+		return "", nil, fmt.Errorf("failed to create temp dir: %w", err)
 	}
-
-	tmpDir, err := os.MkdirTemp("", fmt.Sprintf("plz_rust_crate_%s_*", name))
-	if err != nil {
-		return fmt.Errorf("failed to create temp dir: %w", err)
-	}
-	defer os.RemoveAll(tmpDir)
-
-	crates := []CrateReq{
-		{
-			Name:     name,
-			Version:  version,
-			Features: features,
-		},
-	}
+	cleanup := func() { os.RemoveAll(tmpDir) }
 
 	cargoToml := GenerateCargoToml(crates)
 	if err := os.WriteFile(filepath.Join(tmpDir, "Cargo.toml"), []byte(cargoToml), 0644); err != nil {
-		return err
+		cleanup()
+		return "", nil, err
 	}
 	if err := os.WriteFile(filepath.Join(tmpDir, "lib.rs"), []byte("// dummy\n"), 0644); err != nil {
-		return err
+		cleanup()
+		return "", nil, err
 	}
 
 	cmd := exec.Command(cargoPath, "build", "--release")
@@ -109,14 +95,24 @@ func FetchCrate(cargoOverride string, rustcOverride string, name string, version
 	cmd.Env = getCargoEnv(cargoPath, rustcOverride)
 
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("cargo build failed for crate %s: %w", name, err)
+		cleanup()
+		return "", nil, fmt.Errorf("cargo build failed: %w", err)
 	}
 
-	targetDeps := filepath.Join(tmpDir, "target", "release", "deps")
-	if err := os.MkdirAll(outDir, 0755); err != nil {
-		return fmt.Errorf("failed to create outDir: %w", outDir, err)
-	}
+	return tmpDir, cleanup, nil
+}
 
+// isArtifactFile checks if a file entry is a compiled Rust artifact (.rlib, .so, or .dylib).
+func isArtifactFile(e os.DirEntry) bool {
+	if e.IsDir() {
+		return false
+	}
+	name := e.Name()
+	return strings.HasSuffix(name, ".rlib") || strings.HasSuffix(name, ".so") || strings.HasSuffix(name, ".dylib")
+}
+
+// copySingleCrateArtifacts copies compiled dependencies and produces the canonical artifact for a crate.
+func copySingleCrateArtifacts(targetDeps, outDir, name string, procMacro bool) error {
 	entries, err := os.ReadDir(targetDeps)
 	if err != nil {
 		return fmt.Errorf("failed to read deps dir: %w", err)
@@ -133,32 +129,55 @@ func FetchCrate(cargoOverride string, rustcOverride string, name string, version
 
 	copied := 0
 	for _, entry := range entries {
+		if !isArtifactFile(entry) {
+			continue
+		}
 		eName := entry.Name()
-		if !entry.IsDir() {
-			if strings.HasSuffix(eName, ".rlib") || strings.HasSuffix(eName, ".so") || strings.HasSuffix(eName, ".dylib") {
-				src := filepath.Join(targetDeps, eName)
-				data, err := os.ReadFile(src)
-				if err != nil {
-					return err
-				}
+		data, err := os.ReadFile(filepath.Join(targetDeps, eName))
+		if err != nil {
+			return err
+		}
 
-				dest := filepath.Join(outDir, eName)
-				_ = os.WriteFile(dest, data, 0644)
-
-				if (strings.HasPrefix(eName, prefix) || eName == exact) && strings.HasSuffix(eName, ext) {
-					canonical := filepath.Join(outDir, exact)
-					_ = os.WriteFile(canonical, data, 0644)
-					copied++
-				}
-			}
+		_ = os.WriteFile(filepath.Join(outDir, eName), data, 0644)
+		if (strings.HasPrefix(eName, prefix) || eName == exact) && strings.HasSuffix(eName, ext) {
+			_ = os.WriteFile(filepath.Join(outDir, exact), data, 0644)
+			copied++
 		}
 	}
 
 	if copied == 0 {
 		return fmt.Errorf("could not find built %s for crate %s in %s", ext, name, targetDeps)
 	}
-
 	return nil
+}
+
+// FetchCrate downloads and compiles a single third-party crate into outDir.
+func FetchCrate(cargoOverride string, rustcOverride string, name string, version string, features []string, procMacro bool, outDir string) error {
+	cargoPath, err := toolchain.FindCargo(cargoOverride)
+	if err != nil {
+		return err
+	}
+
+	crates := []CrateReq{
+		{
+			Name:     name,
+			Version:  version,
+			Features: features,
+		},
+	}
+
+	tmpDir, cleanup, err := buildCratesInSandbox(cargoPath, rustcOverride, crates)
+	if err != nil {
+		return fmt.Errorf("cargo build failed for crate %s: %w", name, err)
+	}
+	defer cleanup()
+
+	if err := os.MkdirAll(outDir, 0755); err != nil {
+		return fmt.Errorf("failed to create outDir: %w", err)
+	}
+
+	targetDeps := filepath.Join(tmpDir, "target", "release", "deps")
+	return copySingleCrateArtifacts(targetDeps, outDir, name, procMacro)
 }
 
 var crateRegex = regexp.MustCompile(`rust_crate\(\s*name\s*=\s*"([^"]+)",\s*version\s*=\s*"([^"]+)"`)
@@ -178,18 +197,40 @@ func ParseBuildFile(content string) ([]CrateReq, error) {
 	return crates, nil
 }
 
-// FetchAll reads a BUILD file containing rust_crate declarations and builds all of them.
-func FetchAll(cargoOverride string, rustcOverride string, buildFilePath string, outDir string) error {
+// copyAllArtifacts copies all compiled Rust artifacts from targetDeps to outDir.
+func copyAllArtifacts(targetDeps, outDir string) error {
+	entries, err := os.ReadDir(targetDeps)
+	if err != nil {
+		return fmt.Errorf("failed to read deps dir: %w", err)
+	}
+
+	for _, entry := range entries {
+		if isArtifactFile(entry) {
+			data, err := os.ReadFile(filepath.Join(targetDeps, entry.Name()))
+			if err != nil {
+				return err
+			}
+			_ = os.WriteFile(filepath.Join(outDir, entry.Name()), data, 0644)
+		}
+	}
+	return nil
+}
+
+// parseBuildCrates reads and parses crate declarations from a BUILD file path.
+func parseBuildCrates(buildFilePath string) ([]CrateReq, error) {
 	content, err := os.ReadFile(buildFilePath)
 	if err != nil {
-		return fmt.Errorf("failed to read build file %s: %w", buildFilePath, err)
+		return nil, fmt.Errorf("failed to read build file %s: %w", buildFilePath, err)
 	}
+	return ParseBuildFile(string(content))
+}
 
-	crates, err := ParseBuildFile(string(content))
+// FetchAll reads a BUILD file containing rust_crate declarations and builds all of them.
+func FetchAll(cargoOverride string, rustcOverride string, buildFilePath string, outDir string) error {
+	crates, err := parseBuildCrates(buildFilePath)
 	if err != nil {
-		return fmt.Errorf("failed to parse build file: %w", err)
+		return err
 	}
-
 	if len(crates) == 0 {
 		return nil
 	}
@@ -199,51 +240,16 @@ func FetchAll(cargoOverride string, rustcOverride string, buildFilePath string, 
 		return err
 	}
 
-	tmpDir, err := os.MkdirTemp("", "plz_rust_fetchall_*")
+	tmpDir, cleanup, err := buildCratesInSandbox(cargoPath, rustcOverride, crates)
 	if err != nil {
-		return fmt.Errorf("failed to create temp dir: %w", err)
-	}
-	defer os.RemoveAll(tmpDir)
-
-	cargoToml := GenerateCargoToml(crates)
-	if err := os.WriteFile(filepath.Join(tmpDir, "Cargo.toml"), []byte(cargoToml), 0644); err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(tmpDir, "lib.rs"), []byte("// dummy\n"), 0644); err != nil {
-		return err
-	}
+	defer cleanup()
 
-	cmd := exec.Command(cargoPath, "build", "--release")
-	cmd.Dir = tmpDir
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Env = getCargoEnv(cargoPath, rustcOverride)
-
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("cargo build failed: %w", err)
-	}
-
-	targetDeps := filepath.Join(tmpDir, "target", "release", "deps")
 	if err := os.MkdirAll(outDir, 0755); err != nil {
 		return fmt.Errorf("failed to create outDir: %w", err)
 	}
 
-	entries, err := os.ReadDir(targetDeps)
-	if err != nil {
-		return fmt.Errorf("failed to read deps dir: %w", err)
-	}
-
-	for _, entry := range entries {
-		if !entry.IsDir() && (strings.HasSuffix(entry.Name(), ".rlib") || strings.HasSuffix(entry.Name(), ".so") || strings.HasSuffix(entry.Name(), ".dylib")) {
-			src := filepath.Join(targetDeps, entry.Name())
-			data, err := os.ReadFile(src)
-			if err != nil {
-				return err
-			}
-			dest := filepath.Join(outDir, entry.Name())
-			_ = os.WriteFile(dest, data, 0644)
-		}
-	}
-
-	return nil
+	targetDeps := filepath.Join(tmpDir, "target", "release", "deps")
+	return copyAllArtifacts(targetDeps, outDir)
 }

@@ -41,39 +41,24 @@ func extractCrateName(filename string) string {
 	return sanitizeCrateName(trimmed)
 }
 
-// resolveMainSrc finds the actual entrypoint source file among inputs and current directory.
-func resolveMainSrc(mainSrc string, crateType string, inputs []string) string {
-	if mainSrc != "" {
-		if _, err := os.Stat(mainSrc); err == nil {
-			return mainSrc
-		}
-		for _, input := range inputs {
-			if input == mainSrc || filepath.Base(input) == filepath.Base(mainSrc) || strings.HasSuffix(input, mainSrc) {
-				if _, err := os.Stat(input); err == nil {
-					return input
-				}
+// findMatchingInput checks if target exists on filesystem or matches an input path.
+func findMatchingInput(target string, inputs []string) string {
+	if _, err := os.Stat(target); err == nil {
+		return target
+	}
+	targetBase := filepath.Base(target)
+	for _, input := range inputs {
+		if input == target || filepath.Base(input) == targetBase || strings.HasSuffix(input, target) {
+			if _, err := os.Stat(input); err == nil {
+				return input
 			}
 		}
 	}
+	return ""
+}
 
-	preferredNames := []string{"lib.rs", "main.rs", "src/lib.rs", "src/main.rs"}
-	if crateType == "bin" {
-		preferredNames = []string{"main.rs", "src/main.rs", "lib.rs", "src/lib.rs"}
-	}
-
-	for _, pref := range preferredNames {
-		if _, err := os.Stat(pref); err == nil {
-			return pref
-		}
-		for _, input := range inputs {
-			if input == pref || filepath.Base(input) == pref || strings.HasSuffix(input, pref) {
-				if _, err := os.Stat(input); err == nil {
-					return input
-				}
-			}
-		}
-	}
-
+// findFirstRsFile finds the first existing .rs file from inputs or current directory.
+func findFirstRsFile(inputs []string) string {
 	for _, input := range inputs {
 		if filepath.Ext(input) == ".rs" {
 			if _, err := os.Stat(input); err == nil {
@@ -89,8 +74,36 @@ func resolveMainSrc(mainSrc string, crateType string, inputs []string) string {
 			}
 		}
 	}
+	return ""
+}
+
+// resolveMainSrc finds the actual entrypoint source file among inputs and current directory.
+func resolveMainSrc(mainSrc string, crateType string, inputs []string) string {
+	candidates := []string{"lib.rs", "main.rs", "src/lib.rs", "src/main.rs"}
+	if crateType == "bin" {
+		candidates = []string{"main.rs", "src/main.rs", "lib.rs", "src/lib.rs"}
+	}
+	if mainSrc != "" {
+		candidates = append([]string{mainSrc}, candidates...)
+	}
+
+	for _, cand := range candidates {
+		if found := findMatchingInput(cand, inputs); found != "" {
+			return found
+		}
+	}
+
+	if fallback := findFirstRsFile(inputs); fallback != "" {
+		return fallback
+	}
 
 	return mainSrc
+}
+
+// isLibFile returns true if the given filename has a shared/static library extension.
+func isLibFile(path string) bool {
+	ext := filepath.Ext(path)
+	return ext == ".rlib" || ext == ".so" || ext == ".dylib" || ext == ".dll"
 }
 
 // discoverDepFiles scans directories in inputs or the current build directory for .rlib and .so files.
@@ -107,26 +120,59 @@ func discoverDepFiles(inputs []string) []string {
 	}
 
 	for _, input := range inputs {
-		ext := filepath.Ext(input)
-		if ext == ".rlib" || ext == ".so" || ext == ".dylib" || ext == ".dll" {
+		if isLibFile(input) {
 			addDep(input)
 		}
 	}
 
 	_ = filepath.Walk(".", func(path string, info os.FileInfo, err error) error {
-		if err != nil || info == nil {
-			return nil
-		}
-		if !info.IsDir() {
-			ext := filepath.Ext(path)
-			if ext == ".rlib" || ext == ".so" || ext == ".dylib" || ext == ".dll" {
-				addDep(path)
-			}
+		if err == nil && info != nil && !info.IsDir() && isLibFile(path) {
+			addDep(path)
 		}
 		return nil
 	})
 
 	return deps
+}
+
+// updateExternMap registers depPath under its crate name if not already seen or preferred over hashed names.
+func updateExternMap(externMap map[string]string, depPath, selfSanitized string) {
+	cName := extractCrateName(depPath)
+	if cName == "" || cName == selfSanitized {
+		return
+	}
+	existing, exists := externMap[cName]
+	isUnhashed := !strings.Contains(filepath.Base(depPath), "-")
+	hasHashedExisting := exists && strings.Contains(filepath.Base(existing), "-")
+	if !exists || (isUnhashed && hasHashedExisting) {
+		externMap[cName] = depPath
+	}
+}
+
+// resolveExternFlags builds search directory (-L) and extern library (--extern) arguments.
+func resolveExternFlags(depPaths []string, selfCrate string) []string {
+	searchDirs := make(map[string]bool)
+	externMap := make(map[string]string)
+	selfSanitized := sanitizeCrateName(selfCrate)
+
+	for _, depPath := range depPaths {
+		if dir := filepath.Dir(depPath); dir != "" && dir != "." {
+			searchDirs[dir] = true
+		}
+		updateExternMap(externMap, depPath, selfSanitized)
+	}
+
+	var args []string
+	for dir := range searchDirs {
+		args = append(args, "-L", fmt.Sprintf("dependency=%s", dir))
+	}
+	args = append(args, "-L", "dependency=.")
+
+	for cName, path := range externMap {
+		args = append(args, "--extern", fmt.Sprintf("%s=%s", cName, path))
+	}
+
+	return args
 }
 
 // BuildRustcArgs assembles the arguments for invoking rustc.
@@ -144,69 +190,32 @@ func BuildRustcArgs(opts Options, realBinaryOut string) ([]string, error) {
 	}
 
 	args := []string{}
-
 	if opts.Edition != "" {
 		args = append(args, "--edition", opts.Edition)
 	}
 
-	crateType := opts.CrateType
-	if crateType == "test" {
+	if opts.CrateType == "test" {
 		args = append(args, "--test")
-	} else if crateType != "" {
-		args = append(args, "--crate-type", crateType)
+	} else if opts.CrateType != "" {
+		args = append(args, "--crate-type", opts.CrateType)
 	}
 
 	args = append(args, "--crate-name", sanitizeCrateName(opts.CrateName))
 
 	outPath := opts.Out
-	if crateType == "test" && realBinaryOut != "" {
+	if opts.CrateType == "test" && realBinaryOut != "" {
 		outPath = realBinaryOut
 	}
 	args = append(args, "-o", outPath)
 
 	allDeps := discoverDepFiles(opts.Inputs)
-
-	searchDirs := make(map[string]bool)
-	type externDef struct {
-		crate string
-		path  string
-	}
-	var externs []externDef
-	externMap := make(map[string]string)
-
-	for _, depPath := range allDeps {
-		dir := filepath.Dir(depPath)
-		if dir != "" && dir != "." {
-			searchDirs[dir] = true
-		}
-		cName := extractCrateName(depPath)
-		if cName != "" && cName != sanitizeCrateName(opts.CrateName) {
-			if existing, exists := externMap[cName]; !exists || (!strings.Contains(filepath.Base(depPath), "-") && strings.Contains(filepath.Base(existing), "-")) {
-				externMap[cName] = depPath
-			}
-		}
-	}
-
-	for cName, path := range externMap {
-		externs = append(externs, externDef{crate: cName, path: path})
-	}
-
-	for dir := range searchDirs {
-		args = append(args, "-L", fmt.Sprintf("dependency=%s", dir))
-	}
-	args = append(args, "-L", "dependency=.")
-
-	for _, ext := range externs {
-		args = append(args, "--extern", fmt.Sprintf("%s=%s", ext.crate, ext.path))
-	}
+	args = append(args, resolveExternFlags(allDeps, opts.CrateName)...)
 
 	if opts.Flags != "" {
-		fields := strings.Fields(opts.Flags)
-		args = append(args, fields...)
+		args = append(args, strings.Fields(opts.Flags)...)
 	}
 
 	args = append(args, mainFile)
-
 	return args, nil
 }
 
@@ -288,6 +297,35 @@ exit "$STATUS"
 	return nil
 }
 
+// ensureOutputDir creates the parent directory of path if needed.
+func ensureOutputDir(path string) error {
+	dir := filepath.Dir(path)
+	if dir != "" && dir != "." {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return fmt.Errorf("failed to create output dir %s: %w", dir, err)
+		}
+	}
+	return nil
+}
+
+// invokeRustc executes rustc with the provided arguments and environment.
+func invokeRustc(rustcPath string, args []string, version string) error {
+	cmd := exec.Command(rustcPath, args...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Env = os.Environ()
+
+	if version != "" {
+		cmd.Env = append(cmd.Env, fmt.Sprintf("CARGO_PKG_VERSION=%s", version))
+	}
+
+	if err := cmd.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "DEBUG: rustc command failed: %s %s\n", rustcPath, strings.Join(args, " "))
+		return fmt.Errorf("rustc compilation failed: %w", err)
+	}
+	return nil
+}
+
 // Run executes the Rust compilation with rustc.
 func Run(opts Options) error {
 	rustcPath, err := toolchain.FindRustc(opts.Rustc)
@@ -295,11 +333,8 @@ func Run(opts Options) error {
 		return err
 	}
 
-	outDir := filepath.Dir(opts.Out)
-	if outDir != "" && outDir != "." {
-		if err := os.MkdirAll(outDir, 0755); err != nil {
-			return fmt.Errorf("failed to create output dir %s: %w", outDir, err)
-		}
+	if err := ensureOutputDir(opts.Out); err != nil {
+		return err
 	}
 
 	realBinaryOut := opts.Out
@@ -312,24 +347,12 @@ func Run(opts Options) error {
 		return err
 	}
 
-	cmd := exec.Command(rustcPath, args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Env = os.Environ()
-
-	if opts.Version != "" {
-		cmd.Env = append(cmd.Env, fmt.Sprintf("CARGO_PKG_VERSION=%s", opts.Version))
-	}
-
-	if err := cmd.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "DEBUG: rustc command failed: %s %s\n", rustcPath, strings.Join(args, " "))
-		return fmt.Errorf("rustc compilation failed: %w", err)
+	if err := invokeRustc(rustcPath, args, opts.Version); err != nil {
+		return err
 	}
 
 	if opts.CrateType == "test" {
-		if err := generateTestRunnerScript(opts.Out, realBinaryOut, opts.CrateName); err != nil {
-			return err
-		}
+		return generateTestRunnerScript(opts.Out, realBinaryOut, opts.CrateName)
 	}
 
 	return nil
