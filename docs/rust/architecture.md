@@ -121,8 +121,8 @@ operates as a multi-subcommand CLI tool:
 - **Dependency Handling**: `compile` parses the provided inputs. For each
   `.rlib` or `.so` dependency, it determines the crate name, adds parent
   directories as library search paths (`-L dependency=<dir>`), and adds
-  `--extern <crate>=<path>` parameters. For `proc-macro` crates, it automatically
-  appends `--extern proc_macro`.
+  `--extern <crate>=<path>` parameters. For `proc-macro` crates, it
+  automatically appends `--extern proc_macro`.
 
 ```mermaid
 sequenceDiagram
@@ -144,7 +144,8 @@ sequenceDiagram
 #### `download` Subcommand (`tools/please_rust/download`)
 
 - **Role**: Hermetically fetches `.crate` tarballs from `crates.io`, verifies
-  cryptographic integrity, inspects crate metadata, and produces a plain tarball.
+  cryptographic integrity, inspects crate metadata, and produces a plain
+  tarball.
 - **Arguments**:
   - `--crate`: Crate name on `crates.io`.
   - `--version`: Exact package version.

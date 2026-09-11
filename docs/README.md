@@ -1,32 +1,36 @@
-# Rust Rules Documentation (`please-rules`)
+# Please Rules Documentation
 
-Welcome to the documentation for the Please build system Rust rules plugin
-(`please-rules`).
-
-This plugin provides first-class, hermetic support for compiling, testing, and
-managing Rust crates and third-party dependencies using
-[Please](https://please.build).
+Welcome to the documentation portal for **`please-rules`**, a collection of
+extensible, hermetic language plugins and build rules for the
+[Please](https://please.build) build system.
 
 ---
 
-## Table of Contents
+## Language Rulesets
 
-- [Architecture & Internal Design](architecture.md)
-  - Overview of how Please rules interact with `please_rust`
-  - Subcommands: `compile`, `download`, `compile-c`, `hash`, `test-runner`, `fetch`
-  - Toolchain discovery and execution model
-  - Mermaid architecture & flow diagrams
-- [Rule Reference](rules.md)
-  - `rust_library`: Compiles `.rlib` static libraries
-  - `rust_bin`: Compiles binary executables
-  - `rust_test`: Compiles and executes test executables
-  - `rust_crate`: Hermetically downloads and compiles third-party crates with SHA-256 verification
-- [Dependencies & Toolchains](dependencies.md)
-  - System toolchain requirements (`rustc`, C compiler `cc`, Go)
-  - Automatic toolchain resolution and path overrides
-  - Managing third-party crate dependencies
-- [Usage & Configuration Guide](usage.md)
-  - Quickstart guide
-  - `.plzconfig` configuration options
-  - `subinclude` patterns
-  - Build file examples and multi-crate project layout
+### Rust (`///rust`)
+
+First-class, hermetic support for compiling, testing, and managing Rust crates
+and dependencies:
+
+- **[Rust Documentation Overview](rust/README.md)**: Entry point and quick
+  overview.
+- **[Rule Reference](rust/rules.md)**: Detailed API reference for
+  `rust_library`, `rust_bin`, `rust_test`, and `rust_crate`.
+- **[Architecture & Design](rust/architecture.md)**: Under-the-hood design of
+  the `please_rust` multi-subcommand binary, compilation workflows, and
+  diagrams.
+- **[Usage Guide](rust/usage.md)**: Integration guides, `.plzconfig` setup, and
+  multi-crate layout examples.
+- **[Dependencies & Toolchains](rust/dependencies.md)**: Toolchain requirements,
+  automatic path discovery, and C native dependencies.
+
+---
+
+## Repository Structure
+
+- `build_defs/`: Starlark build definitions for each supported language.
+- `tools/`: Multi-platform helper tools and compiler orchestrators.
+- `plugins/`: Plugin repository declarations exposed to consumer projects.
+- `docs/`: Language-specific documentation and general guides.
+- `test/`: Integration and end-to-end test suites.
