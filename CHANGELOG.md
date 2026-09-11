@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [0.2.7] - 2026-09-11
+
+### Added
+
+- Hermetic crate download and verification:
+  - Added `download` subcommand in `please_rust` to fetch `.crate` archives directly from crates.io with mandatory SHA-256 verification and automatic extraction of `edition` and `lib.rs` path into `crate_meta.json`.
+  - Added `hash` subcommand in `please_rust` to query and print the SHA-256 digest of any crate from crates.io.
+- Headless C compilation for native extensions:
+  - Added `compile-c` subcommand in `please_rust` and `compilec` Go package to compile `.c` sources into static archives (`.a`) using the system C compiler (`cc`/`gcc`/`clang`), enabling native grammar crates (e.g. `tree-sitter-*`) without Cargo `build.rs`.
+- Enhanced compiler flags and features:
+  - Added `--native-lib` flag to `please_rust compile` for linking `.a` static archives via `rustc -L native=<dir> -l static=<lib>`.
+  - Added `--features` support to `please_rust compile` translating to `--cfg feature="<name>"`.
+  - Added `flags` parameter to `rust_crate`.
+  - Added `env` dictionary parameter to `rust_library`, `rust_bin`, and `rust_test` to export compile-time environment variables (such as `VERITAS_VERSION`).
+  - Added automatic `--extern proc_macro` flag when compiling procedural macro crates (`proc-macro`).
+  - Populated `CARGO_PKG_VERSION_MAJOR`, `CARGO_PKG_VERSION_MINOR`, and `CARGO_PKG_VERSION_PATCH` environment variables during `rustc` invocations.
+- Test runner integration:
+  - Added `test_tools` propagation to `rust_test` for hermetic `$TOOL` discovery during test execution.
+  - Set explicit `--pkg` target naming for `rust_test` execution.
+
+### Changed
+
+- Re-architected `rust_crate` to compile third-party crates hermetically and directly with `rustc`, eliminating dependency on Cargo at build time and requiring explicit `sha256` integrity hashes.
+
+### Removed
+
+- Removed legacy embedded Python test-runner generator script from `compile.go` in favor of the pure-Go `please_rust test-runner` subcommand.
+
+## [0.2.6] - 2026-09-10
+
+### Fixed
+
+- Set default Rust edition to `2024` across all build definitions.
 
 ## [0.2.5] - 2026-09-10
 

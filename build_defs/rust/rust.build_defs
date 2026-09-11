@@ -25,6 +25,7 @@ def rust_library(
     visibility: list = None,
     test_only: bool = False,
     labels: list = None,
+    env: dict = None,
 ):
     """
     Compiles a Rust static library (.rlib).
@@ -48,7 +49,12 @@ def rust_library(
     flags_str = " ".join(flags)
     rustc_arg = f"--rustc '{_rustc_path()}'" if _rustc_path() else ""
 
+    env_exports = ""
+    if env:
+        env_exports = "\n".join([f'export {k}="{v}"' for k, v in env.items()]) + "\n"
+
     cmd = f"""
+    {env_exports}
     $TOOL compile \\
       --crate-name {crate} \\
       --crate-type rlib \\
@@ -86,6 +92,7 @@ def rust_bin(
     visibility: list = None,
     test_only: bool = False,
     labels: list = None,
+    env: dict = None,
 ):
     """
     Compiles a Rust binary executable.
@@ -105,7 +112,12 @@ def rust_bin(
     flags_str = " ".join(flags)
     rustc_arg = f"--rustc '{_rustc_path()}'" if _rustc_path() else ""
 
+    env_exports = ""
+    if env:
+        env_exports = "\n".join([f'export {k}="{v}"' for k, v in env.items()]) + "\n"
+
     cmd = f"""
+    {env_exports}
     $TOOL compile \\
       --crate-name {crate} \\
       --crate-type bin \\
@@ -147,6 +159,7 @@ def rust_test(
     size: str = "medium",
     timeout: int = 0,
     flaky: bool = False,
+    env: dict = None,
 ):
     """
     Compiles and executes a Rust test suite using Please's test runner.
@@ -169,7 +182,12 @@ def rust_test(
     flags_str = " ".join(flags)
     rustc_arg = f"--rustc '{_rustc_path()}'" if _rustc_path() else ""
 
+    env_exports = ""
+    if env:
+        env_exports = "\n".join([f'export {k}="{v}"' for k, v in env.items()]) + "\n"
+
     cmd = f"""
+    {env_exports}
     $TOOL compile \\
       --crate-name {crate} \\
       --crate-type test \\
@@ -182,7 +200,10 @@ def rust_test(
       ${SRCS:-} ${DEPS:-}
     """
 
-    test_cmd = "$TEST"
+    test_cmd = f'$TOOL test-runner --pkg "{crate}" "$TEST" -- --nocapture'
+    if env:
+        test_env_exports = " && ".join([f'export {k}="{v}"' for k, v in env.items()])
+        test_cmd = f'{test_env_exports} && {test_cmd}'
 
     return build_rule(
         name = name,
@@ -197,6 +218,9 @@ def rust_test(
         tools = {
             "TOOL": [_rust_tool()],
         },
+        test_tools = {
+            "TOOL": [_rust_tool()],
+        },
         visibility = visibility,
         labels = labels or ["rust"],
         data = data,
@@ -208,26 +232,55 @@ def rust_test(
 
 def rust_crate(
     name: str,
-    crate_name: str = "",
-    pkg_name: str = "",
     version: str = "",
+    sha256: str = "",
+
+    crate_name: str = "",
     features: list = None,
     deps: list = None,
     proc_macro: bool = False,
     meta: bool = False,
+    c_srcs: list = None,
+    c_hdrs: list = None,
+    flags: list = None,
+    build_script: bool = False,
     license: str = "",
     repository: str = "",
     visibility: list = ["PUBLIC"],
 ):
     """
-    Downloads and compiles a third-party Rust crate using cargo/plz_rust fetch.
-    Supports regular crates (.rlib), procedural macros (.so), and meta-crates.
+    Downloads and compiles a third-party Rust crate hermetially — no cargo.
+
+    Source is fetched from crates.io once (sha256-verified) and cached by Please.
+    Each crate is compiled individually with rustc, using explicitly-declared deps.
+    Hash consistency is guaranteed by Please's dep graph, not a shared cargo workspace.
+
+    To get the sha256 for a new crate:
+      please_rust hash --crate <name> --version <version>
+
+    Args:
+      name:         Crate package name as on crates.io (may use hyphens).
+      version:      Exact crate version (e.g. "0.26.11").
+      sha256:       SHA-256 hex digest of the .crate tarball. Required.
+      crate_name:   Rust identifier (underscores). Defaults to name with hyphens replaced.
+      features:     Rust feature flags to enable (e.g. ["derive"]).
+      deps:         All Rust-level deps; each must produce an rlib or so.
+      proc_macro:   True if this is a proc-macro crate (produces .so instead of .rlib).
+      meta:         True for virtual targets with no compiled output.
+      c_srcs:       C source files inside the crate (relative to crate root).
+                    Compiled directly — avoids needing to run build.rs for grammar crates.
+      c_hdrs:       C header directories inside the crate (relative to crate root).
+      build_script: Reserved. True if build.rs generates code (not yet implemented).
+      license:      Informational only.
+      repository:   Informational only.
     """
     features = features or []
     deps = deps or []
+    c_srcs = c_srcs or []
+    c_hdrs = c_hdrs or []
     vis = visibility or ["PUBLIC"]
 
-    if meta or not version:
+    if meta:
         return filegroup(
             name = name,
             deps = deps,
@@ -235,36 +288,113 @@ def rust_crate(
             labels = ["rust", "rust_crate", "meta"],
         )
 
+    if not version:
+        fail(f"rust_crate '{name}' requires a version")
+    if not sha256:
+        fail(f"rust_crate '{name}': sha256 is required.\nRun: please_rust hash --crate {name} --version {version}")
+
     crate = (crate_name or name).replace("-", "_")
-    pkg = (pkg_name or name)
     ext = ".so" if proc_macro else ".rlib"
     out_file = f"lib{crate}{ext}"
     features_str = ",".join(features)
-    cargo_arg = f"--cargo '{_cargo_path()}'" if _cargo_path() else ""
     rustc_arg = f"--rustc '{_rustc_path()}'" if _rustc_path() else ""
-    proc_macro_arg = "--proc-macro" if proc_macro else ""
+
+    # In the build tmpdir, dep outputs from the same package live under
+    # the package path (e.g. "third_party/rust/"). Use that as a prefix
+    # when referencing sibling rule outputs by filename.
+    pkg = package_name()
+    pkg_prefix = f"{pkg}/" if pkg else ""
+    tar_name = f"{name}-{version}.tar"
+
+    # ── 1. Download ───────────────────────────────────────────────────────────
+    # Fetches the .crate tarball from crates.io, verifies sha256, extracts,
+    # adds crate_meta.json (lib_src, edition from Cargo.toml), repacks as plain tar.
+    dl = f"_download_{name}"
+    build_rule(
+        name = dl,
+        outs = [tar_name],
+        cmd = f"""
+$TOOL download \\
+  --crate {name} \\
+  --version {version} \\
+  --sha256 {sha256} \\
+  --out "$OUT"
+""",
+        tools = {"TOOL": [_rust_tool()]},
+        labels = ["rust_download"],
+        building_description = f"Downloading {name} {version}...",
+    )
+
+    all_deps = [f":{dl}"] + deps
+
+    # ── 2. C compilation (optional) ───────────────────────────────────────────
+    # Compiles declared C sources into a static lib (.a), replacing build.rs for
+    # grammar crates (tree-sitter-go, tree-sitter-rust, etc.).
+    native_lib_arg = ""
+    if c_srcs:
+        cl = f"_c_{name}"
+        inc_args = " ".join([f'--include "{name}-{version}/{h}"' for h in c_hdrs])
+        src_args = " ".join([f'"{name}-{version}/{s}"' for s in c_srcs])
+
+        build_rule(
+            name = cl,
+            outs = [f"lib{crate}.a"],
+            deps = [f":{dl}"],
+            cmd = f"""
+tar xf "{pkg_prefix}{tar_name}"
+$TOOL compile-c \\
+  --out "$OUT" \\
+  {inc_args} \\
+  {src_args}
+""",
+            tools = {"TOOL": [_rust_tool()]},
+            labels = ["rust_c_compile"],
+            building_description = f"Compiling C for {name}...",
+        )
+        all_deps += [f":{cl}"]
+        native_lib_arg = f'--native-lib "{pkg_prefix}lib{crate}.a"'
+
+    # ── 3. Compile Rust ───────────────────────────────────────────────────────
+    # Extracts the source tar, then invokes rustc via the compile subcommand.
+    # crate_meta.json (written by the download tool) provides lib_src + edition.
+    # Dep rlibs are discovered automatically from $DEPS by discoverDepFiles.
+    features_flag = f'--features "{features_str}"' if features_str else ""
+    flags_str = " ".join(flags or [])
+    flags_arg = f'--flags "{flags_str}"' if flags_str else ""
+    crate_type = "proc-macro" if proc_macro else "rlib"
 
     cmd = f"""
-    $TOOL fetch \\
-      --crate {pkg} \\
-      --version "{version}" \\
-      --features "{features_str}" \\
-      {proc_macro_arg} \\
-      --out-dir "$TMP_DIR/output" \\
-      {cargo_arg} \\
-      {rustc_arg}
-    cp "$TMP_DIR/output/{out_file}" "$OUT"
-    """
+tar xf "{pkg_prefix}{tar_name}"
+export OUT_DIR="${{OUT_DIR:-$(pwd)/{name}-{version}/src/wasm}}"
+if [ ! -d "$OUT_DIR" ]; then
+  export OUT_DIR="$(pwd)/{name}-{version}"
+fi
+$TOOL compile \\
+  --crate-name {crate} \\
+  --crate-type {crate_type} \\
+  --version {version} \\
+  --out "$OUT" \\
+  --meta "{name}-{version}/crate_meta.json" \\
+  {features_flag} \\
+  {flags_arg} \\
+  {native_lib_arg} \\
+  {rustc_arg} \\
+  ${DEPS:-}
+
+"""
+
+
+
 
     return build_rule(
         name = name,
         outs = [out_file],
-        deps = deps,
+        deps = all_deps,
         cmd = cmd,
         needs_transitive_deps = True,
         tools = {"TOOL": [_rust_tool()]},
         visibility = vis,
         labels = ["rust", "rust_crate"],
-        building_description = f"Fetching Rust crate {name} ({version})...",
+        building_description = f"Compiling {name} {version}...",
     )
 

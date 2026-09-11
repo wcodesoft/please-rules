@@ -21,7 +21,7 @@ func TestBuildRustcArgs(t *testing.T) {
 		},
 	}
 
-	args, err := BuildRustcArgs(opts, "")
+	args, err := BuildRustcArgs(opts)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

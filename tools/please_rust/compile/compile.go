@@ -1,6 +1,7 @@
 package compile
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -10,6 +11,26 @@ import (
 
 	"tools/please_rust/toolchain"
 )
+
+// crateMeta mirrors the JSON produced by the download package's crate_meta.json.
+type crateMeta struct {
+	LibSrc  string `json:"lib_src"`
+	Edition string `json:"edition"`
+}
+
+// readCrateMeta reads and JSON-decodes a crate_meta.json file produced by the
+// download subcommand.
+func readCrateMeta(path string) (*crateMeta, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("reading crate_meta.json %s: %w", path, err)
+	}
+	var m crateMeta
+	if err := json.Unmarshal(data, &m); err != nil {
+		return nil, fmt.Errorf("parsing crate_meta.json %s: %w", path, err)
+	}
+	return &m, nil
+}
 
 // Options specifies the parameters needed to compile a Rust target.
 type Options struct {
@@ -22,6 +43,9 @@ type Options struct {
 	Flags     string
 	Rustc     string
 	Inputs    []string
+	Meta      string   // path to crate_meta.json (from download rule)
+	NativeLib string   // path to a .a static lib to link
+	Features  []string // feature flags; each becomes --cfg feature="foo"
 }
 
 // sanitizeCrateName converts hyphenated crate names to underscores for rustc extern/crate identification.
@@ -176,12 +200,28 @@ func resolveExternFlags(depPaths []string, selfCrate string) []string {
 }
 
 // BuildRustcArgs assembles the arguments for invoking rustc.
-func BuildRustcArgs(opts Options, realBinaryOut string) ([]string, error) {
+func BuildRustcArgs(opts Options) ([]string, error) {
+
 	if opts.CrateName == "" {
 		return nil, fmt.Errorf("crate name (--crate-name) is required")
 	}
 	if opts.Out == "" {
 		return nil, fmt.Errorf("output path (--out) is required")
+	}
+
+	// If a crate_meta.json was provided (from the download rule), use it to
+	// override MainSrc and Edition.
+	if opts.Meta != "" {
+		meta, err := readCrateMeta(opts.Meta)
+		if err != nil {
+			return nil, err
+		}
+		if meta.LibSrc != "" {
+			opts.MainSrc = meta.LibSrc
+		}
+		if meta.Edition != "" {
+			opts.Edition = meta.Edition
+		}
 	}
 
 	mainFile := resolveMainSrc(opts.MainSrc, opts.CrateType, opts.Inputs)
@@ -198,15 +238,14 @@ func BuildRustcArgs(opts Options, realBinaryOut string) ([]string, error) {
 		args = append(args, "--test")
 	} else if opts.CrateType != "" {
 		args = append(args, "--crate-type", opts.CrateType)
+		if opts.CrateType == "proc-macro" {
+			args = append(args, "--extern", "proc_macro")
+		}
 	}
 
 	args = append(args, "--crate-name", sanitizeCrateName(opts.CrateName))
 
-	outPath := opts.Out
-	if opts.CrateType == "test" && realBinaryOut != "" {
-		outPath = realBinaryOut
-	}
-	args = append(args, "-o", outPath)
+	args = append(args, "-o", opts.Out)
 
 	allDeps := discoverDepFiles(opts.Inputs)
 	args = append(args, resolveExternFlags(allDeps, opts.CrateName)...)
@@ -215,86 +254,26 @@ func BuildRustcArgs(opts Options, realBinaryOut string) ([]string, error) {
 		args = append(args, strings.Fields(opts.Flags)...)
 	}
 
+	// Feature flags: --cfg feature="foo"
+	for _, feat := range opts.Features {
+		args = append(args, "--cfg", fmt.Sprintf("feature=%q", feat))
+	}
+
+	// Native static library: -L native=<dir> -l static=<name>
+	if opts.NativeLib != "" {
+		dir := filepath.Dir(opts.NativeLib)
+		if dir == "" {
+			dir = "."
+		}
+		libName := strings.TrimSuffix(filepath.Base(opts.NativeLib), ".a")
+		libName = strings.TrimPrefix(libName, "lib")
+		args = append(args, "-L", fmt.Sprintf("native=%s", dir))
+		args = append(args, "-l", fmt.Sprintf("static=%s", libName))
+	}
+
+
 	args = append(args, mainFile)
 	return args, nil
-}
-
-// generateTestRunnerScript creates a wrapper script that embeds the compiled test binary and converts output to JUnit test.results.
-func generateTestRunnerScript(scriptPath string, realBinaryPath string, crateName string) error {
-	binBytes, err := os.ReadFile(realBinaryPath)
-	if err != nil {
-		return fmt.Errorf("failed to read test binary: %w", err)
-	}
-
-	_ = os.Remove(realBinaryPath)
-
-	scriptContent := fmt.Sprintf(`#!/bin/bash
-set -eo pipefail
-
-TMPDIR="$(mktemp -d)"
-BIN="$TMPDIR/test_bin"
-trap 'rm -rf "$TMPDIR"' EXIT
-
-# Extract embedded test binary
-sed '1,/^#__BINARY_PAYLOAD__#/d' "$0" > "$BIN"
-chmod +x "$BIN"
-
-# Run test binary, stream output, and capture into temp file
-TMP_OUT="$TMPDIR/output.txt"
-
-set +e
-"$BIN" --nocapture "$@" 2>&1 | tee "$TMP_OUT"
-STATUS="${PIPESTATUS[0]}"
-set -e
-
-# Parse test output into JUnit test.results
-python3 -c "
-import sys, re, xml.etree.ElementTree as ET
-
-try:
-    with open('$TMP_OUT') as f:
-        lines = f.read().splitlines()
-except Exception:
-    lines = []
-
-test_re = re.compile(r'^test\s+([^\s]+)\s+\.\.\.\s+(ok|FAILED|ignored)')
-suite = ET.Element('testsuite', name='%s')
-
-tests = 0
-failures = 0
-
-for line in lines:
-    m = test_re.match(line.strip())
-    if m:
-        tname, status = m.groups()
-        tests += 1
-        tc = ET.SubElement(suite, 'testcase', name=tname, classname='%s', time='0.000')
-        if status == 'FAILED':
-            failures += 1
-            f = ET.SubElement(tc, 'failure', message='Test failed', type='Failure')
-
-suite.set('tests', str(tests or 1))
-suite.set('failures', str(failures))
-suite.set('errors', '0')
-suite.set('time', '0.000')
-
-suites = ET.Element('testsuites')
-suites.append(suite)
-
-with open('test.results', 'wb') as f:
-    f.write(b'<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n')
-    f.write(ET.tostring(suites))
-" 2>/dev/null || true
-
-exit "$STATUS"
-#__BINARY_PAYLOAD__#
-`, crateName, crateName)
-
-	fullData := append([]byte(scriptContent), binBytes...)
-	if err := os.WriteFile(scriptPath, fullData, 0755); err != nil {
-		return fmt.Errorf("failed to write test runner script: %w", err)
-	}
-	return nil
 }
 
 // ensureOutputDir creates the parent directory of path if needed.
@@ -317,7 +296,23 @@ func invokeRustc(rustcPath string, args []string, version string) error {
 
 	if version != "" {
 		cmd.Env = append(cmd.Env, fmt.Sprintf("CARGO_PKG_VERSION=%s", version))
+		parts := strings.Split(version, ".")
+		if len(parts) >= 1 {
+			cmd.Env = append(cmd.Env, fmt.Sprintf("CARGO_PKG_VERSION_MAJOR=%s", parts[0]))
+		}
+		if len(parts) >= 2 {
+			cmd.Env = append(cmd.Env, fmt.Sprintf("CARGO_PKG_VERSION_MINOR=%s", parts[1]))
+		}
+		if len(parts) >= 3 {
+			// Strip any prerelease or build metadata if present
+			patch := parts[2]
+			if idx := strings.IndexAny(patch, "-+"); idx != -1 {
+				patch = patch[:idx]
+			}
+			cmd.Env = append(cmd.Env, fmt.Sprintf("CARGO_PKG_VERSION_PATCH=%s", patch))
+		}
 	}
+
 
 	if err := cmd.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "DEBUG: rustc command failed: %s %s\n", rustcPath, strings.Join(args, " "))
@@ -337,23 +332,11 @@ func Run(opts Options) error {
 		return err
 	}
 
-	realBinaryOut := opts.Out
-	if opts.CrateType == "test" {
-		realBinaryOut = opts.Out + ".raw_bin"
-	}
-
-	args, err := BuildRustcArgs(opts, realBinaryOut)
+	args, err := BuildRustcArgs(opts)
 	if err != nil {
 		return err
 	}
 
-	if err := invokeRustc(rustcPath, args, opts.Version); err != nil {
-		return err
-	}
-
-	if opts.CrateType == "test" {
-		return generateTestRunnerScript(opts.Out, realBinaryOut, opts.CrateName)
-	}
-
-	return nil
+	return invokeRustc(rustcPath, args, opts.Version)
 }
+
