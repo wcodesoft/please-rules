@@ -13,16 +13,16 @@ managing Rust crates and third-party dependencies using
 
 - [Architecture & Internal Design](architecture.md)
   - Overview of how Please rules interact with `please_rust`
-  - Subcommands: `compile`, `fetch`, `test-runner`
+  - Subcommands: `compile`, `download`, `compile-c`, `hash`, `test-runner`, `fetch`
   - Toolchain discovery and execution model
   - Mermaid architecture & flow diagrams
 - [Rule Reference](rules.md)
   - `rust_library`: Compiles `.rlib` static libraries
   - `rust_bin`: Compiles binary executables
   - `rust_test`: Compiles and executes test executables
-  - `rust_crate`: Fetches and builds third-party crates from `crates.io`
+  - `rust_crate`: Hermetically downloads and compiles third-party crates with SHA-256 verification
 - [Dependencies & Toolchains](dependencies.md)
-  - System toolchain requirements (`rustc`, `cargo`, Go)
+  - System toolchain requirements (`rustc`, C compiler `cc`, Go)
   - Automatic toolchain resolution and path overrides
   - Managing third-party crate dependencies
 - [Usage & Configuration Guide](usage.md)

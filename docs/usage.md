@@ -44,7 +44,7 @@ RustcTool = rustc
 CargoTool = cargo
 
 # Default Rust edition for rules when not specified in BUILD file
-DefaultEdition = 2021
+DefaultEdition = 2024
 ```
 
 ### Options Summary
@@ -53,8 +53,8 @@ DefaultEdition = 2021
 | :--------------- | :----------------- | :-------------------- | :--------------------------------------------------------- |
 | `PleaseRustTool` | `please_rust_tool` | `//tools/please_rust` | Path or target label for the `please_rust` Go helper tool. |
 | `RustcTool`      | `rustc_tool`       | `rustc`               | Path or command name for `rustc`.                          |
-| `CargoTool`      | `cargo_tool`       | `cargo`               | Path or command name for `cargo`.                          |
-| `DefaultEdition` | `default_edition`  | `2021`                | Default Rust edition (e.g. `2021`, `2024`).                |
+| `CargoTool`      | `cargo_tool`       | `cargo`               | Path or command name for `cargo` (legacy fallback).        |
+| `DefaultEdition` | `default_edition`  | `2024`                | Default Rust edition (e.g. `2021`, `2024`).                |
 
 ---
 
@@ -121,13 +121,15 @@ subinclude("///rust//build_defs:rust")
 
 rust_crate(
     name = "serde",
-    version = "1.0.197",
+    version = "1.0.217",
+    sha256 = "02fc4265df13d6fa1d00ecff087228cc0a2b5f3c0e87e258d8b94a156e984c70",
     features = ["derive", "std"],
 )
 
 rust_crate(
     name = "clap",
-    version = "4.4.18",
+    version = "4.5.31",
+    sha256 = "027bb0d98429ae334a8698531da7077bdf906419543a35a55c2cb1b66437d767",
     features = ["derive"],
 )
 ```

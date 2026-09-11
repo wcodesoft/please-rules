@@ -9,14 +9,17 @@ and test rules for Rust.
 - **`rust_bin`**: Builds native Rust binary executables.
 - **`rust_test`**: Runs unit and integration tests with automatic test parsing
   and JUnit XML results generation.
-- **`rust_crate`**: Fetches and compiles third-party crates from `crates.io`
-  using Cargo.
-- **Hermetic Go Backend**: Implements a dedicated tool (`please_rust`) built via
-  the Please Go plugin for dependency resolution, compilation orchestration,
-  test parsing, and crate fetching.
+- **`rust_crate`**: Hermetically downloads and compiles third-party crates
+  directly from `crates.io` with mandatory SHA-256 integrity verification,
+  compiling directly with `rustc` without Cargo at build time.
+- **Native C Extension Support**: Seamlessly compiles C sources (`c_srcs`) into
+  static archives for grammar crates like Tree-sitter without `build.rs`.
+- **Hermetic Go Backend**: Implements a dedicated multi-subcommand CLI
+  (`please_rust`) for compilation orchestration, crate downloading, SHA-256
+  checksumming, C compilation, and JUnit test results translation.
 - **Flexible Layout**: Works seamlessly with standard `src/lib.rs` /
   `src/main.rs` layouts or flat file structures (`lib.rs`, `main.rs`,
-  `<name>.rs`).
+  `<name>.rs`). Default edition is `2024`.
 
 ---
 
@@ -48,7 +51,7 @@ rust_library(
     name = "my_lib",
     srcs = ["lib.rs"],
     crate_name = "my_lib",
-    edition = "2021",
+    edition = "2024",
     deps = [
         "//third_party/rust:serde",
     ],
@@ -64,7 +67,7 @@ Compiles an executable binary.
 rust_bin(
     name = "my_binary",
     srcs = ["main.rs"],
-    edition = "2021",
+    edition = "2024",
     deps = [
         ":my_lib",
     ],
@@ -80,7 +83,7 @@ rust_test(
     name = "my_test",
     srcs = ["lib.rs"],
     crate_name = "my_lib",
-    edition = "2021",
+    edition = "2024",
     deps = [
         ":my_lib",
     ],
@@ -89,14 +92,49 @@ rust_test(
 
 ### `rust_crate`
 
-Fetches and builds third-party crates:
+Hermetically downloads and builds third-party crates without Cargo. `version` and
+`sha256` are mandatory for supply-chain security:
 
 ```starlark
 rust_crate(
     name = "itoa",
-    version = "1.0.10",
-    features = ["std"],
+    version = "1.0.14",
+    sha256 = "d75a2a4b1b190afb6f5425f10f6a8f959d2ea0b9c2b1d79553551850539e4674",
 )
+
+# Crate with optional features and dependencies
+rust_crate(
+    name = "serde",
+    version = "1.0.217",
+    sha256 = "02fc4265df13d6fa1d00ecff087228cc0a2b5f3c0e87e258d8b94a156e984c70",
+    features = ["derive", "std"],
+    deps = [":serde_derive"],
+)
+
+# Procedural macro crate
+rust_crate(
+    name = "serde_derive",
+    version = "1.0.217",
+    sha256 = "5a9bf7cf98d04a2b28aead066b7496853d4779c9cc183c440dbac457641e19a0",
+    proc_macro = True,
+    deps = [":syn", ":quote", ":proc-macro2"],
+)
+
+# Crate with C native sources (e.g. tree-sitter grammars)
+rust_crate(
+    name = "tree-sitter-c",
+    version = "0.23.4",
+    sha256 = "afd2b1bf1585dc2ef6d69e87d01db8adb059006649dd5f96f31aa789ee6e9c71",
+    c_srcs = ["src/parser.c"],
+    c_hdrs = ["src"],
+    deps = [":tree-sitter-language"],
+)
+```
+
+To compute the SHA-256 checksum for any crate on `crates.io`:
+
+```bash
+plz-out/bin/tools/please_rust/please_rust hash --crate itoa --version 1.0.14
 ```
 
 ---

@@ -12,9 +12,12 @@ To compile and test Rust targets, the system requires:
 
 1. **Rust Toolchain**:
    - `rustc`: The standard Rust compiler executable.
-   - `cargo`: The Rust package manager (used by `please_rust fetch` to download
-     and compile third-party crates).
-2. **Go Toolchain**:
+   - `cargo`: Optional / legacy fallback only. Standard third-party crate compilation
+     in `please-rules` is completely Cargo-free.
+2. **C Compiler (for native extensions)**:
+   - `cc`, `gcc`, or `clang` and `ar`: Used by `compile-c` when compiling crates
+     with embedded C sources (e.g., Tree-sitter grammar parsers).
+3. **Go Toolchain**:
    - Required by Please to build the `please_rust` helper binary
      (`//tools/please_rust`). Please manages Go toolchains hermetically via the
      `go-rules` plugin (`//plugins:go`).
@@ -24,15 +27,15 @@ To compile and test Rust targets, the system requires:
 ## Toolchain Resolution & Discovery
 
 When `please_rust` executes, it uses its built-in `toolchain` module to locate
-the host `rustc` and `cargo` executables.
+the host `rustc` executable.
 
 ### Resolution Hierarchy
 
 ```mermaid
 flowchart TD
-    START[please_rust Invoked] --> CHECK_FLAG{Was --rustc or --cargo flag provided?}
+    START[please_rust Invoked] --> CHECK_FLAG{Was --rustc flag provided?}
     CHECK_FLAG -- Yes --> USE_FLAG[Use specified path override]
-    CHECK_FLAG -- No --> CHECK_PATH{Is executable in $PATH?}
+    CHECK_FLAG -- No --> CHECK_PATH{Is rustc in $PATH?}
     CHECK_PATH -- Yes --> USE_PATH[Use executable from $PATH]
     CHECK_PATH -- No --> CHECK_STD{Check standard paths:<br/>~/.cargo/bin<br/>/home/linuxbrew/.linuxbrew/bin<br/>/usr/local/bin<br/>/usr/bin}
     CHECK_STD -- Found --> USE_STD[Use binary at standard path]
@@ -47,12 +50,11 @@ Toolchain paths can be explicitly set in your project's `.plzconfig`:
 [Plugin "rust"]
 Target = //plugins:rust
 RustcTool = /usr/local/bin/rustc
-CargoTool = /usr/local/bin/cargo
 PleaseRustTool = //tools/please_rust
 ```
 
-When set, these configuration keys are automatically passed as `--rustc` and
-`--cargo` flags to `please_rust`.
+When set, these configuration keys are automatically passed as `--rustc`
+flags to `please_rust`.
 
 ---
 
@@ -67,20 +69,21 @@ organized inside `third_party/rust/BUILD`.
 # third_party/rust/BUILD
 rust_crate(
     name = "itoa",
-    version = "1.0.10",
+    version = "1.0.14",
+    sha256 = "d75a2a4b1b190afb6f5425f10f6a8f959d2ea0b9c2b1d79553551850539e4674",
     visibility = ["PUBLIC"],
 )
 ```
 
 ### 2. Crate with Features & Dependencies
 
-When a third-party crate depends on another crate or requires specific Cargo
-features:
+When a third-party crate depends on another crate or requires specific features:
 
 ```starlark
 rust_crate(
     name = "serde",
-    version = "1.0.197",
+    version = "1.0.217",
+    sha256 = "02fc4265df13d6fa1d00ecff087228cc0a2b5f3c0e87e258d8b94a156e984c70",
     features = ["derive", "std"],
     deps = [
         ":serde_derive",
@@ -90,8 +93,10 @@ rust_crate(
 
 rust_crate(
     name = "serde_derive",
-    version = "1.0.197",
+    version = "1.0.217",
+    sha256 = "5a9bf7cf98d04a2b28aead066b7496853d4779c9cc183c440dbac457641e19a0",
     proc_macro = True,
+    deps = [":syn", ":quote", ":proc-macro2"],
     visibility = ["PUBLIC"],
 )
 ```
@@ -115,12 +120,16 @@ rust_crate(
 
 ### How `rust_crate` Works Under the Hood
 
-1. Please invokes `$TOOL fetch` with parameters `--crate`, `--version`,
-   `--features`, and `--out-dir`.
-2. `please_rust fetch` constructs a isolated temporary workspace directory and
-   creates a minimal `Cargo.toml`.
-3. It runs `cargo build --release` using Cargo.
-4. The generated `.rlib` (or `.so` for procedural macros) is placed in Please's
-   target output directory (`plz-out/`).
-5. Dependent targets (`rust_library`, `rust_bin`) reference this artifact
-   directly via `--extern` and `-L dependency=...`.
+1. **Download Phase (`_download_<name>`)**:
+   - `please_rust download` fetches the `.crate` tarball directly from `https://static.crates.io/crates/<crate>/<crate>-<version>.crate`.
+   - Computes and verifies the SHA-256 hex digest against `sha256`. Fails with a security alert on any mismatch.
+   - Extracts the tarball into a sandbox, inspects `Cargo.toml` for `edition` and the entrypoint path (`lib.rs`), and writes `crate_meta.json`.
+   - Repacks the crate contents as a plain tarball output.
+2. **Native C Compilation Phase (`_c_<name>`, optional)**:
+   - If `c_srcs` are provided, `please_rust compile-c` compiles the specified C source files into object files using `cc` and archives them into `lib<crate>.a` using `ar rcs`.
+3. **Compilation Phase**:
+   - Extracts the source tarball and executes `please_rust compile`.
+   - Reads `crate_meta.json` to configure the source path and edition.
+   - Automatically maps all dependency artifacts from `$DEPS` into `--extern <crate>=<path>` and `-L dependency=<dir>`.
+   - If a native library archive exists, adds `-L native=<dir> -l static=<lib>`.
+   - Directly executes `rustc` to produce the final `.rlib` (or `.so` for procedural macros).
