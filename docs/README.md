@@ -6,6 +6,14 @@ extensible, hermetic language plugins and build rules for the
 
 ---
 
+## Getting Started
+
+- **[Integration & Getting Started](getting-started/README.md)**: How to
+  declare, configure, and consume rulesets from this repository in your Please
+  projects.
+
+---
+
 ## Language Rulesets
 
 ### Rust (`///rust`)
@@ -29,8 +37,20 @@ and dependencies:
 
 ## Repository Structure
 
-- `build_defs/`: Starlark build definitions for each supported language.
-- `tools/`: Multi-platform helper tools and compiler orchestrators.
-- `plugins/`: Plugin repository declarations exposed to consumer projects.
-- `docs/`: Language-specific documentation and general guides.
-- `test/`: Integration and end-to-end test suites.
+```
+please-rules/
+├── build_defs/          # Starlark rule definitions by language (e.g. rust/)
+├── tools/               # Native compiler orchestrators and helper CLI binaries
+├── plugins/             # Plugin repository declarations exposed to consumers
+├── docs/                # Documentation portal and language-specific guides
+│   ├── getting-started/ # Project integration and onboarding guides
+│   └── rust/            # Rust architecture, rule reference, and guides
+└── test/                # End-to-end integration test suites
+```
+
+---
+
+## Tooling & Code Quality
+
+- **[Veritas Code Quality & Telemetry](veritas.md)**: Local static analysis and
+  automated test telemetry configuration.
