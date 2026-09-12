@@ -381,6 +381,7 @@ def rust_crate(
     name: str,
     version: str = "",
     sha256: str = "",
+
     crate_name: str = "",
     features: list = None,
     deps: list = None,
@@ -455,7 +456,9 @@ def rust_crate(
     pkg_prefix = f"{pkg}/" if pkg else ""
     tar_name = f"{name}-{version}.tar"
 
-    # 1. Download
+    # ── 1. Download ───────────────────────────────────────────────────────────
+    # Fetches the .crate tarball from crates.io, verifies sha256, extracts,
+    # adds crate_meta.json (lib_src, edition from Cargo.toml), repacks as plain tar.
     dl = f"_download_{name}"
     build_rule(
         name = dl,
@@ -474,7 +477,9 @@ $TOOL download \\
 
     all_deps = [f":{dl}"] + deps
 
-    # 2. C compilation
+    # ── 2. C compilation (optional) ───────────────────────────────────────────
+    # Compiles declared C sources into a static lib (.a), replacing build.rs for
+    # grammar crates (tree-sitter-go, tree-sitter-rust, etc.).
     native_lib_arg = ""
     if c_srcs:
         cl = f"_c_{name}"
@@ -499,7 +504,10 @@ $TOOL compile-c \\
         all_deps += [f":{cl}"]
         native_lib_arg = f'--native-lib "{pkg_prefix}lib{crate}.a"'
 
-    # 3. Compile Rust
+    # ── 3. Compile Rust ───────────────────────────────────────────────────────
+    # Extracts the source tar, then invokes rustc via the compile subcommand.
+    # crate_meta.json (written by the download tool) provides lib_src + edition.
+    # Dep rlibs are discovered automatically from $DEPS by discoverDepFiles.
     features_flag = f'--features "{features_str}"' if features_str else ""
     flags_str = " ".join(flags or [])
     flags_arg = f'--flags "{flags_str}"' if flags_str else ""
