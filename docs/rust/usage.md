@@ -242,11 +242,13 @@ Run a specific test target:
 
 ## Code Coverage (`plz cover`)
 
-The Rust rules provide full code coverage instrumentation and reporting out of the box using LLVM source-based code coverage (`-C instrument-coverage`).
+The Rust rules provide full code coverage instrumentation and reporting out of
+the box using LLVM source-based code coverage (`-C instrument-coverage`).
 
 ### 1. Configure Coverage in `.plzconfig`
 
-Ensure file extension `.rs` is tracked under `[cover]` and optionally configure coverage options under `[Plugin "rust"]`:
+Ensure file extension `.rs` is tracked under `[cover]` and optionally configure
+coverage options under `[Plugin "rust"]`:
 
 ```ini
 [cover]
@@ -264,11 +266,17 @@ Coverage = true
 
 ### 2. Toolchain Coverage Discovery
 
-- **Hermetic Toolchain (`rust_toolchain`)**: When using `rust_toolchain`, the corresponding `llvm-tools` component archive is automatically downloaded and unpacked alongside `rustc` and `rust-std`. The `llvm-profdata` and `llvm-cov` entry points are exported as `:toolchain|llvm-profdata` and `:toolchain|llvm-cov`.
-- **Host Toolchain**: If no explicit toolchain is configured, `please_rust` automatically discovers `llvm-profdata` and `llvm-cov` from your system:
+- **Hermetic Toolchain (`rust_toolchain`)**: When using `rust_toolchain`, the
+  corresponding `llvm-tools` component archive is automatically downloaded and
+  unpacked alongside `rustc` and `rust-std`. The `llvm-profdata` and `llvm-cov`
+  entry points are exported as `:toolchain|llvm-profdata` and
+  `:toolchain|llvm-cov`.
+- **Host Toolchain**: If no explicit toolchain is configured, `please_rust`
+  automatically discovers `llvm-profdata` and `llvm-cov` from your system:
   1. Standard system `PATH` (e.g. `llvm-profdata`, `llvm-cov`)
   2. Versioned LLVM directories (e.g. `/usr/lib/llvm-*/bin`)
-  3. Active `rustup` toolchain (`$(rustc --print sysroot)/lib/rustlib/<target>/bin`)
+  3. Active `rustup` toolchain
+     (`$(rustc --print sysroot)/lib/rustlib/<target>/bin`)
 
 ### 3. Running Coverage
 
@@ -308,4 +316,3 @@ rust_test(
     coverage = True,
 )
 ```
-
