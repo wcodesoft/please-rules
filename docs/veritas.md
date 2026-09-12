@@ -50,6 +50,16 @@ veritas analyze -V .
 
 - `./pleasew test` automatically uploads test results to the Veritas dashboard
   (`http://localhost:8080`). To disable telemetry, run with `VERITAS_NO_HOOK=1`.
-- A Git post-commit hook in `.git/hooks/post-commit` automatically uploads code
-  quality snapshots on every commit in the background. You can also run
-  `veritas upload-analysis` manually.
+- **Git Hooks**: `.git/hooks/post-commit` and `.git/hooks/post-merge` automatically
+  trigger `veritas upload-analysis` in the background after every local commit or merge.
+  - Background processes are detached using `nohup` so that static analysis finishes
+    even after Git terminates the hook process group.
+  - Execution traces and logs are stored at `~/.veritas/hook.log` (`tail -f ~/.veritas/hook.log`).
+- **Manual Upload**: You can upload a fresh code quality snapshot at any time by running:
+  ```bash
+  veritas upload-analysis
+  ```
+- **Remote vs Local Commits**: Git hooks are client-side only. Merges or commits performed
+  directly on GitHub (e.g. web UI PR squash & merge) do not invoke local hooks. Pulling the changes
+  locally (`git pull`) triggers `post-merge`, or you can trigger `veritas upload-analysis` in CI.
+
