@@ -4,19 +4,27 @@ Please build definitions for Rust rules.
 subinclude("///rust//build_defs/rust:constants")
 
 def _rust_tool():
-    return CONFIG.get("RUST.PLEASE_RUST_TOOL", "///rust//tools/please_rust")
+    return CONFIG.RUST.PLEASE_RUST_TOOL
 
 def _default_edition():
-    return CONFIG.get("RUST.DEFAULT_EDITION", "2024")
+    return CONFIG.RUST.DEFAULT_EDITION
 
 def _build_tools():
     """Returns (tools_dict, rustc_arg_string) configured for build_rule."""
     tools = {"TOOL": [_rust_tool()]}
-    tool = CONFIG.get("RUST.RUSTC_TOOL", "")
-    if tool and (tool.startswith("//") or tool.startswith("///") or tool.startswith(":")):
+    tool = CONFIG.RUST.RUSTC_TOOL
+    if tool and tool != "rustc" and (tool.startswith("//") or tool.startswith("///") or tool.startswith(":")):
+        if tool.startswith("///") and not tool.startswith("///rust//"):
+            idx = 0
+            for char in tool:
+                if char == "/":
+                    idx += 1
+                else:
+                    break
+            tool = "//" + tool[idx:]
         tools["RUSTC"] = [tool]
         return tools, '--rustc "$TOOLS_RUSTC"'
-    elif tool:
+    elif tool and tool != "rustc":
         return tools, f"--rustc '{tool}'"
     return tools, ""
 

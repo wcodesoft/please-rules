@@ -8,6 +8,10 @@ and this project adheres to
 
 ## [0.3.2] - 2026-09-12
 
+### Fixed
+
+- Fixed plugin config resolution in `rust.build_defs`: use `CONFIG.RUST.RUSTC_TOOL` directly instead of `CONFIG.get("RUST.RUSTC_TOOL")`, ensuring hermetic `RustcTool` is properly passed to all rules as `--rustc "$TOOLS_RUSTC"`.
+
 ### Removed
 
 - Removed legacy `fetch` subcommand and package (`tools/please_rust/fetch`),
