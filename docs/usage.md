@@ -14,6 +14,7 @@ Add the Rust plugin configuration to your repository's `.plzconfig` file:
 ```ini
 [Plugin "rust"]
 Target = //plugins:rust
+RustcTool = //build_defs/rust:toolchain|rustc
 ```
 
 ### 2. Subinclude Build Definitions
@@ -34,11 +35,11 @@ The Rust plugin supports several configuration keys in `.plzconfig`:
 [Plugin "rust"]
 Target = //plugins:rust
 
+# Custom path or target label for hermetic rustc toolchain
+RustcTool = //build_defs/rust:toolchain|rustc
+
 # (Optional) Custom path to please_rust helper tool target
 PleaseRustTool = //tools/please_rust
-
-# (Optional) Custom path to rustc binary
-RustcTool = rustc
 
 # (Optional) Custom path to cargo binary
 CargoTool = cargo
@@ -51,10 +52,36 @@ DefaultEdition = 2024
 
 | Config Key       | Option Name        | Default               | Description                                                |
 | :--------------- | :----------------- | :-------------------- | :--------------------------------------------------------- |
+| `RustcTool`      | `rustc_tool`       | `rustc`               | Target label (e.g. `//build_defs/rust:toolchain\|rustc`) or path for `rustc`. |
 | `PleaseRustTool` | `please_rust_tool` | `//tools/please_rust` | Path or target label for the `please_rust` Go helper tool. |
-| `RustcTool`      | `rustc_tool`       | `rustc`               | Path or command name for `rustc`.                          |
 | `CargoTool`      | `cargo_tool`       | `cargo`               | Path or command name for `cargo` (legacy fallback).        |
 | `DefaultEdition` | `default_edition`  | `2024`                | Default Rust edition (e.g. `2021`, `2024`).                |
+
+---
+
+## Migration to Hermetic Toolchain
+
+To migrate your repository from host system toolchains (`rustup` / host `rustc`):
+
+1. Define a `rust_toolchain` target in `build_defs/rust/BUILD` (or `third_party/rust/BUILD`):
+   ```starlark
+   subinclude("///rust//build_defs:rust")
+
+   rust_toolchain(
+       name = "toolchain",
+       version = "1.85.0",
+       visibility = ["PUBLIC"],
+   )
+   ```
+
+2. Point `RustcTool` in `.plzconfig` to the toolchain label:
+   ```ini
+   [Plugin "rust"]
+   Target = //plugins:rust
+   RustcTool = //build_defs/rust:toolchain|rustc
+   ```
+
+3. Remove `passenv = PATH, HOME` from `.plzconfig` under `[build]`.
 
 ---
 
@@ -77,6 +104,12 @@ my_project/
 
 ```starlark
 subinclude("///rust//build_defs:rust")
+
+rust_toolchain(
+    name = "toolchain",
+    version = "1.85.0",
+    visibility = ["PUBLIC"],
+)
 
 rust_library(
     name = "my_lib",

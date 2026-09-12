@@ -11,6 +11,44 @@ subinclude("///rust//build_defs:rust")
 
 ---
 
+## `rust_toolchain`
+
+Fetches official standalone Rust toolchain distributions from `static.rust-lang.org`, verifies SHA-256 integrity digests, extracts `rustc` and `rust-std`, assembles a hermetic sysroot in `plz-out/`, and exposes an executable `rustc` wrapper target for Please.
+
+### `rust_toolchain` Example
+
+```starlark
+# Default version (1.85.0)
+rust_toolchain(
+    name = "toolchain",
+    visibility = ["PUBLIC"],
+)
+
+# Custom version and optional hash override map
+rust_toolchain(
+    name = "custom_toolchain",
+    version = "1.84.0",
+    hashes = {
+        "x86_64-unknown-linux-gnu": "de2b041a6e62ec2c37c517eb58518f68fde5fc2f076218393ae06145d92a5682",
+        "aarch64-unknown-linux-gnu": "282d281cb389bdc2c0671c2a74eeda46e010a158810d2137c3a948ae6c713543",
+        "x86_64-apple-darwin": "eafe087277ad8d7473f978d0779b4504d5b8064a781784aebd3e33c2541a13ce",
+        "aarch64-apple-darwin": "506dfc14115d2efa96fad9fa542d67027525aa46882a8e1ffb41e891737b689b",
+    },
+    visibility = ["PUBLIC"],
+)
+```
+
+### `rust_toolchain` Parameters
+
+| Parameter    | Type           | Default      | Description                                                                                                     |
+| :----------- | :------------- | :----------- | :-------------------------------------------------------------------------------------------------------------- |
+| `name`       | `str`          | `"toolchain"`| Target name in the `BUILD` file.                                                                                |
+| `version`    | `str`          | `"1.85.0"`   | Rust toolchain version string (e.g. `"1.85.0"`, `"1.84.0"`).                                                     |
+| `hashes`     | `dict` / `str` | `None`       | Optional dict mapping target triple to SHA-256 digest, or string SHA-256 digest. Defaults to built-in digests.   |
+| `visibility` | `list`         | `["PUBLIC"]` | Visibility declaration of the rule.                                                                             |
+
+---
+
 ## `rust_library`
 
 Compiles Rust source files into a static library artifact (`lib<crate>.rlib`).
@@ -208,4 +246,3 @@ plz-out/bin/tools/please_rust/please_rust hash --crate <name> --version <version
 | `license`    | `str`  | `""`         | Informational SPDX license string metadata.                                                               |
 | `repository` | `str`  | `""`         | Informational source repository URL metadata.                                                             |
 | `visibility` | `list` | `["PUBLIC"]` | Target visibility list.                                                                                   |
-

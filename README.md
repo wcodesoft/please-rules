@@ -5,6 +5,7 @@ and test rules for Rust.
 
 ## Features
 
+- **`rust_toolchain`**: Downloads, verifies, and packages official Rust compiler distributions hermetically, eliminating external host toolchain dependencies (`rustup`, system `rustc`) and avoiding `passenv = PATH, HOME`.
 - **`rust_library`**: Compiles Rust source files into `.rlib` libraries.
 - **`rust_bin`**: Builds native Rust binary executables.
 - **`rust_test`**: Runs unit and integration tests with automatic test parsing
@@ -30,17 +31,65 @@ Add the plugin configuration to your repo's `.plzconfig`:
 ```ini
 [Plugin "rust"]
 Target = //plugins:rust
+RustcTool = //build_defs/rust:toolchain|rustc
 ```
 
 In your `BUILD` files:
 
 ```starlark
 subinclude("///rust//build_defs:rust")
+
+rust_toolchain(
+    name = "toolchain",
+    version = "1.85.0",
+    visibility = ["PUBLIC"],
+)
 ```
 
 ---
 
+## Migration Guide: Host to Hermetic Toolchain
+
+If your repository currently relies on a host-installed Rust compiler via `rustup` or `PATH`:
+
+1. **Instantiate `rust_toolchain`**:
+   In your root or toolchain `BUILD` file (e.g. `build_defs/rust/BUILD`):
+   ```starlark
+   subinclude("///rust//build_defs:rust")
+
+   rust_toolchain(
+       name = "toolchain",
+       version = "1.85.0",
+       visibility = ["PUBLIC"],
+   )
+   ```
+
+2. **Configure `.plzconfig`**:
+   Bind the plugin's `RustcTool` setting to the hermetic toolchain label:
+   ```ini
+   [Plugin "rust"]
+   Target = //plugins:rust
+   RustcTool = //build_defs/rust:toolchain|rustc
+   ```
+
+3. **Remove Host Environment Leaks**:
+   Remove `passenv = PATH, HOME` from your `.plzconfig` `[build]` section. Builds will now execute in complete sandbox isolation using the downloaded hermetic sysroot inside `plz-out/`.
+
+---
+
 ## Rule Reference
+
+### `rust_toolchain`
+
+Fetches official standalone Rust toolchain distributions from `static.rust-lang.org`, verifies integrity digests, assembles a hermetic sysroot in `plz-out/`, and exposes `rustc` as a Please target.
+
+```starlark
+rust_toolchain(
+    name = "toolchain",
+    version = "1.85.0",
+    visibility = ["PUBLIC"],
+)
+```
 
 ### `rust_library`
 

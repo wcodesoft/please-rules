@@ -8,6 +8,10 @@ ImportPath = ""
 GoTool = //third_party/go:toolchain|go
 Stdlib = //third_party/go:std
 
+[Plugin "rust"]
+Target = //plugins:rust
+RustcTool = //build_defs/rust:toolchain|rustc
+
 [PluginDefinition]
 Name = rust
 
@@ -34,6 +38,3 @@ ConfigKey = DefaultEdition
 DefaultValue = 2021
 Help = Default Rust edition (2021, 2024, etc.)
 Inherit = true
-
-
-
