@@ -90,3 +90,35 @@ func TestCompileC_CompilerError(t *testing.T) {
 		t.Fatal("expected compilation error, got nil")
 	}
 }
+
+func TestFindCC_EnvOverride(t *testing.T) {
+	oldCC := os.Getenv("CC")
+	defer os.Setenv("CC", oldCC)
+
+	os.Setenv("CC", "/bin/custom_cc")
+	cc, err := findCC()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cc != "/bin/custom_cc" {
+		t.Errorf("got %s, want /bin/custom_cc", cc)
+	}
+}
+
+func TestCompileC_ArchiveError(t *testing.T) {
+	if _, err := findCC(); err != nil {
+		t.Skip("C compiler not available")
+	}
+
+	tmpDir := t.TempDir()
+	src := filepath.Join(tmpDir, "good.c")
+	if err := os.WriteFile(src, []byte("int ok() { return 1; }\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Invalid out archive path where parent directory cannot be created
+	err := CompileC("/dev/null/cannot/create/lib.a", nil, []string{src})
+	if err == nil {
+		t.Fatal("expected error for invalid output path, got nil")
+	}
+}

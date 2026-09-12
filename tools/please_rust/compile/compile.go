@@ -1,36 +1,14 @@
 package compile
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strings"
 
 	"tools/please_rust/toolchain"
 )
-
-// crateMeta mirrors the JSON produced by the download package's crate_meta.json.
-type crateMeta struct {
-	LibSrc  string `json:"lib_src"`
-	Edition string `json:"edition"`
-}
-
-// readCrateMeta reads and JSON-decodes a crate_meta.json file produced by the
-// download subcommand.
-func readCrateMeta(path string) (*crateMeta, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("reading crate_meta.json %s: %w", path, err)
-	}
-	var m crateMeta
-	if err := json.Unmarshal(data, &m); err != nil {
-		return nil, fmt.Errorf("parsing crate_meta.json %s: %w", path, err)
-	}
-	return &m, nil
-}
 
 // Options specifies the parameters needed to compile a Rust target.
 type Options struct {
@@ -48,160 +26,49 @@ type Options struct {
 	Features  []string // feature flags; each becomes --cfg feature="foo"
 }
 
-// sanitizeCrateName converts hyphenated crate names to underscores for rustc extern/crate identification.
-func sanitizeCrateName(name string) string {
-	return strings.ReplaceAll(name, "-", "_")
-}
-
-var hashSuffixRegex = regexp.MustCompile(`-[0-9a-fA-F]{16}$`)
-
-// extractCrateName derives the crate name from a library artifact filename.
-func extractCrateName(filename string) string {
-	base := filepath.Base(filename)
-	ext := filepath.Ext(base)
-	trimmed := strings.TrimSuffix(base, ext)
-	trimmed = strings.TrimPrefix(trimmed, "lib")
-	trimmed = hashSuffixRegex.ReplaceAllString(trimmed, "")
-	return sanitizeCrateName(trimmed)
-}
-
-// findMatchingInput checks if target exists on filesystem or matches an input path.
-func findMatchingInput(target string, inputs []string) string {
-	if _, err := os.Stat(target); err == nil {
-		return target
+// buildCrateTypeArgs returns the compiler arguments corresponding to crateType.
+func buildCrateTypeArgs(crateType string) []string {
+	if crateType == "test" {
+		return []string{"--test"}
 	}
-	targetBase := filepath.Base(target)
-	for _, input := range inputs {
-		if input == target || filepath.Base(input) == targetBase || strings.HasSuffix(input, target) {
-			if _, err := os.Stat(input); err == nil {
-				return input
-			}
-		}
-	}
-	return ""
-}
-
-// findFirstRsFile finds the first existing .rs file from inputs or current directory.
-func findFirstRsFile(inputs []string) string {
-	for _, input := range inputs {
-		if filepath.Ext(input) == ".rs" {
-			if _, err := os.Stat(input); err == nil {
-				return input
-			}
-		}
-	}
-
-	if entries, err := os.ReadDir("."); err == nil {
-		for _, e := range entries {
-			if !e.IsDir() && filepath.Ext(e.Name()) == ".rs" {
-				return e.Name()
-			}
-		}
-	}
-	return ""
-}
-
-// resolveMainSrc finds the actual entrypoint source file among inputs and current directory.
-func resolveMainSrc(mainSrc string, crateType string, inputs []string) string {
-	candidates := []string{"lib.rs", "main.rs", "src/lib.rs", "src/main.rs"}
-	if crateType == "bin" {
-		candidates = []string{"main.rs", "src/main.rs", "lib.rs", "src/lib.rs"}
-	}
-	if mainSrc != "" {
-		candidates = append([]string{mainSrc}, candidates...)
-	}
-
-	for _, cand := range candidates {
-		if found := findMatchingInput(cand, inputs); found != "" {
-			return found
-		}
-	}
-
-	if fallback := findFirstRsFile(inputs); fallback != "" {
-		return fallback
-	}
-
-	return mainSrc
-}
-
-// isLibFile returns true if the given filename has a shared/static library extension.
-func isLibFile(path string) bool {
-	ext := filepath.Ext(path)
-	return ext == ".rlib" || ext == ".so" || ext == ".dylib" || ext == ".dll"
-}
-
-// discoverDepFiles scans directories in inputs or the current build directory for .rlib and .so files.
-func discoverDepFiles(inputs []string) []string {
-	seen := make(map[string]bool)
-	var deps []string
-
-	addDep := func(p string) {
-		clean := filepath.Clean(p)
-		if !seen[clean] {
-			seen[clean] = true
-			deps = append(deps, clean)
-		}
-	}
-
-	for _, input := range inputs {
-		if isLibFile(input) {
-			addDep(input)
-		}
-	}
-
-	_ = filepath.Walk(".", func(path string, info os.FileInfo, err error) error {
-		if err == nil && info != nil && !info.IsDir() && isLibFile(path) {
-			addDep(path)
-		}
+	if crateType == "" {
 		return nil
-	})
-
-	return deps
-}
-
-// updateExternMap registers depPath under its crate name if not already seen or preferred over hashed names.
-func updateExternMap(externMap map[string]string, depPath, selfSanitized string) {
-	cName := extractCrateName(depPath)
-	if cName == "" || cName == selfSanitized {
-		return
 	}
-	existing, exists := externMap[cName]
-	isUnhashed := !strings.Contains(filepath.Base(depPath), "-")
-	hasHashedExisting := exists && strings.Contains(filepath.Base(existing), "-")
-	if !exists || (isUnhashed && hasHashedExisting) {
-		externMap[cName] = depPath
+	args := []string{"--crate-type", crateType}
+	if crateType == "proc-macro" {
+		args = append(args, "--extern", "proc_macro")
 	}
-}
-
-// resolveExternFlags builds search directory (-L) and extern library (--extern) arguments.
-func resolveExternFlags(depPaths []string, selfCrate string) []string {
-	searchDirs := make(map[string]bool)
-	externMap := make(map[string]string)
-	selfSanitized := sanitizeCrateName(selfCrate)
-
-	for _, depPath := range depPaths {
-		if dir := filepath.Dir(depPath); dir != "" && dir != "." {
-			searchDirs[dir] = true
-		}
-		updateExternMap(externMap, depPath, selfSanitized)
-	}
-
-	var args []string
-	for dir := range searchDirs {
-		args = append(args, "-L", fmt.Sprintf("dependency=%s", dir))
-	}
-	args = append(args, "-L", "dependency=.")
-
-	for cName, path := range externMap {
-		args = append(args, "--extern", fmt.Sprintf("%s=%s", cName, path))
-	}
-
 	return args
+}
+
+// buildFeatureArgs converts crate feature names to rustc --cfg feature="..." flags.
+func buildFeatureArgs(features []string) []string {
+	var args []string
+	for _, feat := range features {
+		args = append(args, "--cfg", fmt.Sprintf("feature=%q", feat))
+	}
+	return args
+}
+
+// buildNativeLibArgs generates search directory (-L) and static link (-l) flags for a native library.
+func buildNativeLibArgs(nativeLib string) []string {
+	if nativeLib == "" {
+		return nil
+	}
+	dir := filepath.Dir(nativeLib)
+	if dir == "" {
+		dir = "."
+	}
+	libName := strings.TrimSuffix(filepath.Base(nativeLib), ".a")
+	libName = strings.TrimPrefix(libName, "lib")
+	return []string{
+		"-L", fmt.Sprintf("native=%s", dir),
+		"-l", fmt.Sprintf("static=%s", libName),
+	}
 }
 
 // BuildRustcArgs assembles the arguments for invoking rustc.
 func BuildRustcArgs(opts Options) ([]string, error) {
-
 	if opts.CrateName == "" {
 		return nil, fmt.Errorf("crate name (--crate-name) is required")
 	}
@@ -209,19 +76,8 @@ func BuildRustcArgs(opts Options) ([]string, error) {
 		return nil, fmt.Errorf("output path (--out) is required")
 	}
 
-	// If a crate_meta.json was provided (from the download rule), use it to
-	// override MainSrc and Edition.
-	if opts.Meta != "" {
-		meta, err := readCrateMeta(opts.Meta)
-		if err != nil {
-			return nil, err
-		}
-		if meta.LibSrc != "" {
-			opts.MainSrc = meta.LibSrc
-		}
-		if meta.Edition != "" {
-			opts.Edition = meta.Edition
-		}
+	if err := applyCrateMeta(&opts); err != nil {
+		return nil, err
 	}
 
 	mainFile := resolveMainSrc(opts.MainSrc, opts.CrateType, opts.Inputs)
@@ -229,22 +85,13 @@ func BuildRustcArgs(opts Options) ([]string, error) {
 		return nil, fmt.Errorf("main source file could not be determined")
 	}
 
-	args := []string{}
+	var args []string
 	if opts.Edition != "" {
 		args = append(args, "--edition", opts.Edition)
 	}
 
-	if opts.CrateType == "test" {
-		args = append(args, "--test")
-	} else if opts.CrateType != "" {
-		args = append(args, "--crate-type", opts.CrateType)
-		if opts.CrateType == "proc-macro" {
-			args = append(args, "--extern", "proc_macro")
-		}
-	}
-
+	args = append(args, buildCrateTypeArgs(opts.CrateType)...)
 	args = append(args, "--crate-name", sanitizeCrateName(opts.CrateName))
-
 	args = append(args, "-o", opts.Out)
 
 	allDeps := discoverDepFiles(opts.Inputs)
@@ -254,24 +101,8 @@ func BuildRustcArgs(opts Options) ([]string, error) {
 		args = append(args, strings.Fields(opts.Flags)...)
 	}
 
-	// Feature flags: --cfg feature="foo"
-	for _, feat := range opts.Features {
-		args = append(args, "--cfg", fmt.Sprintf("feature=%q", feat))
-	}
-
-	// Native static library: -L native=<dir> -l static=<name>
-	if opts.NativeLib != "" {
-		dir := filepath.Dir(opts.NativeLib)
-		if dir == "" {
-			dir = "."
-		}
-		libName := strings.TrimSuffix(filepath.Base(opts.NativeLib), ".a")
-		libName = strings.TrimPrefix(libName, "lib")
-		args = append(args, "-L", fmt.Sprintf("native=%s", dir))
-		args = append(args, "-l", fmt.Sprintf("static=%s", libName))
-	}
-
-
+	args = append(args, buildFeatureArgs(opts.Features)...)
+	args = append(args, buildNativeLibArgs(opts.NativeLib)...)
 	args = append(args, mainFile)
 	return args, nil
 }
@@ -287,6 +118,29 @@ func ensureOutputDir(path string) error {
 	return nil
 }
 
+// buildCargoVersionEnv constructs CARGO_PKG_VERSION environment variables from a version string.
+func buildCargoVersionEnv(version string) []string {
+	if version == "" {
+		return nil
+	}
+	env := []string{fmt.Sprintf("CARGO_PKG_VERSION=%s", version)}
+	parts := strings.Split(version, ".")
+	if len(parts) >= 1 {
+		env = append(env, fmt.Sprintf("CARGO_PKG_VERSION_MAJOR=%s", parts[0]))
+	}
+	if len(parts) >= 2 {
+		env = append(env, fmt.Sprintf("CARGO_PKG_VERSION_MINOR=%s", parts[1]))
+	}
+	if len(parts) >= 3 {
+		patch := parts[2]
+		if idx := strings.IndexAny(patch, "-+"); idx != -1 {
+			patch = patch[:idx]
+		}
+		env = append(env, fmt.Sprintf("CARGO_PKG_VERSION_PATCH=%s", patch))
+	}
+	return env
+}
+
 // invokeRustc executes rustc with the provided arguments and environment.
 func invokeRustc(rustcPath string, args []string, version string) error {
 	cmd := exec.Command(rustcPath, args...)
@@ -294,25 +148,7 @@ func invokeRustc(rustcPath string, args []string, version string) error {
 	cmd.Stderr = os.Stderr
 	cmd.Env = os.Environ()
 
-	if version != "" {
-		cmd.Env = append(cmd.Env, fmt.Sprintf("CARGO_PKG_VERSION=%s", version))
-		parts := strings.Split(version, ".")
-		if len(parts) >= 1 {
-			cmd.Env = append(cmd.Env, fmt.Sprintf("CARGO_PKG_VERSION_MAJOR=%s", parts[0]))
-		}
-		if len(parts) >= 2 {
-			cmd.Env = append(cmd.Env, fmt.Sprintf("CARGO_PKG_VERSION_MINOR=%s", parts[1]))
-		}
-		if len(parts) >= 3 {
-			// Strip any prerelease or build metadata if present
-			patch := parts[2]
-			if idx := strings.IndexAny(patch, "-+"); idx != -1 {
-				patch = patch[:idx]
-			}
-			cmd.Env = append(cmd.Env, fmt.Sprintf("CARGO_PKG_VERSION_PATCH=%s", patch))
-		}
-	}
-
+	cmd.Env = append(cmd.Env, buildCargoVersionEnv(version)...)
 
 	if err := cmd.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "DEBUG: rustc command failed: %s %s\n", rustcPath, strings.Join(args, " "))
@@ -339,4 +175,3 @@ func Run(opts Options) error {
 
 	return invokeRustc(rustcPath, args, opts.Version)
 }
-
