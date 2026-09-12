@@ -18,6 +18,12 @@ DEFAULT_HASHES = {
             "aarch64-apple-darwin": "b7ff9bc2cabc6277e2ec6d73ca5b3e5ea5e2a0582e5e5302ef9e354f348dab68",
             "x86_64-apple-darwin": "18a5b48cf5bdca82acf51a12e1e2dbd05b13279b1859d014e46b56eb10f3922e",
         },
+        "llvm_tools": {
+            "x86_64-unknown-linux-gnu": "20f938739daaec41d26873e47185ad3fb39570795e659392119dc79f26465bce",
+            "aarch64-unknown-linux-gnu": "8c45d0bafac7ad373dc3cef7df0a72a6d853f75e3134efc707c63662a308569a",
+            "aarch64-apple-darwin": "18818895811612dbc10a72f016257f99bbf9d1be77001de3d7aeaf090a1fa35a",
+            "x86_64-apple-darwin": "d59d7c3102d7d2104f736f4820cfc9f80e225069c179cdd82bcc0a6f7a39da8a",
+        },
     },
 }
 

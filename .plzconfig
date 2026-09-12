@@ -30,5 +30,26 @@ DefaultValue = 2021
 Help = Default Rust edition (2021, 2024, etc.)
 Inherit = true
 
+[PluginConfig "coverage"]
+ConfigKey = Coverage
+DefaultValue = true
+Help = Whether to compile Rust targets with coverage instrumentation
+Inherit = true
+
+[PluginConfig "llvm_profdata_tool"]
+ConfigKey = LlvmProfdataTool
+DefaultValue = 
+Help = Path or build label for llvm-profdata
+Inherit = true
+
+[PluginConfig "llvm_cov_tool"]
+ConfigKey = LlvmCovTool
+DefaultValue = 
+Help = Path or build label for llvm-cov
+Inherit = true
+
+[cover]
+fileextension = .rs
+
 
 

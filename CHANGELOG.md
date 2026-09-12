@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Code coverage support for Rust rules (`plz cover`) ([#5](https://github.com/wcodesoft/please-rules/issues/5)):
+  - Added `-C instrument-coverage` instrumentation support to `rust_library`, `rust_bin`, and `rust_test`.
+  - Added `llvm-tools` archive downloading and SHA-256 verification in `rust_toolchain` with `:toolchain|llvm-profdata` and `:toolchain|llvm-cov` entry points for Rust 1.85.0 across Linux (`x86_64`, `aarch64`) and macOS (`x86_64`, `aarch64`).
+  - Added host toolchain discovery for `llvm-profdata` and `llvm-cov` in `tools/please_rust/toolchain` (searching `PATH`, `/usr/lib/llvm-*/bin`, rustup toolchains, and `rustc --print sysroot`).
+  - Extended `testrunner` to set `LLVM_PROFILE_FILE`, merge raw profiles using `llvm-profdata`, and export coverage using `llvm-cov`.
+  - Added LCOV path normalization and GCOV format generation for native compatibility with Please's coverage engine, supporting summary and line-by-line (`plz cover -l`) output.
+  - Added `[cover] fileextension = .rs` and plugin configuration options `Coverage`, `LlvmProfdataTool`, and `LlvmCovTool` in `.plzconfig`.
+  - Documented coverage configuration and usage in `docs/rust/usage.md`.
+
 ## [0.3.2] - 2026-09-12
 
 ### Fixed

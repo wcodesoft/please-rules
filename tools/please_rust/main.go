@@ -132,6 +132,10 @@ func handleTestRunner(args []string) error {
 	cmd := flag.NewFlagSet("test-runner", flag.ExitOnError)
 	pkg := cmd.String("pkg", "", "Package / target name")
 	resultsFile := cmd.String("results-file", "test.results", "Path to write JUnit XML results")
+	coverageFile := cmd.String("coverage-file", "", "Path to write coverage report (default: $COVERAGE_FILE or test.coverage)")
+	llvmProfdata := cmd.String("llvm-profdata", "", "Path to llvm-profdata executable")
+	llvmCov := cmd.String("llvm-cov", "", "Path to llvm-cov executable")
+	coverage := cmd.Bool("coverage", false, "Force coverage collection")
 
 	if err := cmd.Parse(args); err != nil {
 		return err
@@ -144,7 +148,16 @@ func handleTestRunner(args []string) error {
 
 	testBinary := cmdArgs[0]
 	extraArgs := cmdArgs[1:]
-	return testrunner.Run(*pkg, testBinary, extraArgs, *resultsFile)
+	return testrunner.RunWithOptions(testrunner.RunOptions{
+		PkgName:        *pkg,
+		TestBinary:     testBinary,
+		ExtraArgs:      extraArgs,
+		ResultsFile:    *resultsFile,
+		CoverageActive: *coverage,
+		CoverageFile:   *coverageFile,
+		LlvmProfdata:   *llvmProfdata,
+		LlvmCov:        *llvmCov,
+	})
 }
 
 func main() {

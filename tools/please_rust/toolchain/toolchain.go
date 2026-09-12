@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 )
 
 // checkExecutable returns path if target is an existing non-directory file or found in PATH.
@@ -21,16 +22,37 @@ func checkExecutable(target string) string {
 // candidateSearchPaths returns common directories where tool binaries may be installed.
 func candidateSearchPaths(name string) []string {
 	homeDir, _ := os.UserHomeDir()
-	return []string{
+	paths := []string{
 		filepath.Join(homeDir, ".cargo", "bin", name),
 		filepath.Join("/home/linuxbrew/.linuxbrew/bin", name),
 		filepath.Join("/usr/local/bin", name),
 		filepath.Join("/usr/bin", name),
+		filepath.Join("/bin", name),
 		filepath.Join("/opt/homebrew/bin", name),
 	}
+
+	// Check LLVM system directories
+	llvmBins, _ := filepath.Glob("/usr/lib/llvm-*/bin/" + name)
+	paths = append(paths, llvmBins...)
+
+	// Check rustup toolchains
+	rustupBins, _ := filepath.Glob(filepath.Join(homeDir, ".rustup", "toolchains", "*", "lib", "rustlib", "*", "bin", name))
+	paths = append(paths, rustupBins...)
+
+	// Try rustc sysroot if available
+	if rustcPath, err := exec.LookPath("rustc"); err == nil {
+		if out, err := exec.Command(rustcPath, "--print", "sysroot").Output(); err == nil {
+			sysroot := strings.TrimSpace(string(out))
+			paths = append(paths, filepath.Join(sysroot, "bin", name))
+			sysrootBins, _ := filepath.Glob(filepath.Join(sysroot, "lib", "rustlib", "*", "bin", name))
+			paths = append(paths, sysrootBins...)
+		}
+	}
+
+	return paths
 }
 
-// findTool resolves the path to an executable tool (e.g. rustc, cargo).
+// findTool resolves the path to an executable tool (e.g. rustc, cargo, llvm-profdata, llvm-cov).
 func findTool(override, name string) (string, error) {
 	candidates := []string{override}
 	if override == "" {
@@ -60,3 +82,12 @@ func FindRustc(override string) (string, error) {
 	return findTool(override, "rustc")
 }
 
+// FindLlvmProfdata resolves the path to the llvm-profdata binary.
+func FindLlvmProfdata(override string) (string, error) {
+	return findTool(override, "llvm-profdata")
+}
+
+// FindLlvmCov resolves the path to the llvm-cov binary.
+func FindLlvmCov(override string) (string, error) {
+	return findTool(override, "llvm-cov")
+}
