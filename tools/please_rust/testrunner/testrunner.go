@@ -90,37 +90,45 @@ func ParseTestOutput(pkgName string, output string, duration time.Duration) *JUn
 	}
 }
 
-// ConvertOutputToJUnit reads raw test output from a file/string and writes test.results JUnit XML.
-func ConvertOutputToJUnit(pkgName string, rawOutputFile string, resultsFile string) error {
+// DefaultResultsFile is the default JUnit XML output filename.
+const DefaultResultsFile = "test.results"
+
+// writeJUnitResults formats and writes the test suites to resultsFile.
+func writeJUnitResults(suites *JUnitTestSuites, resultsFile string) error {
 	if resultsFile == "" {
-		resultsFile = "test.results"
+		resultsFile = DefaultResultsFile
+	}
+	xmlData, err := xml.MarshalIndent(suites, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshalling junit xml: %w", err)
 	}
 
+	xmlWithHeader := append([]byte(xml.Header), xmlData...)
+	if outDir := filepath.Dir(resultsFile); outDir != "" && outDir != "." {
+		if err := os.MkdirAll(outDir, 0755); err != nil {
+			return fmt.Errorf("creating results dir %s: %w", outDir, err)
+		}
+	}
+
+	if err := os.WriteFile(resultsFile, xmlWithHeader, 0644); err != nil {
+		return fmt.Errorf("writing junit xml %s: %w", resultsFile, err)
+	}
+	return nil
+}
+
+// ConvertOutputToJUnit reads raw test output from a file/string and writes test.results JUnit XML.
+func ConvertOutputToJUnit(pkgName string, rawOutputFile string, resultsFile string) error {
 	data, err := os.ReadFile(rawOutputFile)
 	if err != nil {
 		return fmt.Errorf("failed to read raw test output: %w", err)
 	}
 
 	suites := ParseTestOutput(pkgName, string(data), 0)
-	xmlData, err := xml.MarshalIndent(suites, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	xmlWithHeader := append([]byte(xml.Header), xmlData...)
-	if outDir := filepath.Dir(resultsFile); outDir != "" && outDir != "." {
-		os.MkdirAll(outDir, 0755)
-	}
-
-	return os.WriteFile(resultsFile, xmlWithHeader, 0644)
+	return writeJUnitResults(suites, resultsFile)
 }
 
 // Run executes a Rust test binary, streaming stdout/stderr while capturing output for JUnit results.
 func Run(pkgName string, testBinary string, extraArgs []string, resultsFile string) error {
-	if resultsFile == "" {
-		resultsFile = "test.results"
-	}
-
 	cmd := exec.Command(testBinary, extraArgs...)
 
 	var buf bytes.Buffer
@@ -136,14 +144,7 @@ func Run(pkgName string, testBinary string, extraArgs []string, resultsFile stri
 	duration := time.Since(startTime)
 
 	testSuites := ParseTestOutput(pkgName, buf.String(), duration)
-	xmlData, err := xml.MarshalIndent(testSuites, "", "  ")
-	if err == nil {
-		xmlWithHeader := append([]byte(xml.Header), xmlData...)
-		if outDir := filepath.Dir(resultsFile); outDir != "" && outDir != "." {
-			os.MkdirAll(outDir, 0755)
-		}
-		_ = os.WriteFile(resultsFile, xmlWithHeader, 0644)
-	}
+	_ = writeJUnitResults(testSuites, resultsFile)
 
 	return runErr
 }

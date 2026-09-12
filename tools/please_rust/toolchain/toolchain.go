@@ -59,4 +59,3 @@ func findTool(override, name string) (string, error) {
 func FindRustc(override string) (string, error) {
 	return findTool(override, "rustc")
 }
-

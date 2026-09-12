@@ -22,6 +22,60 @@ func findCC() (string, error) {
 	return "", fmt.Errorf("no C compiler found; set CC or install cc/gcc/clang")
 }
 
+// compileSource compiles a single C source file into an object file at objPath.
+func compileSource(cc, src, objPath string, iFlags []string) error {
+	ccArgs := append([]string{"-c", "-O2", "-fPIC"}, iFlags...)
+	ccArgs = append(ccArgs, "-o", objPath, src)
+
+	cmd := exec.Command(cc, ccArgs...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("compiling %s: %w", src, err)
+	}
+	return nil
+}
+
+// compileAllSources compiles each source file in sources to an object file in tmpDir.
+func compileAllSources(cc, tmpDir string, sources, includes []string) ([]string, error) {
+	var iFlags []string
+	for _, inc := range includes {
+		iFlags = append(iFlags, "-I", inc)
+	}
+
+	var objFiles []string
+	for i, src := range sources {
+		base := filepath.Base(src)
+		ext := filepath.Ext(base)
+		objName := fmt.Sprintf("%d_%s.o", i, strings.TrimSuffix(base, ext))
+		objPath := filepath.Join(tmpDir, objName)
+
+		if err := compileSource(cc, src, objPath, iFlags); err != nil {
+			return nil, err
+		}
+		objFiles = append(objFiles, objPath)
+	}
+	return objFiles, nil
+}
+
+// createArchive packages object files into a static library archive using ar.
+func createArchive(outFile string, objFiles []string) error {
+	if dir := filepath.Dir(outFile); dir != "" && dir != "." {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return fmt.Errorf("creating output directory: %w", err)
+		}
+	}
+
+	arArgs := append([]string{"rcs", outFile}, objFiles...)
+	arCmd := exec.Command("ar", arArgs...)
+	arCmd.Stdout = os.Stdout
+	arCmd.Stderr = os.Stderr
+	if err := arCmd.Run(); err != nil {
+		return fmt.Errorf("ar rcs %s: %w", outFile, err)
+	}
+	return nil
+}
+
 // CompileC compiles the given C source files into a static archive at outFile.
 // includes is a list of directories to add as -I flags.
 // sources must be non-empty.
@@ -41,49 +95,10 @@ func CompileC(outFile string, includes []string, sources []string) error {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	// Build the shared -I flag list.
-	var iFlags []string
-	for _, inc := range includes {
-		iFlags = append(iFlags, "-I", inc)
+	objFiles, err := compileAllSources(cc, tmpDir, sources, includes)
+	if err != nil {
+		return err
 	}
 
-	// Compile each source file to an object file.
-	var objFiles []string
-	for i, src := range sources {
-		base := filepath.Base(src)
-		// Strip extension, use .o with index prefix to avoid collisions across directories.
-		ext := filepath.Ext(base)
-		objName := fmt.Sprintf("%d_%s.o", i, strings.TrimSuffix(base, ext))
-		objPath := filepath.Join(tmpDir, objName)
-
-		ccArgs := []string{"-c", "-O2", "-fPIC"}
-		ccArgs = append(ccArgs, iFlags...)
-		ccArgs = append(ccArgs, "-o", objPath, src)
-
-
-		cmd := exec.Command(cc, ccArgs...)
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("compiling %s: %w", src, err)
-		}
-		objFiles = append(objFiles, objPath)
-	}
-
-	// Ensure output directory exists.
-	if dir := filepath.Dir(outFile); dir != "" && dir != "." {
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			return fmt.Errorf("creating output directory: %w", err)
-		}
-	}
-
-	// Run: ar rcs outFile <.o files>
-	arArgs := append([]string{"rcs", outFile}, objFiles...)
-	arCmd := exec.Command("ar", arArgs...)
-	arCmd.Stdout = os.Stdout
-	arCmd.Stderr = os.Stderr
-	if err := arCmd.Run(); err != nil {
-		return fmt.Errorf("ar rcs %s: %w", outFile, err)
-	}
-	return nil
+	return createArchive(outFile, objFiles)
 }
