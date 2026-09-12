@@ -12,8 +12,8 @@ To compile and test Rust targets, the system requires:
 
 1. **Rust Toolchain**:
    - `rustc`: The standard Rust compiler executable.
-   - `cargo`: Optional / legacy fallback only. Standard third-party crate compilation
-     in `please-rules` is completely Cargo-free.
+   - `cargo`: Optional / legacy fallback only. Standard third-party crate
+     compilation in `please-rules` is completely Cargo-free.
 2. **C Compiler (for native extensions)**:
    - `cc`, `gcc`, or `clang` and `ar`: Used by `compile-c` when compiling crates
      with embedded C sources (e.g., Tree-sitter grammar parsers).
@@ -53,8 +53,8 @@ RustcTool = /usr/local/bin/rustc
 PleaseRustTool = //tools/please_rust
 ```
 
-When set, these configuration keys are automatically passed as `--rustc`
-flags to `please_rust`.
+When set, these configuration keys are automatically passed as `--rustc` flags
+to `please_rust`.
 
 ---
 
@@ -121,15 +121,22 @@ rust_crate(
 ### How `rust_crate` Works Under the Hood
 
 1. **Download Phase (`_download_<name>`)**:
-   - `please_rust download` fetches the `.crate` tarball directly from `https://static.crates.io/crates/<crate>/<crate>-<version>.crate`.
-   - Computes and verifies the SHA-256 hex digest against `sha256`. Fails with a security alert on any mismatch.
-   - Extracts the tarball into a sandbox, inspects `Cargo.toml` for `edition` and the entrypoint path (`lib.rs`), and writes `crate_meta.json`.
+   - `please_rust download` fetches the `.crate` tarball directly from
+     `https://static.crates.io/crates/<crate>/<crate>-<version>.crate`.
+   - Computes and verifies the SHA-256 hex digest against `sha256`. Fails with a
+     security alert on any mismatch.
+   - Extracts the tarball into a sandbox, inspects `Cargo.toml` for `edition`
+     and the entrypoint path (`lib.rs`), and writes `crate_meta.json`.
    - Repacks the crate contents as a plain tarball output.
 2. **Native C Compilation Phase (`_c_<name>`, optional)**:
-   - If `c_srcs` are provided, `please_rust compile-c` compiles the specified C source files into object files using `cc` and archives them into `lib<crate>.a` using `ar rcs`.
+   - If `c_srcs` are provided, `please_rust compile-c` compiles the specified C
+     source files into object files using `cc` and archives them into
+     `lib<crate>.a` using `ar rcs`.
 3. **Compilation Phase**:
    - Extracts the source tarball and executes `please_rust compile`.
    - Reads `crate_meta.json` to configure the source path and edition.
-   - Automatically maps all dependency artifacts from `$DEPS` into `--extern <crate>=<path>` and `-L dependency=<dir>`.
+   - Automatically maps all dependency artifacts from `$DEPS` into
+     `--extern <crate>=<path>` and `-L dependency=<dir>`.
    - If a native library archive exists, adds `-L native=<dir> -l static=<lib>`.
-   - Directly executes `rustc` to produce the final `.rlib` (or `.so` for procedural macros).
+   - Directly executes `rustc` to produce the final `.rlib` (or `.so` for
+     procedural macros).

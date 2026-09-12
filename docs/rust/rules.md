@@ -122,7 +122,7 @@ rust_bin(
 | `flags`      | `list` | `[]`                                   | Additional compiler flags for `rustc`.                                               |
 | `crate_name` | `str`  | `name`                                 | Crate name for the binary target.                                                    |
 | `main`       | `str`  | `None`                                 | Explicit root entrypoint source file (e.g. `"src/main.rs"`, `"main.rs"`).            |
-| `env`        | `dict` | `{}`                                   | Compile-time environment variables exported for `rustc` (`export KEY="val"`).         |
+| `env`        | `dict` | `{}`                                   | Compile-time environment variables exported for `rustc` (`export KEY="val"`).        |
 | `visibility` | `list` | `None`                                 | Target visibility list.                                                              |
 | `test_only`  | `bool` | `False`                                | If `True`, target can only be depended on by test rules.                             |
 | `labels`     | `list` | `["rust"]`                             | Labels associated with the target.                                                   |
@@ -154,22 +154,22 @@ rust_test(
 
 ### `rust_test` Parameters
 
-| Parameter    | Type   | Default                                | Description                                                              |
-| :----------- | :----- | :------------------------------------- | :----------------------------------------------------------------------- |
-| `name`       | `str`  | _Required_                             | Name of the test target.                                                 |
-| `srcs`       | `list` | `[]`                                   | Source files included in test compilation.                               |
-| `deps`       | `list` | `[]`                                   | Target dependencies required for the test.                               |
-| `edition`    | `str`  | `CONFIG.RUST.DEFAULT_EDITION` (`2024`) | Rust edition.                                                            |
-| `flags`      | `list` | `[]`                                   | Extra flags passed to `rustc`.                                           |
-| `crate_name` | `str`  | `name`                                 | Crate name under test.                                                   |
-| `main`       | `str`  | `None`                                 | Explicit root entrypoint source file (e.g. `"src/lib.rs"`, `"lib.rs"`).  |
+| Parameter    | Type   | Default                                | Description                                                             |
+| :----------- | :----- | :------------------------------------- | :---------------------------------------------------------------------- |
+| `name`       | `str`  | _Required_                             | Name of the test target.                                                |
+| `srcs`       | `list` | `[]`                                   | Source files included in test compilation.                              |
+| `deps`       | `list` | `[]`                                   | Target dependencies required for the test.                              |
+| `edition`    | `str`  | `CONFIG.RUST.DEFAULT_EDITION` (`2024`) | Rust edition.                                                           |
+| `flags`      | `list` | `[]`                                   | Extra flags passed to `rustc`.                                          |
+| `crate_name` | `str`  | `name`                                 | Crate name under test.                                                  |
+| `main`       | `str`  | `None`                                 | Explicit root entrypoint source file (e.g. `"src/lib.rs"`, `"lib.rs"`). |
 | `env`        | `dict` | `{}`                                   | Environment variables exported for test compilation and test execution. |
-| `visibility` | `list` | `None`                                 | Target visibility list.                                                  |
-| `labels`     | `list` | `["rust"]`                             | Labels for the target.                                                   |
-| `data`       | `list` | `None`                                 | Runtime data files needed by test execution.                             |
-| `size`       | `str`  | `"medium"`                             | Please test size category (`"small"`, `"medium"`, `"large"`).            |
-| `timeout`    | `int`  | `0`                                    | Execution timeout in seconds (`0` indicates default timeout).            |
-| `flaky`      | `bool` | `False`                                | Mark target as flaky for automatic retries.                              |
+| `visibility` | `list` | `None`                                 | Target visibility list.                                                 |
+| `labels`     | `list` | `["rust"]`                             | Labels for the target.                                                  |
+| `data`       | `list` | `None`                                 | Runtime data files needed by test execution.                            |
+| `size`       | `str`  | `"medium"`                             | Please test size category (`"small"`, `"medium"`, `"large"`).           |
+| `timeout`    | `int`  | `0`                                    | Execution timeout in seconds (`0` indicates default timeout).           |
+| `flaky`      | `bool` | `False`                                | Mark target as flaky for automatic retries.                             |
 
 ---
 
@@ -234,9 +234,9 @@ plz-out/bin/tools/please_rust/please_rust hash --crate <name> --version <version
 | :----------- | :----- | :----------- | :-------------------------------------------------------------------------------------------------------- |
 | `name`       | `str`  | _Required_   | Target name in the `BUILD` file.                                                                          |
 | `version`    | `str`  | _Required_   | Exact package version on `crates.io`.                                                                     |
-| `sha256`     | `str`  | _Required_   | SHA-256 hex digest of the `.crate` tarball from `crates.io`.                                               |
+| `sha256`     | `str`  | _Required_   | SHA-256 hex digest of the `.crate` tarball from `crates.io`.                                              |
 | `crate_name` | `str`  | `""`         | Crate name override (defaults to `name`). Hyphens (`-`) are automatically converted to underscores (`_`). |
-| `features`   | `list` | `[]`         | List of enabled Cargo features (each emitted as `--cfg feature="<name>"` to `rustc`).                    |
+| `features`   | `list` | `[]`         | List of enabled Cargo features (each emitted as `--cfg feature="<name>"` to `rustc`).                     |
 | `deps`       | `list` | `[]`         | Dependency targets required by this crate.                                                                |
 | `c_srcs`     | `list` | `[]`         | C source files compiled into a static library (`.a`) using the system C compiler (`cc`).                  |
 | `c_hdrs`     | `list` | `[]`         | Header include directories (`-I`) for C source compilation.                                               |
