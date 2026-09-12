@@ -415,16 +415,6 @@ func RunWithOptions(opts RunOptions) error {
 	return runErr
 }
 
-// Run executes a Rust test binary, streaming stdout/stderr while capturing output for JUnit results.
-func Run(pkgName string, testBinary string, extraArgs []string, resultsFile string) error {
-	return RunWithOptions(RunOptions{
-		PkgName:     pkgName,
-		TestBinary:  testBinary,
-		ExtraArgs:   extraArgs,
-		ResultsFile: resultsFile,
-	})
-}
-
 func collectAndProcessCoverage(opts RunOptions, tmpDir string, coverageFile string) error {
 	profrawFiles, _ := filepath.Glob(filepath.Join(tmpDir, "*.profraw"))
 	cwdFiles, _ := filepath.Glob("*.profraw")
