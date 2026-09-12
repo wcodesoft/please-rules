@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.3.3] - TBD
+## [0.3.3] - 2026-09-13
 
 ### Added
 
@@ -29,6 +29,17 @@ and this project adheres to
   - Added `[cover] fileextension = .rs` and plugin configuration options
     `Coverage`, `LlvmProfdataTool`, and `LlvmCovTool` in `.plzconfig`.
   - Documented coverage configuration and usage in `docs/rust/usage.md`.
+- Added GitHub Actions CI workflow (`.github/workflows/ci.yml`) for Prettier
+  markdown checks, Go code formatting (`gofmt`), and Please build & test.
+- Documented robust git hooks, nohup detachment, and hook logging.
+
+### Changed
+
+- Refactored `tools/please_rust` (`testrunner`, `compile`, `download`) into
+  modular files to lower cyclomatic and cognitive complexity and improve test
+  coverage.
+- Bound `[Plugin "rust"]` to hermetic `//build_defs/rust:toolchain` in
+  repository `.plzconfig`.
 
 ## [0.3.2] - 2026-09-12
 
