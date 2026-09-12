@@ -8,6 +8,13 @@ ImportPath = ""
 GoTool = //third_party/go:toolchain|go
 Stdlib = //third_party/go:std
 
+[Plugin "rust"]
+Target = //plugins:rust
+RustcTool = //test/toolchain:toolchain|rustc
+LlvmProfdataTool = //test/toolchain:toolchain|llvm-profdata
+LlvmCovTool = //test/toolchain:toolchain|llvm-cov
+
+
 [PluginDefinition]
 Name = rust
 
