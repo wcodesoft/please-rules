@@ -15,7 +15,7 @@ plugin_repo(
     name = "rust",
     owner = "wcodesoft",
     plugin = "please-rules",
-    revision = "v0.3.1",
+    revision = "v0.3.2",
 )
 ```
 

@@ -13,11 +13,3 @@ func TestFindRustc(t *testing.T) {
 	}
 }
 
-func TestFindCargo(t *testing.T) {
-	cargoPath, err := FindCargo("")
-	if err != nil {
-		t.Logf("FindCargo returned error (expected if cargo not installed): %v", err)
-	} else {
-		t.Logf("Found cargo at: %s", cargoPath)
-	}
-}

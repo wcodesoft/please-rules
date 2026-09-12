@@ -7,7 +7,6 @@ go_binary(
         "//tools/please_rust/compile",
         "//tools/please_rust/compilec",
         "//tools/please_rust/download",
-        "//tools/please_rust/fetch",
         "//tools/please_rust/testrunner",
     ],
     visibility = ["PUBLIC"],

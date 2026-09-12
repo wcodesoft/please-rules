@@ -23,11 +23,6 @@ DefaultValue = rustc
 Help = Path to the rustc compiler to use
 Inherit = true
 
-[PluginConfig "cargo_tool"]
-ConfigKey = CargoTool
-DefaultValue = cargo
-Help = Path to the cargo executable to use
-Inherit = true
 
 [PluginConfig "default_edition"]
 ConfigKey = DefaultEdition

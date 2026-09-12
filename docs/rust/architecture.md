@@ -33,7 +33,6 @@ graph TD
         CMD_COMPILE_C[compile-c subcommand]
         CMD_HASH[hash subcommand]
         CMD_TESTRUNNER[test-runner subcommand]
-        CMD_FETCH[fetch subcommand - legacy]
         TOOLCHAIN[toolchain package]
     end
 
@@ -188,17 +187,17 @@ sequenceDiagram
 
 ## Toolchain Resolution (`tools/please_rust/toolchain`)
 
-The `toolchain` package resolves compiler binaries (`rustc` and `cargo`):
+The `toolchain` package resolves the compiler binary (`rustc`):
 
-1. **Explicit Flag / Config Override**: If `--rustc` or `--cargo` is specified
-   (from `.plzconfig` plugin settings or build rule `tools`), `please_rust` uses
-   that exact binary path. When a Please build target or entry point is provided
+1. **Explicit Flag / Config Override**: If `--rustc` is specified (from
+   `.plzconfig` plugin settings or build rule `tools`), `please_rust` uses that
+   exact binary path. When a Please build target or entry point is provided
    (e.g. `//build_defs/rust:toolchain|rustc`), Please resolves it as an
    execution tool dependency and sets `$TOOLS_RUSTC`.
 2. **Environment Path Search**: If unset or empty, `please_rust` searches
    standard host locations as a fallback:
    - System `$PATH`
-   - `$HOME/.cargo/bin/rustc` / `$HOME/.cargo/bin/cargo`
+   - `$HOME/.cargo/bin/rustc`
    - `/home/linuxbrew/.linuxbrew/bin/rustc`
    - `/usr/local/bin/rustc` / `/usr/bin/rustc`
 

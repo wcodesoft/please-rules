@@ -9,7 +9,6 @@ import (
 	"tools/please_rust/compile"
 	"tools/please_rust/compilec"
 	"tools/please_rust/download"
-	"tools/please_rust/fetch"
 	"tools/please_rust/testrunner"
 )
 
@@ -20,7 +19,6 @@ func printUsage() {
 	fmt.Fprintf(os.Stderr, "  download      Download a crate from crates.io and verify its checksum\n")
 	fmt.Fprintf(os.Stderr, "  hash          Print the SHA-256 of a crate tarball from crates.io\n")
 	fmt.Fprintf(os.Stderr, "  compile-c     Compile C sources into a static archive\n")
-	fmt.Fprintf(os.Stderr, "  fetch         Fetch and build third-party crates with cargo (legacy)\n")
 	fmt.Fprintf(os.Stderr, "  test-runner   Execute test binary and output JUnit results\n")
 }
 
@@ -130,40 +128,6 @@ func handleCompileC(args []string) error {
 	return compilec.CompileC(*out, includes, sources)
 }
 
-func handleFetch(args []string) error {
-	cmd := flag.NewFlagSet("fetch", flag.ExitOnError)
-	cargo := cmd.String("cargo", "", "Path to cargo executable")
-	rustc := cmd.String("rustc", "", "Path to rustc executable")
-	crateName := cmd.String("crate", "", "Name of the single crate to fetch")
-	version := cmd.String("version", "", "Version of the single crate to fetch")
-	featuresFlag := cmd.String("features", "", "Comma-separated features for the crate")
-	procMacro := cmd.Bool("proc-macro", false, "Whether this crate is a proc macro")
-	buildFile := cmd.String("build-file", "", "Path to BUILD file containing rust_crate declarations")
-	outDir := cmd.String("out-dir", "", "Directory to output built rlibs")
-
-	if err := cmd.Parse(args); err != nil {
-		return err
-	}
-
-	if *outDir == "" {
-		return fmt.Errorf("--out-dir is required")
-	}
-
-	if *crateName != "" {
-		var features []string
-		if *featuresFlag != "" {
-			features = strings.Split(*featuresFlag, ",")
-		}
-		return fetch.FetchCrate(*cargo, *rustc, *crateName, *version, features, *procMacro, *outDir)
-	}
-
-	if *buildFile != "" {
-		return fetch.FetchAll(*cargo, *rustc, *buildFile, *outDir)
-	}
-
-	return fmt.Errorf("either --crate or --build-file must be specified")
-}
-
 func handleTestRunner(args []string) error {
 	cmd := flag.NewFlagSet("test-runner", flag.ExitOnError)
 	pkg := cmd.String("pkg", "", "Package / target name")
@@ -202,8 +166,6 @@ func main() {
 		err = handleHash(args)
 	case "compile-c":
 		err = handleCompileC(args)
-	case "fetch":
-		err = handleFetch(args)
 	case "test-runner":
 		err = handleTestRunner(args)
 	default:

@@ -13,8 +13,7 @@ managing Rust crates and third-party dependencies using
 
 - [Architecture & Internal Design](architecture.md)
   - Overview of how Please rules interact with `please_rust`
-  - Subcommands: `compile`, `download`, `compile-c`, `hash`, `test-runner`,
-    `fetch`
+  - Subcommands: `compile`, `download`, `compile-c`, `hash`, `test-runner`
   - Toolchain discovery and execution model
   - Architecture and workflow diagrams
 - [Rule Reference](rules.md)

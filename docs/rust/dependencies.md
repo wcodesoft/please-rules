@@ -45,7 +45,6 @@ installed on the host machine.
 1. **Rust Toolchain**:
    - `rustc`: The standard Rust compiler executable in `$PATH` or standard
      locations.
-   - `cargo`: Optional / legacy fallback only.
 2. **C Compiler (for native extensions)**:
    - `cc`, `gcc`, or `clang` and `ar`: Used by `compile-c` when compiling crates
      with embedded C sources (e.g., Tree-sitter grammar parsers).

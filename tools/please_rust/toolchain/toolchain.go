@@ -60,7 +60,3 @@ func FindRustc(override string) (string, error) {
 	return findTool(override, "rustc")
 }
 
-// FindCargo resolves the path to the cargo binary.
-func FindCargo(override string) (string, error) {
-	return findTool(override, "cargo")
-}

@@ -78,9 +78,6 @@ RustcTool = //third_party/rust:toolchain|rustc
 # (Optional) Custom path to please_rust helper tool target
 PleaseRustTool = //tools/please_rust
 
-# (Optional) Custom path to cargo binary
-CargoTool = cargo
-
 # Default Rust edition for rules when not specified in BUILD file
 DefaultEdition = 2024
 ```
@@ -91,7 +88,6 @@ DefaultEdition = 2024
 | :--------------- | :----------------- | :-------------------- | :---------------------------------------------------------------------------------------------- |
 | `PleaseRustTool` | `please_rust_tool` | `//tools/please_rust` | Path or target label for the `please_rust` Go helper tool.                                      |
 | `RustcTool`      | `rustc_tool`       | `rustc`               | Target entry point (e.g. `//pkg:toolchain\|rustc`) or executable command/path for the compiler. |
-| `CargoTool`      | `cargo_tool`       | `cargo`               | Path or command name for `cargo` (legacy fallback).                                             |
 | `DefaultEdition` | `default_edition`  | `2024`                | Default Rust edition (e.g. `2021`, `2024`).                                                     |
 
 ---
