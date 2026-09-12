@@ -14,14 +14,6 @@ def _build_tools():
     tools = {"TOOL": [_rust_tool()]}
     tool = CONFIG.RUST.RUSTC_TOOL
     if tool and tool != "rustc" and (tool.startswith("//") or tool.startswith("///") or tool.startswith(":")):
-        if tool.startswith("///") and not tool.startswith("///rust//"):
-            idx = 0
-            for char in tool:
-                if char == "/":
-                    idx += 1
-                else:
-                    break
-            tool = "//" + tool[idx:]
         tools["RUSTC"] = [tool]
         return tools, '--rustc "$TOOLS_RUSTC"'
     elif tool and tool != "rustc":
