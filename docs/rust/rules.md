@@ -208,3 +208,73 @@ plz-out/bin/tools/please_rust/please_rust hash --crate <name> --version <version
 | `license`    | `str`  | `""`         | Informational SPDX license string metadata.                                                               |
 | `repository` | `str`  | `""`         | Informational source repository URL metadata.                                                             |
 | `visibility` | `list` | `["PUBLIC"]` | Target visibility list.                                                                                   |
+
+---
+
+## `rust_toolchain`
+
+Downloads official standalone Rust distributions (`rustc` and `rust-std`) from
+`static.rust-lang.org`, verifies cryptographic SHA-256 integrity, unpacks them
+into a self-contained, hermetic sysroot, and exposes the compiler via an entry
+point (`:<name>|rustc`).
+
+This eliminates the need for host-installed compilers (`rustup`, system `rustc`)
+and environment pass-through holes (`passenv = PATH, HOME`).
+
+```mermaid
+flowchart TD
+    subgraph Remote["static.rust-lang.org"]
+        Tarball["rust-1.85.0-{target_triple}.tar.gz"]
+    end
+
+    subgraph Please["Please Build Graph"]
+        RF["remote_file (:_download)"]
+        TC["build_rule (:toolchain)"]
+        EP["entry_points: rustc"]
+        PlzConfig[".plzconfig\nRustcTool = //build_defs/rust:toolchain|rustc"]
+    end
+
+    subgraph BuildRules["Rust Rules"]
+        RL["rust_library"]
+        RB["rust_bin"]
+        RT["rust_test"]
+        RC["rust_crate"]
+    end
+
+    Tarball -->|SHA-256 verified| RF
+    RF -->|unpack sysroot| TC
+    TC --> EP
+    EP -.->|binds to| PlzConfig
+    PlzConfig -->|$TOOLS_RUSTC| BuildRules
+```
+
+### `rust_toolchain` Example
+
+```starlark
+# Declare hermetic toolchain in third_party/rust/BUILD or build_defs/rust/BUILD
+rust_toolchain(
+    name = "toolchain",
+    version = "1.85.0",
+)
+```
+
+Configure in `.plzconfig`:
+
+```ini
+[Plugin "rust"]
+Target = //plugins:rust
+RustcTool = //build_defs/rust:toolchain|rustc
+```
+
+### `rust_toolchain` Parameters
+
+| Parameter    | Type   | Default                 | Description                                                                              |
+| :----------- | :----- | :---------------------- | :--------------------------------------------------------------------------------------- |
+| `name`       | `str`  | `"toolchain"`           | Target name in the `BUILD` file. Exposes entry point `:<name>\|rustc`.                   |
+| `version`    | `str`  | `"1.85.0"`              | Rust release version to download. Checksums for 1.85.0 are pre-populated out of the box. |
+| `rustc_url`  | `str`  | `""`                    | Custom download URL override for `rustc` component tarball.                              |
+| `std_url`    | `str`  | `""`                    | Custom download URL override for `rust-std` component tarball.                           |
+| `rustc_hash` | `str`  | `""`                    | SHA-256 hex digest for `rustc` archive. Defaults to known hash for verified versions.    |
+| `std_hash`   | `str`  | `""`                    | SHA-256 hex digest for `rust-std` archive. Defaults to known hash for verified versions. |
+| `visibility` | `list` | `["PUBLIC"]`            | Target visibility list.                                                                  |
+| `labels`     | `list` | `["rust", "toolchain"]` | Labels associated with the target.                                                       |

@@ -24,6 +24,8 @@ managing Rust crates and third-party dependencies using
     reporting
   - `rust_crate`: Hermetically downloads and compiles third-party crates with
     SHA-256 verification
+  - `rust_toolchain`: Hermetically downloads and provides a reproducible Rust
+    compiler sysroot
 - [Dependencies & Toolchains](dependencies.md)
   - System toolchain requirements (`rustc`, C compiler `cc`, Go)
   - Automatic toolchain resolution and path overrides

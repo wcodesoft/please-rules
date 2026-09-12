@@ -6,14 +6,46 @@ third-party crate dependency management in the Please Rust plugin
 
 ---
 
-## Toolchain Requirements
+## Toolchain Models: Hermetic vs. System
 
-To compile and test Rust targets, the system requires:
+`please-rules` supports two toolchain strategies:
+
+### 1. Hermetic Toolchain (Recommended)
+
+Using the `rust_toolchain` rule, Please downloads and verifies the official Rust
+compiler and standard library archives at build time. This ensures 100%
+reproducible builds across machines and CI environments without requiring:
+
+- Pre-installed `rustup` or `rustc` on the developer or CI host
+- Environment pass-through holes (`passenv = PATH, HOME`)
+
+```starlark
+# third_party/rust/BUILD
+rust_toolchain(
+    name = "toolchain",
+    version = "1.85.0",
+)
+```
+
+In `.plzconfig`:
+
+```ini
+[Plugin "rust"]
+Target = //plugins:rust
+RustcTool = //third_party/rust:toolchain|rustc
+```
+
+### 2. Host System Toolchain (Fallback)
+
+If a hermetic toolchain is not declared, Please falls back to the compiler
+installed on the host machine.
+
+#### Host Requirements:
 
 1. **Rust Toolchain**:
-   - `rustc`: The standard Rust compiler executable.
-   - `cargo`: Optional / legacy fallback only. Standard third-party crate
-     compilation in `please-rules` is completely Cargo-free.
+   - `rustc`: The standard Rust compiler executable in `$PATH` or standard
+     locations.
+   - `cargo`: Optional / legacy fallback only.
 2. **C Compiler (for native extensions)**:
    - `cc`, `gcc`, or `clang` and `ar`: Used by `compile-c` when compiling crates
      with embedded C sources (e.g., Tree-sitter grammar parsers).
@@ -26,15 +58,14 @@ To compile and test Rust targets, the system requires:
 
 ## Toolchain Resolution & Discovery
 
-When `please_rust` executes, it uses its built-in `toolchain` module to locate
-the host `rustc` executable.
+When `please_rust` executes, it resolves `rustc` according to this hierarchy:
 
 ### Resolution Hierarchy
 
 ```mermaid
 flowchart TD
     START[please_rust Invoked] --> CHECK_FLAG{Was --rustc flag provided?}
-    CHECK_FLAG -- Yes --> USE_FLAG[Use specified path override]
+    CHECK_FLAG -- Yes --> USE_FLAG[Use specified path or target entry point]
     CHECK_FLAG -- No --> CHECK_PATH{Is rustc in $PATH?}
     CHECK_PATH -- Yes --> USE_PATH[Use executable from $PATH]
     CHECK_PATH -- No --> CHECK_STD{Check standard paths:<br/>~/.cargo/bin<br/>/home/linuxbrew/.linuxbrew/bin<br/>/usr/local/bin<br/>/usr/bin}
@@ -44,17 +75,21 @@ flowchart TD
 
 ### Config Overrides via `.plzconfig`
 
-Toolchain paths can be explicitly set in your project's `.plzconfig`:
+Toolchain paths or targets can be explicitly set in your project's `.plzconfig`:
 
 ```ini
 [Plugin "rust"]
 Target = //plugins:rust
-RustcTool = /usr/local/bin/rustc
-PleaseRustTool = //tools/please_rust
+
+# Option A: Hermetic toolchain target entry point (recommended)
+RustcTool = //build_defs/rust:toolchain|rustc
+
+# Option B: Host system binary path
+; RustcTool = /usr/local/bin/rustc
 ```
 
-When set, these configuration keys are automatically passed as `--rustc` flags
-to `please_rust`.
+When set, these configuration keys are automatically wired into the build
+actions as execution tools and passed as `--rustc` to `please_rust`.
 
 ---
 

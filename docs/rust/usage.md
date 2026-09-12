@@ -26,6 +26,41 @@ subinclude("///rust//build_defs:rust")
 
 ---
 
+## Hermetic Toolchain Setup (Recommended)
+
+To achieve reproducible builds across all developer workstations and CI agents
+without requiring `rustup`, host `rustc`, or passing environment variables:
+
+### 1. Declare the Toolchain Target
+
+In a shared build file (e.g. `third_party/rust/BUILD` or
+`build_defs/rust/BUILD`):
+
+```starlark
+subinclude("///rust//build_defs:rust")
+
+rust_toolchain(
+    name = "toolchain",
+    version = "1.85.0",
+)
+```
+
+### 2. Bind the Toolchain in `.plzconfig`
+
+Set `RustcTool` in `.plzconfig` to the toolchain's `rustc` entry point:
+
+```ini
+[Plugin "rust"]
+Target = //plugins:rust
+RustcTool = //third_party/rust:toolchain|rustc
+```
+
+Please will download the standalone compiler and standard library archives from
+`static.rust-lang.org`, verify the SHA-256 checksums, unpack the sysroot, and
+supply `$TOOLS_RUSTC` to all compilation actions automatically.
+
+---
+
 ## Configuration Options
 
 The Rust plugin supports several configuration keys in `.plzconfig`:
@@ -34,11 +69,14 @@ The Rust plugin supports several configuration keys in `.plzconfig`:
 [Plugin "rust"]
 Target = //plugins:rust
 
+# (Recommended) Target entry point to hermetic toolchain
+RustcTool = //third_party/rust:toolchain|rustc
+
+# (Alternative) Host binary path override
+; RustcTool = /usr/bin/rustc
+
 # (Optional) Custom path to please_rust helper tool target
 PleaseRustTool = //tools/please_rust
-
-# (Optional) Custom path to rustc binary
-RustcTool = rustc
 
 # (Optional) Custom path to cargo binary
 CargoTool = cargo
@@ -49,12 +87,12 @@ DefaultEdition = 2024
 
 ### Options Summary
 
-| Config Key       | Option Name        | Default               | Description                                                |
-| :--------------- | :----------------- | :-------------------- | :--------------------------------------------------------- |
-| `PleaseRustTool` | `please_rust_tool` | `//tools/please_rust` | Path or target label for the `please_rust` Go helper tool. |
-| `RustcTool`      | `rustc_tool`       | `rustc`               | Path or command name for `rustc`.                          |
-| `CargoTool`      | `cargo_tool`       | `cargo`               | Path or command name for `cargo` (legacy fallback).        |
-| `DefaultEdition` | `default_edition`  | `2024`                | Default Rust edition (e.g. `2021`, `2024`).                |
+| Config Key       | Option Name        | Default               | Description                                                                                     |
+| :--------------- | :----------------- | :-------------------- | :---------------------------------------------------------------------------------------------- |
+| `PleaseRustTool` | `please_rust_tool` | `//tools/please_rust` | Path or target label for the `please_rust` Go helper tool.                                      |
+| `RustcTool`      | `rustc_tool`       | `rustc`               | Target entry point (e.g. `//pkg:toolchain\|rustc`) or executable command/path for the compiler. |
+| `CargoTool`      | `cargo_tool`       | `cargo`               | Path or command name for `cargo` (legacy fallback).                                             |
+| `DefaultEdition` | `default_edition`  | `2024`                | Default Rust edition (e.g. `2021`, `2024`).                                                     |
 
 ---
 

@@ -188,15 +188,68 @@ sequenceDiagram
 
 ## Toolchain Resolution (`tools/please_rust/toolchain`)
 
-The `toolchain` package resolves system toolchain binaries (`rustc` and
-`cargo`):
+The `toolchain` package resolves compiler binaries (`rustc` and `cargo`):
 
 1. **Explicit Flag / Config Override**: If `--rustc` or `--cargo` is specified
-   (from `.plzconfig` plugin settings), `please_rust` uses that exact binary
-   path.
+   (from `.plzconfig` plugin settings or build rule `tools`), `please_rust` uses
+   that exact binary path. When a Please build target or entry point is provided
+   (e.g. `//build_defs/rust:toolchain|rustc`), Please resolves it as an
+   execution tool dependency and sets `$TOOLS_RUSTC`.
 2. **Environment Path Search**: If unset or empty, `please_rust` searches
-   standard locations:
+   standard host locations as a fallback:
    - System `$PATH`
    - `$HOME/.cargo/bin/rustc` / `$HOME/.cargo/bin/cargo`
    - `/home/linuxbrew/.linuxbrew/bin/rustc`
    - `/usr/local/bin/rustc` / `/usr/bin/rustc`
+
+---
+
+## Hermetic Toolchain Architecture (`rust_toolchain`)
+
+The `rust_toolchain` rule allows Please to construct a fully hermetic Rust
+sysroot without relying on pre-installed host toolchains or environment holes
+(`passenv = PATH, HOME`).
+
+```mermaid
+flowchart TD
+    subgraph Remote["static.rust-lang.org"]
+        Tarball["rust-1.85.0-{target_triple}.tar.gz"]
+    end
+
+    subgraph Please["Please Build Graph"]
+        RF["remote_file (:_download)"]
+        TC["build_rule (:toolchain)"]
+        EP["entry_points: rustc"]
+        PlzConfig[".plzconfig\nRustcTool = //build_defs/rust:toolchain|rustc"]
+    end
+
+    subgraph BuildRules["Rust Rules"]
+        RL["rust_library"]
+        RB["rust_bin"]
+        RT["rust_test"]
+        RC["rust_crate"]
+    end
+
+    Tarball -->|SHA-256 verified| RF
+    RF -->|unpack sysroot| TC
+    TC --> EP
+    EP -.->|binds to| PlzConfig
+    PlzConfig -->|$TOOLS_RUSTC| BuildRules
+```
+
+### Sysroot Assembly
+
+1. **Lightweight Distribution**: `rust_toolchain` downloads the standalone
+   `rustc` and `rust-std` component archives from `static.rust-lang.org` for the
+   detected host triple (`x86_64-unknown-linux-gnu`,
+   `aarch64-unknown-linux-gnu`, `x86_64-apple-darwin`, or
+   `aarch64-apple-darwin`).
+2. **Integrity Verification**: Archive SHA-256 digests are verified against
+   pre-populated or user-specified hashes before extraction.
+3. **Merging into `$OUT`**: Unpacks `bin/` and `lib/` components into a unified
+   output directory target. Because standard Rust releases use
+   `RUNPATH: $ORIGIN/../lib`, the compiler binary resolves its shared libraries
+   without modifying `LD_LIBRARY_PATH`.
+4. **Entry Point Exposure**: Exposes the `rustc` entry point
+   (`:toolchain|rustc`), enabling direct consumption in `tools` mappings or via
+   `[Plugin "rust"] RustcTool = //build_defs/rust:toolchain|rustc`.

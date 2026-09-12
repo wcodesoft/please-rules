@@ -40,6 +40,9 @@ func findTool(override, name string) (string, error) {
 	for _, c := range candidates {
 		if c != "" {
 			if found := checkExecutable(c); found != "" {
+				if abs, err := filepath.Abs(found); err == nil {
+					return abs, nil
+				}
 				return found, nil
 			}
 		}

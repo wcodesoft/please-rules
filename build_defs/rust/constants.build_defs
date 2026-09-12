@@ -1,0 +1,29 @@
+"""
+Constants and target triples for Rust build definitions.
+"""
+
+DEFAULT_RUST_VERSION = "1.85.0"
+
+DEFAULT_HASHES = {
+    "1.85.0": {
+        "rustc": {
+            "x86_64-unknown-linux-gnu": "bddacba2c4008d27d6beb486dc701f8e39d7ce073053749c4d2c56013b6d2999",
+            "aarch64-unknown-linux-gnu": "e54c03bc6c8d00f400e56137086f62a73dac1c531113c7824ceccef3e6fdc198",
+            "aarch64-apple-darwin": "458d9ccfab76f4d98ab363bd8575d6ba7cb2b2e4e88ec247334962d416657b31",
+            "x86_64-apple-darwin": "3358fa99bbe7d70c3400700c093d6ca67efce694276f72ce8c4da43cd5a2235e",
+        },
+        "std": {
+            "x86_64-unknown-linux-gnu": "b3ad21966023d24fac039385201dc4109a2f25e6f7a0a5b2a0910eccfdc0c4a9",
+            "aarch64-unknown-linux-gnu": "63f8c57c2433e5ac970a9512660b8ca86002699bad4de5a2287fc591a7091e49",
+            "aarch64-apple-darwin": "b7ff9bc2cabc6277e2ec6d73ca5b3e5ea5e2a0582e5e5302ef9e354f348dab68",
+            "x86_64-apple-darwin": "18a5b48cf5bdca82acf51a12e1e2dbd05b13279b1859d014e46b56eb10f3922e",
+        },
+    },
+}
+
+TRIPLES = {
+    "linux_amd64": "x86_64-unknown-linux-gnu",
+    "linux_arm64": "aarch64-unknown-linux-gnu",
+    "darwin_arm64": "aarch64-apple-darwin",
+    "darwin_amd64": "x86_64-apple-darwin",
+}
