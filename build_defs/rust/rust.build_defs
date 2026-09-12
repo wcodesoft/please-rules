@@ -381,7 +381,6 @@ def rust_crate(
     name: str,
     version: str = "",
     sha256: str = "",
-
     crate_name: str = "",
     features: list = None,
     deps: list = None,
@@ -397,6 +396,29 @@ def rust_crate(
 ):
     """
     Downloads and compiles a third-party Rust crate hermetically — no cargo.
+
+    Source is fetched from crates.io once (sha256-verified) and cached by Please.
+    Each crate is compiled individually with rustc, using explicitly-declared deps.
+    Hash consistency is guaranteed by Please's dep graph, not a shared cargo workspace.
+
+    To get the sha256 for a new crate:
+      please_rust hash --crate <name> --version <version>
+
+    Args:
+      name:         Crate package name as on crates.io (may use hyphens).
+      version:      Exact crate version (e.g. "0.26.11").
+      sha256:       SHA-256 hex digest of the .crate tarball. Required.
+      crate_name:   Rust identifier (underscores). Defaults to name with hyphens replaced.
+      features:     Rust feature flags to enable (e.g. ["derive"]).
+      deps:         All Rust-level deps; each must produce an rlib or so.
+      proc_macro:   True if this is a proc-macro crate (produces .so instead of .rlib).
+      meta:         True for virtual targets with no compiled output.
+      c_srcs:       C source files inside the crate (relative to crate root).
+                    Compiled directly — avoids needing to run build.rs for grammar crates.
+      c_hdrs:       C header directories inside the crate (relative to crate root).
+      build_script: Reserved. True if build.rs generates code (not yet implemented).
+      license:      Informational only.
+      repository:   Informational only.
     """
     features = features or []
     deps = deps or []
