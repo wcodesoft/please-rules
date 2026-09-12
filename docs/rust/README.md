@@ -18,6 +18,7 @@ managing Rust crates and third-party dependencies using
   - Toolchain discovery and execution model
   - Architecture and workflow diagrams
 - [Rule Reference](rules.md)
+  - `rust_toolchain`: Hermetically downloads and packages official Rust toolchains and sysroot
   - `rust_library`: Compiles `.rlib` static libraries
   - `rust_bin`: Compiles binary executables
   - `rust_test`: Compiles and executes test executables with JUnit test

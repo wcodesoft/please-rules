@@ -33,17 +33,14 @@ Enable and configure the plugin in your root `.plzconfig`:
 
 [Plugin "rust"]
 Target = //plugins:rust
-
-[build]
-passenv = PATH, HOME
+RustcTool = //build_defs/rust:toolchain|rustc
 ```
 
-### Environment Pass-Through (`passenv`)
+### Hermetic Toolchain vs. Host Environment Pass-Through
 
-For toolchains that rely on host-installed compilers or dispatchers (such as
-`rustup`), passing `PATH` and `HOME` ensures that Please's sandboxed build
-actions can resolve tools and their corresponding configuration files without
-hardcoding paths.
+When using `rust_toolchain` (configured via `RustcTool = //build_defs/rust:toolchain|rustc`), `rustc` and its sysroot are fetched and verified hermetically inside `plz-out/`. No `passenv = PATH, HOME` is needed.
+
+If using a host-installed compiler (`rustup`), set `passenv = PATH, HOME` under `[build]` to allow sandboxed build actions to resolve host tools.
 
 ---
 
@@ -69,7 +66,5 @@ preloadsubincludes = ///rust//build_defs:rust
 
 Explore the language-specific guides and rule references:
 
-- **[Rust Rules Documentation](../rust/README.md)**: `rust_library`, `rust_bin`,
-  `rust_test`, and `rust_crate`.
-- **[Documentation Portal](../README.md)**: Full index of rules, architecture,
-  and references.
+- **[Rust Rules Documentation](../rust/README.md)**: `rust_toolchain`, `rust_library`, `rust_bin`, `rust_test`, and `rust_crate`.
+- **[Documentation Portal](../README.md)**: Full index of rules, architecture, and references.
