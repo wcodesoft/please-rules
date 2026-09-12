@@ -81,6 +81,7 @@ func findTool(override, name string) (string, error) {
 func FindRustc(override string) (string, error) {
 	return findTool(override, "rustc")
 }
+
 // FindLlvmProfdata resolves the path to the llvm-profdata binary.
 func FindLlvmProfdata(override string) (string, error) {
 	return findTool(override, "llvm-profdata")

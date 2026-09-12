@@ -525,4 +525,3 @@ func Run(pkgName string, testBinary string, extraArgs []string, resultsFile stri
 		ResultsFile: resultsFile,
 	})
 }
-

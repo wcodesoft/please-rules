@@ -204,4 +204,3 @@ func TestRun_Failure(t *testing.T) {
 		t.Errorf("expected 1 failure in xml, got %d", suites.TestSuite[0].Failures)
 	}
 }
-
