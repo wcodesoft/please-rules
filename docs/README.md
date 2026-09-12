@@ -37,7 +37,7 @@ and dependencies:
 
 ## Repository Structure
 
-```
+```txt
 please-rules/
 ├── build_defs/          # Starlark rule definitions by language (e.g. rust/)
 ├── tools/               # Native compiler orchestrators and helper CLI binaries

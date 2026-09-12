@@ -19,7 +19,8 @@ rust_bin(
 
 rust_test(
     name = "hermetic_test",
-    srcs = ["lib.rs"],
-    crate_name = "hermetic_lib",
+    srcs = ["hermetic_test.rs"],
+    crate_name = "hermetic_test",
+    deps = [":hermetic_lib"],
 )
 

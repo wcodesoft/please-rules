@@ -57,6 +57,23 @@ def _compile_cmd(crate, crate_type, edition, main_src, flags, env, rustc_arg):
       ${{SRCS:-}} ${{DEPS:-}}
     """
 
+def _is_coverage_enabled(rule_coverage=None):
+    """Determines whether coverage instrumentation is enabled for a target."""
+    if rule_coverage is not None:
+        return rule_coverage
+    return CONFIG.get("RUST.COVERAGE", "true").lower() in ("true", "1", "yes", "on")
+
+def _test_tools(profdata_override=None, cov_override=None):
+    """Returns test_tools dictionary for rust_test."""
+    tools = {"TOOL": [_rust_tool()]}
+    profdata = profdata_override or CONFIG.get("RUST.LLVM_PROFDATA_TOOL", "")
+    cov = cov_override or CONFIG.get("RUST.LLVM_COV_TOOL", "")
+    if profdata and (profdata.startswith("//") or profdata.startswith("///") or profdata.startswith(":")):
+        tools["LLVM_PROFDATA"] = [profdata]
+    if cov and (cov.startswith("//") or cov.startswith("///") or cov.startswith(":")):
+        tools["LLVM_COV"] = [cov]
+    return tools
+
 def rust_library(
         name:str,
         srcs:list=None,
@@ -68,7 +85,8 @@ def rust_library(
         visibility:list=None,
         test_only:bool=False,
         labels:list=None,
-        env:dict=None):
+        env:dict=None,
+        coverage:bool=None):
     """
     Compiles a Rust static library (.rlib).
     """
@@ -76,6 +94,10 @@ def rust_library(
     crate = crate_name or name
     resolved_main = _resolve_main(srcs, main, ["src/lib.rs", "lib.rs", "mod.rs", "src/mod.rs"])
     tools, rustc_arg = _build_tools()
+    flags = [f for f in (flags or [])]
+    if _is_coverage_enabled(coverage) and "-C instrument-coverage" not in " ".join(flags):
+        flags.append("-C instrument-coverage")
+
     cmd = _compile_cmd(
         crate = crate,
         crate_type = "rlib",
@@ -111,7 +133,8 @@ def rust_bin(
         visibility:list=None,
         test_only:bool=False,
         labels:list=None,
-        env:dict=None):
+        env:dict=None,
+        coverage:bool=None):
     """
     Compiles a Rust binary executable.
     """
@@ -119,6 +142,10 @@ def rust_bin(
     crate = crate_name or name
     resolved_main = _resolve_main(srcs, main, ["src/main.rs", "main.rs"])
     tools, rustc_arg = _build_tools()
+    flags = [f for f in (flags or [])]
+    if coverage is True and "-C instrument-coverage" not in " ".join(flags):
+        flags.append("-C instrument-coverage")
+
     cmd = _compile_cmd(
         crate = crate,
         crate_type = "bin",
@@ -158,7 +185,10 @@ def rust_test(
         size:str="medium",
         timeout:int=0,
         flaky:bool=False,
-        env:dict=None):
+        env:dict=None,
+        coverage:bool=None,
+        llvm_profdata:str=None,
+        llvm_cov:str=None):
     """
     Compiles and executes a Rust test suite using Please's test runner.
     """
@@ -166,6 +196,10 @@ def rust_test(
     crate = crate_name or name
     resolved_main = _resolve_main(srcs, main, ["src/lib.rs", "lib.rs", "mod.rs", "src/mod.rs"])
     tools, rustc_arg = _build_tools()
+    flags = [f for f in (flags or [])]
+    if _is_coverage_enabled(coverage) and "-C instrument-coverage" not in " ".join(flags):
+        flags.append("-C instrument-coverage")
+
     cmd = _compile_cmd(
         crate = crate,
         crate_type = "test",
@@ -176,7 +210,10 @@ def rust_test(
         rustc_arg = rustc_arg,
     )
 
-    test_cmd = f'TOOL="${{TOOLS_TOOL:-$TOOL}}" && $TOOL test-runner --pkg "{crate}" "$TEST" -- --nocapture'
+    profdata_arg = f"--llvm-profdata '{llvm_profdata}'" if llvm_profdata and not (llvm_profdata.startswith("//") or llvm_profdata.startswith("///") or llvm_profdata.startswith(":")) else '${TOOLS_LLVM_PROFDATA:+--llvm-profdata "$TOOLS_LLVM_PROFDATA"}'
+    cov_arg = f"--llvm-cov '{llvm_cov}'" if llvm_cov and not (llvm_cov.startswith("//") or llvm_cov.startswith("///") or llvm_cov.startswith(":")) else '${TOOLS_LLVM_COV:+--llvm-cov "$TOOLS_LLVM_COV"}'
+
+    test_cmd = f'TOOL="${{TOOLS_TOOL:-$TOOL}}" && $TOOL test-runner --pkg "{crate}" {profdata_arg} {cov_arg} "$TEST" --nocapture'
     if env:
         test_env_exports = " && ".join([f'export {k}="{v}"' for k, v in env.items()])
         test_cmd = f"{test_env_exports} && {test_cmd}"
@@ -192,9 +229,7 @@ def rust_test(
         test = True,
         needs_transitive_deps = True,
         tools = tools,
-        test_tools = {
-            "TOOL": [_rust_tool()],
-        },
+        test_tools = _test_tools(llvm_profdata, llvm_cov),
         visibility = visibility,
         labels = labels or ["rust"],
         data = data,
@@ -378,14 +413,20 @@ def rust_toolchain(
         version:str=DEFAULT_RUST_VERSION,
         rustc_url:str="",
         std_url:str="",
+        llvm_tools_url:str="",
         rustc_hash:str="",
         std_hash:str="",
+        llvm_tools_hash:str="",
+        include_llvm_tools:bool=True,
         visibility:list=["PUBLIC"],
         labels:list=None):
     """
-    Downloads and provides a hermetic Rust toolchain (rustc and rust-std).
+    Downloads and provides a hermetic Rust toolchain (rustc, rust-std, and llvm-tools).
 
-    Exposes entry point :<name>|rustc.
+    Exposes entry points:
+      - :<name>|rustc
+      - :<name>|llvm-profdata
+      - :<name>|llvm-cov
 
     To use this toolchain in your project:
       1. Declare in a BUILD file (e.g. build_defs/rust/BUILD):
@@ -394,6 +435,8 @@ def rust_toolchain(
          [Plugin "rust"]
          Target = //plugins:rust
          RustcTool = //build_defs/rust:toolchain|rustc
+         LlvmProfdataTool = //build_defs/rust:toolchain|llvm-profdata
+         LlvmCovTool = //build_defs/rust:toolchain|llvm-cov
     """
     host_key = f"{CONFIG.HOSTOS}_{CONFIG.HOSTARCH}"
     target_triple = TRIPLES.get(host_key)
@@ -420,6 +463,43 @@ def rust_toolchain(
         hashes = [resolved_std_hash] if resolved_std_hash else [],
     )
 
+    srcs = {
+        "RUSTC": [f":{dl_rustc_target}"],
+        "STD": [f":{dl_std_target}"],
+    }
+
+    entry_points = {
+        "rustc": f"{name}/bin/rustc",
+    }
+
+    llvm_unpack_cmd = ""
+    if include_llvm_tools:
+        dl_llvm_tools_url = llvm_tools_url or f"https://static.rust-lang.org/dist/llvm-tools-{version}-{target_triple}.tar.gz"
+        resolved_llvm_tools_hash = llvm_tools_hash or _default_hash(version, "llvm_tools", target_triple)
+        dl_llvm_tools_target = f"_{name}_llvm_tools_dl"
+        remote_file(
+            name = dl_llvm_tools_target,
+            url = dl_llvm_tools_url,
+            hashes = [resolved_llvm_tools_hash] if resolved_llvm_tools_hash else [],
+        )
+        srcs["LLVM_TOOLS"] = [f":{dl_llvm_tools_target}"]
+        entry_points["llvm-profdata"] = f"{name}/bin/llvm-profdata"
+        entry_points["llvm-cov"] = f"{name}/bin/llvm-cov"
+        llvm_unpack_cmd = f"""
+if [ -n "${{SRCS_LLVM_TOOLS:-}}" ]; then
+  tar -xzf "$SRCS_LLVM_TOOLS" -C "$TMP_DIR"
+  cp -R "$TMP_DIR"/llvm-tools-*/llvm-tools-*/lib/rustlib/* "$OUT/lib/rustlib/"
+  if [ -f "$OUT/lib/rustlib/{target_triple}/bin/llvm-profdata" ]; then
+    ln -sf "../lib/rustlib/{target_triple}/bin/llvm-profdata" "$OUT/bin/llvm-profdata"
+    chmod +x "$OUT/lib/rustlib/{target_triple}/bin/llvm-profdata" "$OUT/bin/llvm-profdata"
+  fi
+  if [ -f "$OUT/lib/rustlib/{target_triple}/bin/llvm-cov" ]; then
+    ln -sf "../lib/rustlib/{target_triple}/bin/llvm-cov" "$OUT/bin/llvm-cov"
+    chmod +x "$OUT/lib/rustlib/{target_triple}/bin/llvm-cov" "$OUT/bin/llvm-cov"
+  fi
+fi
+"""
+
     cmd = f"""
 mkdir -p "$OUT/bin" "$OUT/lib"
 TMP_DIR=$(mktemp -d)
@@ -427,24 +507,21 @@ tar -xzf "$SRCS_RUSTC" -C "$TMP_DIR"
 cp -R "$TMP_DIR"/rustc-*/rustc/* "$OUT/"
 tar -xzf "$SRCS_STD" -C "$TMP_DIR"
 cp -R "$TMP_DIR"/rust-std-*/rust-std-*/lib/rustlib "$OUT/lib/"
+{llvm_unpack_cmd}
 rm -rf "$TMP_DIR"
 chmod +x "$OUT/bin/rustc"
 """
 
     return build_rule(
         name = name,
-        srcs = {
-            "RUSTC": [f":{dl_rustc_target}"],
-            "STD": [f":{dl_std_target}"],
-        },
+        srcs = srcs,
         outs = [name],
         cmd = cmd,
-        entry_points = {
-            "rustc": f"{name}/bin/rustc",
-        },
+        entry_points = entry_points,
         binary = True,
         visibility = visibility,
         labels = labels or ["rust", "toolchain"],
         building_description = f"Assembling hermetic Rust toolchain {version} ({target_triple})...",
     )
+
 

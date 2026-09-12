@@ -9,6 +9,8 @@ rust_library(
 
 rust_test(
     name = "lib_test",
-    srcs = ["lib.rs"],
-    crate_name = "mylib",
+    srcs = ["lib_test.rs"],
+    crate_name = "mylib_test",
+    deps = [":lib"],
 )
+

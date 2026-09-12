@@ -40,7 +40,7 @@ RustcTool = //third_party/rust:toolchain|rustc
 If a hermetic toolchain is not declared, Please falls back to the compiler
 installed on the host machine.
 
-#### Host Requirements:
+#### Host Requirements
 
 1. **Rust Toolchain**:
    - `rustc`: The standard Rust compiler executable in `$PATH` or standard
