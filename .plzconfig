@@ -10,6 +10,7 @@ Stdlib = //third_party/go:std
 
 [Plugin "rust"]
 Target = //plugins:rust
+PleaseRustTool = //tools/please_rust:please_rust
 RustcTool = //test/rust/toolchain:toolchain|rustc
 LlvmProfdataTool = //test/rust/toolchain:toolchain|llvm-profdata
 LlvmCovTool = //test/rust/toolchain:toolchain|llvm-cov
