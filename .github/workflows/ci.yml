@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: ["main", "rust", "release/**"]
+    branches: ["main", "rust", "kotlin", "release/**"]
   pull_request:
-    branches: ["main", "rust", "release/**"]
+    branches: ["main", "rust", "kotlin", "release/**"]
 
 jobs:
   guard:
