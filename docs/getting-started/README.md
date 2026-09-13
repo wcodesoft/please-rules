@@ -15,12 +15,14 @@ plugin_repo(
     name = "rust",
     owner = "wcodesoft",
     plugin = "please-rules",
-    revision = "v0.3.2",
+    revision = "rust-v0.4.0",     # or revision = "rust"
 )
 ```
 
-As additional language rulesets (such as TypeScript/Deno) become available in
-this repository, they can be declared using their respective plugin names.
+`please-rules` uses a **[Hub-and-Spoke Gitflow](../gitflow.md)** where each
+language ruleset (Rust, Kotlin, etc.) lives on its own dedicated branch.
+Consumers specify the language branch or language release tag (e.g.
+`rust-v0.4.0`) in `revision`.
 
 ---
 
@@ -93,5 +95,7 @@ Explore the language-specific guides and rule references:
 
 - **[Rust Rules Documentation](../rust/README.md)**: `rust_library`, `rust_bin`,
   `rust_test`, and `rust_crate`.
+- **[Multi-Language Gitflow Architecture](../gitflow.md)**: Details on branch
+  strategy, common code syncing, and release tagging.
 - **[Documentation Portal](../README.md)**: Full index of rules, architecture,
   and references.

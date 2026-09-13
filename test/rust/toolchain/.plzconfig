@@ -1,0 +1,2 @@
+[Plugin "rust"]
+RustcTool = //test/rust/toolchain:toolchain|rustc

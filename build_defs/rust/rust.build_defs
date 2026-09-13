@@ -1,7 +1,7 @@
 """
 Please build definitions for Rust rules.
 """
-subinclude("///rust//build_defs/rust:constants")
+subinclude("//build_defs/rust:constants")
 
 def _rust_tool():
     return CONFIG.RUST.PLEASE_RUST_TOOL

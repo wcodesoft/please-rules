@@ -6,6 +6,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-09-13
+
+### Added
+
+- Multi-language Hub-and-Spoke Gitflow architecture and AI guidelines:
+  - Added multi-language architecture guide in `docs/gitflow.md`.
+  - Added `.agents/skills/multi-language-gitflow/SKILL.md` skill for automated
+    Gitflow compliance.
+  - Added `AGENTS.md` root workspace rules enforcing one-way merging, rebase
+    prohibition, and language branch isolation.
+- Created dedicated `rust` branch for language-specific releases and
+  development.
+
+### Changed
+
+- Reorganized the test suite to support multi-language coexistence:
+  - Moved integration tests from `test/bin`, `test/lib`, and `test/toolchain`
+    into namespaced directory `test/rust/` (`test/rust/bin`, `test/rust/lib`,
+    `test/rust/toolchain`).
+  - Updated toolchain and test references in `.plzconfig` and internal `BUILD`
+    files.
+- Made build definition subincludes portable
+  (`subinclude("//build_defs/rust:constants")`) to avoid coupling to external
+  subrepo aliases.
+
 ## [0.3.3] - 2026-09-13
 
 ### Added

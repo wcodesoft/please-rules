@@ -79,16 +79,26 @@ RustcTool = //third_party/rust:toolchain|rustc
 PleaseRustTool = //tools/please_rust
 
 # Default Rust edition for rules when not specified in BUILD file
-DefaultEdition = 2024
+DefaultEdition = 2021
+
+# Coverage instrumentation enabled by default
+Coverage = true
+
+# LLVM profdata and cov tools (for coverage reporting)
+LlvmProfdataTool = //third_party/rust:toolchain|llvm-profdata
+LlvmCovTool = //third_party/rust:toolchain|llvm-cov
 ```
 
 ### Options Summary
 
-| Config Key       | Option Name        | Default               | Description                                                                                     |
-| :--------------- | :----------------- | :-------------------- | :---------------------------------------------------------------------------------------------- |
-| `PleaseRustTool` | `please_rust_tool` | `//tools/please_rust` | Path or target label for the `please_rust` Go helper tool.                                      |
-| `RustcTool`      | `rustc_tool`       | `rustc`               | Target entry point (e.g. `//pkg:toolchain\|rustc`) or executable command/path for the compiler. |
-| `DefaultEdition` | `default_edition`  | `2024`                | Default Rust edition (e.g. `2021`, `2024`).                                                     |
+| Config Key         | Option Name          | Default               | Description                                                                                     |
+| :----------------- | :------------------- | :-------------------- | :---------------------------------------------------------------------------------------------- |
+| `PleaseRustTool`   | `please_rust_tool`   | `//tools/please_rust` | Path or target label for the `please_rust` Go helper tool.                                      |
+| `RustcTool`        | `rustc_tool`         | `rustc`               | Target entry point (e.g. `//pkg:toolchain\|rustc`) or executable command/path for the compiler. |
+| `DefaultEdition`   | `default_edition`    | `2021`                | Default Rust edition (e.g. `2021`, `2024`).                                                     |
+| `Coverage`         | `coverage`           | `true`                | Whether to compile Rust targets with coverage instrumentation.                                  |
+| `LlvmProfdataTool` | `llvm_profdata_tool` | `""`                  | Path or target label for `llvm-profdata`.                                                       |
+| `LlvmCovTool`      | `llvm_cov_tool`      | `""`                  | Path or target label for `llvm-cov`.                                                            |
 
 ---
 
