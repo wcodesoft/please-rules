@@ -29,10 +29,12 @@ agents operating in this codebase MUST strictly adhere to the following rules:
      `rust`, `kotlin`, etc.). Rebasing rewrites commit SHAs, breaking consumer
      hashes and cached revisions.
 
-4. **Release Tagging**:
-   - Release tags MUST always include the language prefix:
+4. **Release Tagging & Naming Conventions**:
+   - Release tags MUST always include the lowercase language prefix:
      `<language>-v<semver>` (e.g. `rust-v0.4.0`, `kotlin-v0.1.0`). Never create
      bare tags like `v1.0.0`.
+   - GitHub Release names / titles MUST always follow the standardized format:
+     `[<Language>] v<semver>` (e.g. `[Rust] v0.4.0`, `[Kotlin] v0.1.0`).
 
 ---
 
