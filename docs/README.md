@@ -11,6 +11,8 @@ extensible, hermetic language plugins and build rules for the
 - **[Integration & Getting Started](getting-started/README.md)**: How to
   declare, configure, and consume rulesets from this repository in your Please
   projects.
+- **[Multi-Language Gitflow Architecture](gitflow.md)**: Branching strategy,
+  per-language releases, and multi-plugin Gitflow.
 
 ---
 
@@ -41,11 +43,11 @@ and dependencies:
 please-rules/
 ├── build_defs/          # Starlark rule definitions by language (e.g. rust/)
 ├── tools/               # Native compiler orchestrators and helper CLI binaries
-├── plugins/             # Plugin repository declarations exposed to consumers
+├── plugins/             # Unified rules plugin repository exposed to consumers
 ├── docs/                # Documentation portal and language-specific guides
 │   ├── getting-started/ # Project integration and onboarding guides
 │   └── rust/            # Rust architecture, rule reference, and guides
-└── test/                # End-to-end integration test suites
+└── test/                # End-to-end integration test suites by language (e.g. test/rust/)
 ```
 
 ---

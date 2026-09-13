@@ -2,11 +2,38 @@ name: CI
 
 on:
   push:
-    branches: ["main"]
+    branches: ["main", "rust", "release/**"]
   pull_request:
-    branches: ["main"]
+    branches: ["main", "rust", "release/**"]
 
 jobs:
+  guard:
+    name: Gitflow Branch Guard
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify no language-specific changes target main
+        run: |
+          git fetch origin main
+          CHANGED_FILES=$(git diff --name-only origin/main...HEAD)
+          echo "Changed files in PR:"
+          echo "$CHANGED_FILES"
+
+          # Detect language-specific rules, tools, or integration tests
+          VIOLATIONS=$(echo "$CHANGED_FILES" | grep -E '^(build_defs/[^/]+|tools/please_[^/]+|test/[^/]+)' || true)
+          if [ -n "$VIOLATIONS" ]; then
+            echo "::error::Language-specific rules or tests cannot be merged into 'main'."
+            echo "The following files violate the Hub-and-Spoke Gitflow:"
+            echo "$VIOLATIONS"
+            echo "Please retarget your PR to the corresponding language branch (e.g. 'rust')."
+            exit 1
+          fi
+
   fmt:
     name: Code & Docs Formatting
     runs-on: ubuntu-latest
