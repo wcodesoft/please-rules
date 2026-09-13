@@ -110,7 +110,12 @@ git push origin fix/archive-tar-xz
 
 # 2. Open PR targeting and merge into `main`
 
-# 3. Propagate updates downstream to each language branch
+# 3. Automated Downstream Propagation:
+# GitHub Actions (.github/workflows/sync-downstream.yml) automatically merges
+# 'main' into all active language branches (rust, kotlin, etc.), tests them,
+# and pushes to remote.
+
+# Manual Downstream Propagation (if syncing locally or offline):
 git checkout rust
 git pull origin rust
 git merge main -m "chore: sync common infrastructure from main"
