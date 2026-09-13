@@ -21,7 +21,7 @@ Name = kotlin
 
 [PluginConfig "please_kotlin_tool"]
 ConfigKey = PleaseKotlinTool
-DefaultValue = //tools/please_kotlin
+DefaultValue = //tools:please_kotlin
 Help = A path or build label for the please_kotlin tool
 Inherit = true
 
