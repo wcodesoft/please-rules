@@ -1,0 +1,391 @@
+"""
+Please build definitions for hermetic TypeScript and Deno rules.
+"""
+subinclude("//build_defs/ts:constants")
+
+def _ts_tool():
+    return CONFIG.TS.PLEASE_TS_TOOL
+
+def _deno_tool_arg(tools):
+    tool = CONFIG.TS.DENO_TOOL
+    if tool and tool != "deno" and (tool.startswith("//") or tool.startswith("///") or tool.startswith(":")):
+        tools["DENO"] = [tool]
+        return '--deno "$TOOLS_DENO"'
+    elif tool and tool != "deno":
+        return f"--deno '{tool}'"
+    return ""
+
+def _join_cmd(tool_cmd, args):
+    valid_args = [a for a in args if a]
+    return f"{tool_cmd} \\\n  " + " \\\n  ".join(valid_args) + "\n"
+
+def ts_toolchain(
+        name: str = "toolchain",
+        version: str = DEFAULT_DENO_VERSION,
+        deno_url: str = "",
+        deno_hash: str = "",
+        target_platform: str = "",
+        labels: list = None,
+        visibility: list = None):
+    """Assembles a 100% hermetic Deno compiler and runtime sysroot."""
+    plat = target_platform or f"{CONFIG.OS}_{CONFIG.ARCH}"
+    deno_info = DENO_PLATFORM_MAP.get(plat, DENO_PLATFORM_MAP["linux_amd64"])
+
+    dl_url = deno_url or deno_info["url"]
+    resolved_hash = deno_hash or deno_info["hash"]
+
+    dl_target = f"_{name}_deno_dl"
+    remote_file(
+        name = dl_target,
+        url = dl_url,
+        hashes = [resolved_hash] if resolved_hash else [],
+    )
+
+    cmd = """
+mkdir -p "$OUT/bin"
+TMP_DIR=$(mktemp -d)
+if command -v unzip >/dev/null 2>&1; then
+  unzip -q "$SRCS" -d "$TMP_DIR"
+else
+  python3 -m zipfile -e "$SRCS" "$TMP_DIR"
+fi
+mv "$TMP_DIR/deno" "$OUT/bin/deno"
+chmod +x "$OUT/bin/deno"
+rm -rf "$TMP_DIR"
+"""
+
+    return build_rule(
+        name = name,
+        srcs = [f":{dl_target}"],
+        outs = [name],
+        cmd = cmd,
+        entry_points = {
+            "deno": f"{name}/bin/deno",
+        },
+        binary = True,
+        visibility = visibility or ["PUBLIC"],
+        labels = labels or ["ts", "toolchain"],
+        building_description = f"Assembling hermetic Deno toolchain {version}...",
+    )
+
+def ts_module(
+        name: str,
+        package: str = "",
+        version: str = "",
+        hashes: list = None,
+        url: str = "",
+        deps: list = None,
+        visibility: list = None,
+        labels: list = None):
+    """Downloads an npm package tarball, extracts it, and creates metadata for downstream targets."""
+    pkg = package or name
+    ver = version
+
+    if not url:
+        # Resolve package base name for scoped packages e.g. @preact/signals -> signals
+        pkg_base = pkg.split("/")[-1] if "/" in pkg else pkg
+        url = f"https://registry.npmjs.org/{pkg}/-/{pkg_base}-{ver}.tgz"
+
+    dl_target = f"_{name}#download"
+    remote_file(
+        name = dl_target,
+        url = url,
+        hashes = hashes or [],
+        out = f"{name}.tgz",
+    )
+
+    tools = {"TOOL": [_ts_tool()]}
+    cmd = f'$TOOLS_TOOL unpack --tarball "$SRCS" --out "$OUT" --name "{pkg}"'
+
+    return build_rule(
+        name = name,
+        srcs = [f":{dl_target}"],
+        deps = deps or [],
+        exported_deps = deps or [],
+        outs = [name],
+        cmd = cmd,
+        needs_transitive_deps = True,
+        tools = tools,
+        visibility = visibility or ["PUBLIC"],
+        labels = labels or ["ts", "module", "npm"],
+        building_description = f"Unpacking npm module {pkg}@{ver}...",
+    )
+
+def ts_library(
+        name: str,
+        srcs: list,
+        deps: list = None,
+        module_name: str = "",
+        flags: list = None,
+        visibility: list = None,
+        labels: list = None):
+    """Compiles and type-checks TypeScript / JavaScript files into a modular library."""
+    deps = deps or []
+    flags = flags or []
+
+    tools = {"TOOL": [_ts_tool()]}
+    deno_arg = _deno_tool_arg(tools)
+
+    flags_str = f"--flags '{' '.join(flags)}'" if flags else ""
+
+    compile_args = [
+        '--out "$OUT"',
+        '--srcs "${SRCS:-}"',
+        '--deps "${DEPS:-}"',
+        f'--module-name "{module_name}"' if module_name else "",
+        deno_arg,
+        flags_str,
+    ]
+    cmd = _join_cmd("$TOOLS_TOOL compile", compile_args)
+
+    return build_rule(
+        name = name,
+        srcs = srcs,
+        deps = deps,
+        exported_deps = deps,
+        outs = [name],
+        cmd = cmd,
+        needs_transitive_deps = True,
+        tools = tools,
+        visibility = visibility,
+        labels = labels or ["ts", "lib"],
+        building_description = f"Compiling TypeScript library {name}...",
+    )
+
+def ts_binary(
+        name: str,
+        main: str,
+        srcs: list = None,
+        deps: list = None,
+        module_name: str = "",
+        flags: list = None,
+        visibility: list = None,
+        labels: list = None):
+    """Compiles a TypeScript program into a standalone native executable via deno compile."""
+    srcs = srcs or []
+    deps = deps or []
+    flags = flags or []
+    pkg = package_name()
+    resolved_main = f"{pkg}/{main}" if not main.startswith(pkg) and not main.startswith("/") else main
+
+    if main not in srcs:
+        srcs = srcs + [main]
+
+    tools = {"TOOL": [_ts_tool()]}
+    deno_arg = _deno_tool_arg(tools)
+
+    flags_str = f"--flags '{' '.join(flags)}'" if flags else ""
+
+    compile_args = [
+        '--out "$OUT"',
+        f'--main "{resolved_main}"',
+        '--srcs "${SRCS:-}"',
+        '--deps "${DEPS:-}"',
+        f'--module-name "{module_name}"' if module_name else "",
+        deno_arg,
+        flags_str,
+    ]
+    cmd = _join_cmd("$TOOLS_TOOL binary", compile_args)
+
+    return build_rule(
+        name = name,
+        srcs = srcs,
+        deps = deps,
+        outs = [name],
+        cmd = cmd,
+        binary = True,
+        needs_transitive_deps = True,
+        tools = tools,
+        visibility = visibility,
+        labels = labels or ["ts", "bin"],
+        building_description = f"Compiling TypeScript binary {name}...",
+    )
+
+def ts_bundle(
+        name: str,
+        main: str,
+        out: str = None,
+        srcs: list = None,
+        deps: list = None,
+        module_name: str = "",
+        format: str = "esm",
+        minify: bool = False,
+        sourcemap: bool = False,
+        bundler_tool: str = "",
+        flags: list = None,
+        visibility: list = None,
+        labels: list = None):
+    """Bundles TypeScript / JavaScript sources into a single distribution asset."""
+    srcs = srcs or []
+    deps = deps or []
+    flags = flags or []
+    out_file = out or f"{name}.bundle.js"
+    pkg = package_name()
+    resolved_main = f"{pkg}/{main}" if not main.startswith(pkg) and not main.startswith("/") else main
+
+    if main not in srcs:
+        srcs = srcs + [main]
+
+    tools = {"TOOL": [_ts_tool()]}
+    deno_arg = _deno_tool_arg(tools)
+
+    flags_str = f"--flags '{' '.join(flags)}'" if flags else ""
+
+    bundle_args = [
+        '--out "$OUT"',
+        f'--main "{resolved_main}"',
+        '--srcs "${SRCS:-}"',
+        '--deps "${DEPS:-}"',
+        f'--module-name "{module_name}"' if module_name else "",
+        f'--format "{format}"',
+        '--minify' if minify else "",
+        '--sourcemap' if sourcemap else "",
+        f'--bundler-tool "{bundler_tool}"' if bundler_tool else "",
+        deno_arg,
+        flags_str,
+    ]
+    cmd = _join_cmd("$TOOLS_TOOL bundle", bundle_args)
+
+    return build_rule(
+        name = name,
+        srcs = srcs,
+        deps = deps,
+        outs = [out_file],
+        cmd = cmd,
+        needs_transitive_deps = True,
+        tools = tools,
+        visibility = visibility,
+        labels = labels or ["ts", "bundle"],
+        building_description = f"Bundling TypeScript asset {name}...",
+    )
+
+def ts_test(
+        name: str,
+        srcs: list,
+        deps: list = None,
+        data: list = None,
+        module_name: str = "",
+        runner: str = "deno",
+        flags: list = None,
+        visibility: list = None,
+        labels: list = None):
+    """Runs hermetic unit or simulated DOM tests using Deno test runner or Vitest."""
+    deps = deps or []
+    flags = flags or []
+    data = (data or []) + srcs + deps
+
+    tools = {"TOOL": [_ts_tool()]}
+    deno_arg = _deno_tool_arg(tools)
+
+    flags_str = f"--flags '{' '.join(flags)}'" if flags else ""
+
+    compile_args = [
+        '--out "$OUT"',
+        '--srcs "${SRCS:-}"',
+        '--deps "${DEPS:-}"',
+        f'--module-name "{module_name}"' if module_name else "",
+        deno_arg,
+        flags_str,
+    ]
+    compile_cmd = _join_cmd("$TOOLS_TOOL compile", compile_args)
+
+    pkg = package_name()
+    full_srcs = [f"{pkg}/{s}" if not s.startswith(pkg) else s for s in srcs]
+    srcs_list = ",".join(full_srcs)
+    testrunner_args = [
+        f'--runner "{runner}"',
+        f'--srcs "{srcs_list}"',
+        '--deps "${DEPS:-}"',
+        f'--module-name "{module_name}"' if module_name else "",
+        '--results-file "test.results"',
+        '--coverage-file "${COVERAGE_FILE:-test.coverage}"',
+        '--coverage="${COVERAGE:-false}"',
+        deno_arg,
+        '--',
+        '"$@"',
+    ]
+    test_cmd = _join_cmd("$TOOLS_TOOL testrunner", testrunner_args)
+
+    return build_rule(
+        name = name,
+        srcs = srcs,
+        deps = deps,
+        data = data,
+        outs = [name],
+        cmd = compile_cmd,
+        test_cmd = test_cmd,
+        needs_transitive_deps = True,
+        tools = tools,
+        test_tools = tools,
+        test = True,
+        binary = True,
+        visibility = visibility,
+        labels = labels or ["ts", "test"],
+        building_description = f"Testing TypeScript target {name}...",
+    )
+
+def ts_browser_test(
+        name: str,
+        srcs: list,
+        browser: str = "chromium",
+        browser_binary: str = "",
+        deps: list = None,
+        data: list = None,
+        module_name: str = "",
+        flags: list = None,
+        visibility: list = None,
+        labels: list = None):
+    """Runs hermetic in-browser tests with headless browser binaries."""
+    deps = deps or []
+    flags = flags or []
+    data = (data or []) + srcs + deps
+
+    tools = {"TOOL": [_ts_tool()]}
+    deno_arg = _deno_tool_arg(tools)
+
+    flags_str = f"--flags '{' '.join(flags)}'" if flags else ""
+
+    compile_args = [
+        '--out "$OUT"',
+        '--srcs "${SRCS:-}"',
+        '--deps "${DEPS:-}"',
+        f'--module-name "{module_name}"' if module_name else "",
+        deno_arg,
+        flags_str,
+    ]
+    compile_cmd = _join_cmd("$TOOLS_TOOL compile", compile_args)
+
+    srcs_list = ",".join(srcs)
+    testrunner_args = [
+        '--runner "vitest"',
+        f'--browser "{browser}"',
+        f'--browser-binary "{browser_binary}"' if browser_binary else "",
+        f'--srcs "{srcs_list}"',
+        '--deps "${DEPS:-}"',
+        f'--module-name "{module_name}"' if module_name else "",
+        '--results-file "test.results"',
+        '--coverage-file "${COVERAGE_FILE:-test.coverage}"',
+        '--coverage="${COVERAGE:-false}"',
+        deno_arg,
+        '--',
+        '"$@"',
+    ]
+    test_cmd = _join_cmd("$TOOLS_TOOL testrunner", testrunner_args)
+
+    return build_rule(
+        name = name,
+        srcs = srcs,
+        deps = deps,
+        data = data,
+        outs = [name],
+        cmd = compile_cmd,
+        test_cmd = test_cmd,
+        needs_transitive_deps = True,
+        tools = tools,
+        test_tools = tools,
+        test = True,
+        binary = True,
+        visibility = visibility,
+        labels = labels or ["ts", "test", "browser"],
+        building_description = f"Running browser test {name}...",
+    )

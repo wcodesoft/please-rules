@@ -7,3 +7,30 @@ Target = //plugins:go
 ImportPath = ""
 GoTool = //third_party/go:toolchain|go
 Stdlib = //third_party/go:std
+
+[Plugin "ts"]
+Target = //plugins:ts
+PleaseTsTool = //tools/please_ts:please_ts
+DenoTool = //tools/ts_toolchain:toolchain|deno
+
+[PluginDefinition]
+Name = ts
+
+[PluginConfig "please_ts_tool"]
+ConfigKey = PleaseTsTool
+DefaultValue = //tools:please_ts
+Help = A path or build label for the please_ts tool
+Inherit = true
+
+[PluginConfig "deno_tool"]
+ConfigKey = DenoTool
+DefaultValue = deno
+Help = Path to the deno binary or toolchain target to use
+Inherit = true
+
+[PluginConfig "coverage"]
+ConfigKey = Coverage
+DefaultValue = true
+Help = Whether to collect coverage during test execution
+Inherit = true
+
