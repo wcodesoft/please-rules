@@ -93,8 +93,9 @@ preloadsubincludes = ///rust//build_defs:rust
 
 Explore the language-specific guides and rule references:
 
-- **[Rust Rules Documentation](../rust/README.md)**: `rust_library`, `rust_bin`,
-  `rust_test`, and `rust_crate`.
+- **[Rust Rules Documentation](https://github.com/wcodesoft/please-rules/blob/rust/docs/rust/README.md)**:
+  `rust_library`, `rust_bin`, `rust_test`, and `rust_crate` on the
+  [`rust`](https://github.com/wcodesoft/please-rules/tree/rust) branch.
 - **[Multi-Language Gitflow Architecture](../gitflow.md)**: Details on branch
   strategy, common code syncing, and release tagging.
 - **[Documentation Portal](../README.md)**: Full index of rules, architecture,

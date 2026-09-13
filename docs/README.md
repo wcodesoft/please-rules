@@ -18,22 +18,27 @@ extensible, hermetic language plugins and build rules for the
 
 ## Language Rulesets
 
+Each language ruleset lives on its own dedicated branch. Full documentation for
+each language is maintained directly in its branch:
+
 ### Rust (`///rust`)
 
 First-class, hermetic support for compiling, testing, and managing Rust crates
-and dependencies:
+and dependencies on the
+[`rust`](https://github.com/wcodesoft/please-rules/tree/rust) branch:
 
-- **[Rust Documentation Overview](rust/README.md)**: Entry point and quick
-  overview.
-- **[Rule Reference](rust/rules.md)**: Detailed API reference for
-  `rust_library`, `rust_bin`, `rust_test`, and `rust_crate`.
-- **[Architecture & Design](rust/architecture.md)**: Under-the-hood design of
-  the `please_rust` multi-subcommand binary, compilation workflows, and
-  diagrams.
-- **[Usage Guide](rust/usage.md)**: Integration guides, `.plzconfig` setup, and
-  multi-crate layout examples.
-- **[Dependencies & Toolchains](rust/dependencies.md)**: Toolchain requirements,
-  automatic path discovery, and C native dependencies.
+- **[Rust Documentation Overview](https://github.com/wcodesoft/please-rules/blob/rust/docs/rust/README.md)**:
+  Entry point and quick overview.
+- **[Rule Reference](https://github.com/wcodesoft/please-rules/blob/rust/docs/rust/rules.md)**:
+  Detailed API reference for `rust_library`, `rust_bin`, `rust_test`, and
+  `rust_crate`.
+- **[Architecture & Design](https://github.com/wcodesoft/please-rules/blob/rust/docs/rust/architecture.md)**:
+  Under-the-hood design of the `please_rust` multi-subcommand binary,
+  compilation workflows, and diagrams.
+- **[Usage Guide](https://github.com/wcodesoft/please-rules/blob/rust/docs/rust/usage.md)**:
+  Integration guides, `.plzconfig` setup, and multi-crate layout examples.
+- **[Dependencies & Toolchains](https://github.com/wcodesoft/please-rules/blob/rust/docs/rust/dependencies.md)**:
+  Toolchain requirements, automatic path discovery, and C native dependencies.
 
 ---
 
@@ -41,13 +46,16 @@ and dependencies:
 
 ```txt
 please-rules/
-├── build_defs/          # Starlark rule definitions by language (e.g. rust/)
-├── tools/               # Native compiler orchestrators and helper CLI binaries
-├── plugins/             # Unified rules plugin repository exposed to consumers
-├── docs/                # Documentation portal and language-specific guides
-│   ├── getting-started/ # Project integration and onboarding guides
-│   └── rust/            # Rust architecture, rule reference, and guides
-└── test/                # End-to-end integration test suites by language (e.g. test/rust/)
+├── main branch              # Common infrastructure, base CI, shared tools, and docs
+│   ├── .agents/skills/      # AI agent skills (Gitflow automation)
+│   ├── .github/workflows/   # CI workflows and branch guard
+│   ├── docs/                # Documentation portal, getting-started, and gitflow guides
+│   └── plugins/             # Common plugin repository declarations
+└── <language> branches      # Dedicated long-lived branches (e.g. rust, kotlin)
+    ├── build_defs/<lang>/   # Starlark rule definitions for <language>
+    ├── tools/please_<lang>/ # Native compiler orchestrator and CLI tools
+    ├── docs/<lang>/         # Language architecture, rule reference, and usage guides
+    └── test/<lang>/         # End-to-end integration test suites for <language>
 ```
 
 ---
