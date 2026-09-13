@@ -1,10 +1,10 @@
-name: CI
+name: CI (Main)
 
 on:
   push:
-    branches: ["main", "rust", "kotlin", "release/**"]
+    branches: [main]
   pull_request:
-    branches: ["main", "rust", "kotlin", "release/**"]
+    branches: [main]
 
 jobs:
   guard:
@@ -30,7 +30,7 @@ jobs:
             echo "::error::Language-specific rules or tests cannot be merged into 'main'."
             echo "The following files violate the Hub-and-Spoke Gitflow:"
             echo "$VIOLATIONS"
-            echo "Please retarget your PR to the corresponding language branch (e.g. 'rust')."
+            echo "Please retarget your PR to the corresponding language branch (e.g. 'rust' or 'kotlin')."
             exit 1
           fi
 
@@ -56,17 +56,6 @@ jobs:
               echo "Run 'gofmt -w tools/' to fix."
               exit 1
             fi
-          fi
-
-      - name: Install rustfmt
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt
-
-      - name: Check Rust formatting
-        run: |
-          if [ -d test ]; then
-            find test -name "*.rs" -exec rustfmt --check {} +
           fi
 
       - name: Set up Node.js
