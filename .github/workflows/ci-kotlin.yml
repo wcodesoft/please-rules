@@ -1,0 +1,57 @@
+name: CI (Kotlin)
+
+on:
+  push:
+    branches: ["kotlin", "release/kotlin*"]
+  pull_request:
+    branches: ["kotlin", "release/kotlin*"]
+
+jobs:
+  fmt:
+    name: Kotlin & Docs Formatting
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+
+      - name: Check Go formatting
+        run: |
+          if [ -d tools ]; then
+            UNFORMATTED=$(gofmt -l tools/)
+            if [ -n "$UNFORMATTED" ]; then
+              echo "The following Go files are not formatted:"
+              echo "$UNFORMATTED"
+              echo "Run 'gofmt -w tools/' to fix."
+              exit 1
+            fi
+          fi
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Check Markdown formatting
+        run: npx prettier --check "**/*.md"
+
+  test:
+    name: Please Build & Test (Kotlin)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build all targets
+        run: ./pleasew --plain_output build //...
+        env:
+          VERITAS_NO_HOOK: "1"
+
+      - name: Run all tests
+        run: ./pleasew --plain_output test //...
+        env:
+          VERITAS_NO_HOOK: "1"
