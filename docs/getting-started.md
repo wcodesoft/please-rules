@@ -19,7 +19,7 @@ plugin_repo(
 )
 ```
 
-`please-rules` uses a **[Hub-and-Spoke Gitflow](../gitflow.md)** where each
+`please-rules` uses a **[Hub-and-Spoke Gitflow](gitflow.md)** where each
 language ruleset (Rust, Kotlin, etc.) lives on its own dedicated branch.
 Consumers specify the language branch or language release tag (e.g.
 `rust-v0.4.0`) in `revision`.
@@ -96,7 +96,7 @@ Explore the language-specific guides and rule references:
 - **[Rust Rules Documentation](https://github.com/wcodesoft/please-rules/blob/rust/docs/rust/README.md)**:
   `rust_library`, `rust_bin`, `rust_test`, and `rust_crate` on the
   [`rust`](https://github.com/wcodesoft/please-rules/tree/rust) branch.
-- **[Multi-Language Gitflow Architecture](../gitflow.md)**: Details on branch
+- **[Multi-Language Gitflow Architecture](gitflow.md)**: Details on branch
   strategy, common code syncing, and release tagging.
-- **[Documentation Portal](../README.md)**: Full index of rules, architecture,
-  and references.
+- **[Documentation Portal](README.md)**: Full index of rules, architecture, and
+  references.
