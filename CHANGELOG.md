@@ -7,6 +7,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] - 2026-09-13
+
+### Fixed
+
+- Eliminate Starlark parsing error by removing unsupported `break` keywords in
+  `_derive_main_class` and `_derive_test_class`.
+- Format `CHANGELOG.md` to conform to repository Prettier standards.
+- Integrate `kotlin` branch into CI workflow triggers and automated downstream
+  sync.
+
 ## [0.1.0] - 2026-09-13
 
 ### Added
