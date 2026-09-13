@@ -20,7 +20,7 @@ Name = rust
 
 [PluginConfig "please_rust_tool"]
 ConfigKey = PleaseRustTool
-DefaultValue = //tools/please_rust
+DefaultValue = //tools:please_rust
 Help = A path or build label for the please_rust tool
 Inherit = true
 
