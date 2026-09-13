@@ -23,8 +23,8 @@ and this project adheres to
   - First-class JUnit 5 Platform integration via ConsoleLauncher with mandatory
     `test_class` and user-managed test libraries via `maven_jar`.
   - Automatic `main_class` derivation for executable application binaries.
-  - Built-in `maven_jar` rule supporting coordinate resolution (`id = "group:artifact:version"`)
-    and optional SHA-256 integrity checks.
+  - Built-in `maven_jar` rule supporting coordinate resolution
+    (`id = "group:artifact:version"`) and optional SHA-256 integrity checks.
   - Full code coverage support (`plz cover`) integrating JaCoCo agent
     instrumentation, report parsing, and Please-compatible GCOV/LCOV generation.
   - Automated `test.results` JUnit XML generation compatible with Please and CI

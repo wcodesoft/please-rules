@@ -99,9 +99,8 @@ def _derive_main_class(name, srcs, explicit_package=""):
     for s in srcs:
         parts = s.split("/")
         base = parts[-1]
-        if base == f"{name}.kt" or base.endswith("_test.kt") or base.endswith("Test.kt") or base == "main.kt":
+        if not candidate_file and (base == f"{name}.kt" or base.endswith("_test.kt") or base.endswith("Test.kt") or base == "main.kt"):
             candidate_file = base
-            break
     if not candidate_file and srcs:
         first_src = srcs[0]
         parts = first_src.split("/")
@@ -169,12 +168,12 @@ def _derive_test_class(name, srcs, explicit_package=""):
     pkg = explicit_package or package_name().replace("/", ".")
     candidate = ""
     for s in srcs:
-        parts = s.split("/")
-        base = parts[-1]
-        if base.endswith(".kt"):
-            base = base[:-3]
-        candidate = base
-        break
+        if not candidate:
+            parts = s.split("/")
+            base = parts[-1]
+            if base.endswith(".kt"):
+                base = base[:-3]
+            candidate = base
     if not candidate:
         candidate = name
     parts = candidate.split("_")
