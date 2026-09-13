@@ -11,7 +11,8 @@ and this project adheres to
 
 ### Fixed
 
-- Expose `///kotlin//build_defs:kotlin` entry point via `build_defs/BUILD` filegroup.
+- Expose `///kotlin//build_defs:kotlin` entry point via `build_defs/BUILD`
+  filegroup.
 
 ## [0.1.1] - 2026-09-13
 
