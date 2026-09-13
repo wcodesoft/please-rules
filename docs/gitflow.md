@@ -124,10 +124,12 @@ git push origin kotlin
 
 ---
 
-## 5. Release & Tagging Conventions
+## 5. Release, Tagging & Naming Conventions
+
+### Git Release Tags
 
 Because Git tags share a global namespace within a repository, release tags must
-be prefixed with the language identifier:
+be prefixed with the lowercase language identifier:
 
 ```txt
 <language>-v<semver>
@@ -139,13 +141,35 @@ Examples:
 - `rust-v0.4.1`
 - `kotlin-v0.1.0`
 
+### GitHub Release Names
+
+GitHub Release titles/names MUST be standardized across all languages with the
+capitalized language name in brackets followed by the version:
+
+```txt
+[<Language>] v<semver>
+```
+
+Examples:
+
+- `[Rust] v0.4.0`
+- `[Rust] v0.4.1`
+- `[Kotlin] v0.1.0`
+
 ### Publishing a Release
 
 ```bash
+# 1. Tag the release on the language branch
 git checkout rust
 git pull origin rust
 git tag rust-v0.4.0
 git push origin rust-v0.4.0
+
+# 2. Publish GitHub Release with the standardized title
+gh release create rust-v0.4.0 \
+  --target rust \
+  --title "[Rust] v0.4.0" \
+  --notes "..."
 ```
 
 ---

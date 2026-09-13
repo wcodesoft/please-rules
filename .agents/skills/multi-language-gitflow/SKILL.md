@@ -131,7 +131,17 @@ or repository-level documentation:
    git push origin rust-v0.4.0
    ```
 
-3. **Verify Consumer Declaration**: Consumers consume this release in
+3. **Publish GitHub Release**: Use the standardized title format
+   `[<Language>] v<semver>`:
+
+   ```bash
+   gh release create rust-v0.4.0 \
+     --target rust \
+     --title "[Rust] v0.4.0" \
+     --notes "..."
+   ```
+
+4. **Verify Consumer Declaration**: Consumers consume this release in
    `plugins/BUILD`:
    ```starlark
    plugin_repo(
