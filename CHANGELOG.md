@@ -10,7 +10,8 @@ and this project adheres to
 
 ### Added
 
-- Distribute precompiled hermetic `please_rust` binaries via `tools/BUILD` `remote_file`.
+- Distribute precompiled hermetic `please_rust` binaries via `tools/BUILD`
+  `remote_file`.
 - Configure default `PleaseRustTool` to `//tools:please_rust`.
 
 ## [0.4.0] - 2026-09-13
