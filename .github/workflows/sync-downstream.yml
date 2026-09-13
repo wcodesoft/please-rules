@@ -1,0 +1,50 @@
+name: Sync Downstream Branches
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    name: Sync main -> ${{ matrix.language }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [rust]
+
+    steps:
+      - name: Checkout language branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.language }}
+          fetch-depth: 0
+
+      - name: Configure Git author
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Merge main into ${{ matrix.language }}
+        run: |
+          git fetch origin main
+          echo "Merging origin/main into ${{ matrix.language }}..."
+          if ! git merge origin/main -m "chore(sync): auto-merge common infrastructure from main"; then
+            echo "::error::Downstream merge from main into '${{ matrix.language }}' failed with conflicts."
+            echo "Please resolve conflicts manually: checkout '${{ matrix.language }}', run 'git merge main', and push."
+            exit 1
+          fi
+
+      - name: Verify build & tests on ${{ matrix.language }}
+        run: |
+          ./pleasew --plain_output test //...
+        env:
+          VERITAS_NO_HOOK: "1"
+
+      - name: Push to ${{ matrix.language }}
+        run: |
+          git push origin ${{ matrix.language }}

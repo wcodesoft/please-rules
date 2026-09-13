@@ -93,8 +93,12 @@ or repository-level documentation:
    # PR targets and merges into `main`
    ```
 
-2. **Propagate Downstream via Merge**: Sync every language branch using
-   `git merge main`:
+2. **Downstream Propagation**:
+   - **Automated**: The GitHub Actions workflow
+     `.github/workflows/sync-downstream.yml` automatically merges `main` into
+     all active language branches, runs tests, and pushes updates upon push to
+     `main`.
+   - **Manual**: When syncing locally or resolving conflicts offline:
    ```bash
    # Sync Rust branch
    git checkout rust
