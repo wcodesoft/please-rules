@@ -11,7 +11,8 @@ and this project adheres to
 
 ### Added
 
-- Distribute precompiled hermetic `please_kotlin` binaries via `tools/BUILD` `remote_file`.
+- Distribute precompiled hermetic `please_kotlin` binaries via `tools/BUILD`
+  `remote_file`.
 - Configure default `PleaseKotlinTool` to `//tools:please_kotlin`.
 
 ## [0.1.2] - 2026-09-13
