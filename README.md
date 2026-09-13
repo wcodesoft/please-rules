@@ -11,7 +11,7 @@ hermeticity, reproducible builds, and minimal host dependencies.
 ## Getting Started
 
 To integrate and use rules from this repository in your Please project, see the
-**[Getting Started & Integration Guide](docs/getting-started/README.md)**.
+**[Getting Started & Integration Guide](docs/getting-started.md)**.
 
 ---
 
@@ -32,8 +32,8 @@ long-lived branch:
 Detailed guides, language rule references, and architecture documentation:
 
 - **[Documentation Portal](docs/README.md)**: Main documentation hub.
-- **[Getting Started Guide](docs/getting-started/README.md)**: Project
-  integration and setup.
+- **[Getting Started Guide](docs/getting-started.md)**: Project integration and
+  setup.
 - **[Multi-Language Gitflow Guide](docs/gitflow.md)**: Repository branching
   model, release tagging, and synchronization workflows.
 - **[Rust Rules Documentation](https://github.com/wcodesoft/please-rules/blob/rust/docs/rust/README.md)**:

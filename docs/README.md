@@ -8,9 +8,8 @@ extensible, hermetic language plugins and build rules for the
 
 ## Getting Started
 
-- **[Integration & Getting Started](getting-started/README.md)**: How to
-  declare, configure, and consume rulesets from this repository in your Please
-  projects.
+- **[Integration & Getting Started](getting-started.md)**: How to declare,
+  configure, and consume rulesets from this repository in your Please projects.
 - **[Multi-Language Gitflow Architecture](gitflow.md)**: Branching strategy,
   per-language releases, and multi-plugin Gitflow.
 
