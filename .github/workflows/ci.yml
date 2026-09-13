@@ -48,12 +48,14 @@ jobs:
 
       - name: Check Go formatting
         run: |
-          UNFORMATTED=$(gofmt -l tools/)
-          if [ -n "$UNFORMATTED" ]; then
-            echo "The following Go files are not formatted:"
-            echo "$UNFORMATTED"
-            echo "Run 'gofmt -w tools/' to fix."
-            exit 1
+          if [ -d tools ]; then
+            UNFORMATTED=$(gofmt -l tools/)
+            if [ -n "$UNFORMATTED" ]; then
+              echo "The following Go files are not formatted:"
+              echo "$UNFORMATTED"
+              echo "Run 'gofmt -w tools/' to fix."
+              exit 1
+            fi
           fi
 
       - name: Install rustfmt
@@ -63,7 +65,9 @@ jobs:
 
       - name: Check Rust formatting
         run: |
-          find test -name "*.rs" -exec rustfmt --check {} +
+          if [ -d test ]; then
+            find test -name "*.rs" -exec rustfmt --check {} +
+          fi
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
