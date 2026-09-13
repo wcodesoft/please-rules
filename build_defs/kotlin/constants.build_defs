@@ -1,0 +1,36 @@
+"""
+Constants and target mappings for Kotlin build definitions.
+"""
+
+DEFAULT_KOTLIN_VERSION = "2.1.10"
+DEFAULT_JDK_VERSION = "21"
+DEFAULT_JACOCO_VERSION = "0.8.12"
+
+KOTLINC_URL_TEMPLATE = "https://github.com/JetBrains/kotlin/releases/download/v{version}/kotlin-compiler-{version}.zip"
+KOTLINC_HASHES = {
+    "2.1.10": "c6e9e2636889828e19c8811d5ab890862538c89dc2a3101956dfee3c2a8ba6b1",
+}
+
+JACOCO_URL_TEMPLATE = "https://repo1.maven.org/maven2/org/jacoco/jacoco/{version}/jacoco-{version}.zip"
+JACOCO_HASHES = {
+    "0.8.12": "35cf2a2b8937659ecbc8d0d3902dfa7f55b7ed2250e82424036a3e1d12462cd7",
+}
+
+JDK_PLATFORM_MAP = {
+    "linux_amd64": {
+        "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12.1%2B1/OpenJDK21U-jdk_x64_linux_hotspot_21.0.12.1_1.tar.gz",
+        "hash": "ce79869e1307ed8ee1e2baa86a412b1eb5b75d10a01006d788a6f968bcfaee94",
+    },
+    "linux_arm64": {
+        "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12.1%2B1/OpenJDK21U-jdk_aarch64_linux_hotspot_21.0.12.1_1.tar.gz",
+        "hash": "23e37e026f12f3e706f18938ff611db3032d075b09d0879a25d06718c773e223",
+    },
+    "darwin_arm64": {
+        "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12.1%2B1/OpenJDK21U-jdk_aarch64_mac_hotspot_21.0.12.1_1.tar.gz",
+        "hash": "3623232f33a9c3baadf304480b2535f9a3cba8a58d42ecbb438ba267315d9998",
+    },
+    "darwin_amd64": {
+        "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12.1%2B1/OpenJDK21U-jdk_x64_mac_hotspot_21.0.12.1_1.tar.gz",
+        "hash": "44db0f08196daf19a47f90d13388b0c943b67663cb537f998fe29e836fa842ce",
+    },
+}

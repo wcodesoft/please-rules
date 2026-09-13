@@ -1,0 +1,503 @@
+"""
+Please build definitions for Kotlin rules.
+"""
+subinclude("//build_defs/kotlin:constants")
+
+def _kotlin_tool():
+    return CONFIG.KOTLIN.PLEASE_KOTLIN_TOOL
+
+def _default_jvm_target():
+    return CONFIG.KOTLIN.JVM_TARGET or "21"
+
+def _kotlinc_tool_arg(tools):
+    tool = CONFIG.KOTLIN.KOTLINC_TOOL
+    if tool and tool != "kotlinc" and (tool.startswith("//") or tool.startswith("///") or tool.startswith(":")):
+        tools["KOTLINC"] = [tool]
+        return '--kotlinc "$TOOLS_KOTLINC"'
+    elif tool and tool != "kotlinc":
+        return f"--kotlinc '{tool}'"
+    return ""
+
+def _java_tool_arg(tools):
+    tool = CONFIG.KOTLIN.JAVA_TOOL
+    if tool and tool != "java" and (tool.startswith("//") or tool.startswith("///") or tool.startswith(":")):
+        tools["JAVA"] = [tool]
+        return '--java "$TOOLS_JAVA"'
+    elif tool and tool != "java":
+        return f"--java '{tool}'"
+    return ""
+
+def _jacoco_tools_arg(tools):
+    agent = CONFIG.KOTLIN.JACOCO_AGENT
+    cli = CONFIG.KOTLIN.JACOCO_CLI
+    args = []
+    if agent and (agent.startswith("//") or agent.startswith("///") or agent.startswith(":")):
+        tools["JACOCO_AGENT"] = [agent]
+        args.append('--jacoco-agent "$TOOLS_JACOCO_AGENT"')
+    elif agent:
+        args.append(f"--jacoco-agent '{agent}'")
+
+    if cli and (cli.startswith("//") or cli.startswith("///") or cli.startswith(":")):
+        tools["JACOCO_CLI"] = [cli]
+        args.append('--jacoco-cli "$TOOLS_JACOCO_CLI"')
+    elif cli:
+        args.append(f"--jacoco-cli '{cli}'")
+
+    return " ".join(args)
+
+def _join_cmd(tool_cmd, args):
+    valid_args = [a for a in args if a]
+    return f"{tool_cmd} \\\n  " + " \\\n  ".join(valid_args) + "\n"
+
+def kotlin_library(
+        name:str,
+        srcs:list,
+        deps:list=None,
+        jvm_target:str="",
+        flags:list=None,
+        visibility:list=None,
+        labels:list=None):
+    """Compiles Kotlin source files into a reusable JAR library."""
+    deps = deps or []
+    flags = flags or []
+    jvm_tgt = jvm_target or _default_jvm_target()
+    out_jar = f"{name}.jar"
+
+    tools = {"TOOL": [_kotlin_tool()]}
+    kotlinc_arg = _kotlinc_tool_arg(tools)
+
+    flags_str = f"--flags '{' '.join(flags)}'" if flags else ""
+
+    compile_args = [
+        '--out "$OUT"',
+        '--srcs "${SRCS:-}"',
+        '--deps "${DEPS:-}"',
+        f'--jvm-target "{jvm_tgt}"',
+        f'--module-name "{name}"',
+        kotlinc_arg,
+        flags_str,
+    ]
+    cmd = _join_cmd("$TOOLS_TOOL compile", compile_args)
+
+    return build_rule(
+        name = name,
+        srcs = srcs,
+        deps = deps,
+        outs = [out_jar],
+        cmd = cmd,
+        needs_transitive_deps = True,
+        tools = tools,
+        visibility = visibility,
+        labels = labels or ["kotlin", "lib"],
+        building_description = f"Compiling Kotlin library {name}...",
+    )
+
+def _derive_main_class(name, srcs, explicit_package=""):
+    """Derives the default Kotlin main/test facade class from package and sources."""
+    pkg = explicit_package or package_name().replace("/", ".")
+    candidate_file = ""
+    for s in srcs:
+        parts = s.split("/")
+        base = parts[-1]
+        if base == f"{name}.kt" or base.endswith("_test.kt") or base.endswith("Test.kt") or base == "main.kt":
+            candidate_file = base
+            break
+    if not candidate_file and srcs:
+        first_src = srcs[0]
+        parts = first_src.split("/")
+        candidate_file = parts[-1]
+
+    if candidate_file:
+        base_name = candidate_file[:-3] if candidate_file.endswith(".kt") else candidate_file
+        first_char = base_name[0]
+        rest = base_name[1:]
+        class_name = first_char.upper() + rest + "Kt"
+        return f"{pkg}.{class_name}" if pkg else class_name
+    return ""
+
+def kotlin_binary(
+        name:str,
+        srcs:list=None,
+        deps:list=None,
+        main_class:str="",
+        jvm_target:str="",
+        flags:list=None,
+        visibility:list=None,
+        labels:list=None):
+    """Produces an executable self-contained JAR and launcher for a Kotlin application."""
+    srcs = srcs or []
+    deps = deps or []
+    flags = flags or []
+    jvm_tgt = jvm_target or _default_jvm_target()
+    resolved_main = main_class or _derive_main_class(name, srcs)
+
+    tools = {"TOOL": [_kotlin_tool()]}
+    kotlinc_arg = _kotlinc_tool_arg(tools)
+    java_arg = _java_tool_arg(tools)
+    flags_str = f"--flags '{' '.join(flags)}'" if flags else ""
+
+    compile_args = [
+        '--out "$OUT"',
+        '--srcs "${SRCS:-}"',
+        '--deps "${DEPS:-}"',
+        f'--jvm-target "{jvm_tgt}"',
+        f'--module-name "{name}"',
+        f'--main-class "{resolved_main}"' if resolved_main else "",
+        '--executable',
+        kotlinc_arg,
+        java_arg,
+        flags_str,
+    ]
+    compile_cmd = _join_cmd("$TOOLS_TOOL compile", compile_args)
+
+    return build_rule(
+        name = name,
+        srcs = srcs,
+        deps = deps,
+        outs = [name],
+        cmd = compile_cmd,
+        needs_transitive_deps = True,
+        tools = tools,
+        binary = True,
+        visibility = visibility,
+        labels = labels or ["kotlin", "bin"],
+        building_description = f"Compiling Kotlin binary {name}...",
+    )
+
+def _derive_test_class(name, srcs, explicit_package=""):
+    """Derives the default Kotlin test class name from package and sources."""
+    pkg = explicit_package or package_name().replace("/", ".")
+    candidate = ""
+    for s in srcs:
+        parts = s.split("/")
+        base = parts[-1]
+        if base.endswith(".kt"):
+            base = base[:-3]
+        candidate = base
+        break
+    if not candidate:
+        candidate = name
+    parts = candidate.split("_")
+    pascal = "".join([p.capitalize() for p in parts])
+    return f"{pkg}.{pascal}" if pkg else pascal
+
+def kotlin_test(
+        name:str,
+        srcs:list,
+        test_class:str="",
+        deps:list=None,
+        test_package:str="",
+        jvm_target:str="",
+        flags:list=None,
+        visibility:list=None,
+        labels:list=None):
+    """Runs a Kotlin unit test suite with JUnit 5, producing JUnit test.results and JaCoCo coverage."""
+    deps = deps or []
+    flags = flags or []
+    jvm_tgt = jvm_target or _default_jvm_target()
+    resolved_test_class = test_class or _derive_test_class(name, srcs, test_package)
+    if not resolved_test_class:
+        fail(f"kotlin_test {name} requires a mandatory 'test_class' attribute")
+
+    tools = {"TOOL": [_kotlin_tool()]}
+    kotlinc_arg = _kotlinc_tool_arg(tools)
+    flags_str = f"--flags '{' '.join(flags)}'" if flags else ""
+
+    compile_args = [
+        '--out "$OUT"',
+        '--srcs "${SRCS:-}"',
+        '--deps "${DEPS:-}"',
+        f'--jvm-target "{jvm_tgt}"',
+        f'--module-name "{name}"',
+        '--merge-deps',
+        kotlinc_arg,
+        flags_str,
+    ]
+    compile_cmd = _join_cmd("$TOOLS_TOOL compile", compile_args)
+
+    test_tools = {"TOOL": [_kotlin_tool()]}
+    java_arg = _java_tool_arg(test_tools)
+    jacoco_args = _jacoco_tools_arg(test_tools)
+
+    testrunner_args = [
+        java_arg,
+        '--test-jar "$TEST"',
+        f'--test-class "{resolved_test_class}"',
+        '--deps "${DEPS:-}"',
+        '--results-file "test.results"',
+        '--coverage-file "${COVERAGE_FILE:-test.coverage}"',
+        '--coverage="${COVERAGE:-false}"',
+        '--srcs "${SRCS:-}"',
+        jacoco_args,
+        '--',
+        '"$@"',
+    ]
+    test_cmd = _join_cmd("$TOOLS_TOOL testrunner", testrunner_args)
+
+    return build_rule(
+        name = name,
+        srcs = srcs,
+        deps = deps,
+        outs = [f"{name}.jar"],
+        cmd = compile_cmd,
+        test_cmd = test_cmd,
+        needs_transitive_deps = True,
+        tools = tools,
+        test_tools = test_tools,
+        test = True,
+        binary = True,
+        visibility = visibility,
+        labels = labels or ["kotlin", "test"],
+        building_description = f"Compiling Kotlin test {name}...",
+    )
+
+kt_library = kotlin_library
+kt_binary = kotlin_binary
+kt_test = kotlin_test
+
+def kt_test_suite(
+        name:str,
+        srcs:list,
+        deps:list=None,
+        visibility:list=None,
+        labels:list=None):
+    """Defines a test suite creating individual test targets for each source file."""
+    pkg = package_name().split("/")[-1] if package_name() else ""
+    deps = deps or []
+    tests = []
+    for src in srcs:
+        parts = src.split("/")
+        filename = parts[-1]
+        if filename.endswith(".kt"):
+            filename = filename[:-3]
+        target_name = filename
+        test_cls = f"{pkg}.{filename}" if pkg else filename
+        kotlin_test(
+            name = target_name,
+            srcs = [src],
+            test_class = test_cls,
+            deps = deps,
+            visibility = visibility,
+            labels = labels,
+        )
+        tests.append(f":{target_name}")
+
+    return filegroup(
+        name = name,
+        deps = tests,
+        visibility = visibility,
+        labels = labels,
+    )
+
+def kotlin_jvm_import(
+        name:str,
+        jar:str,
+        deps:list=None,
+        visibility:list=None):
+    """Imports an external precompiled JAR into the Please build graph."""
+    return filegroup(
+        name = name,
+        srcs = [jar],
+        deps = deps or [],
+        visibility = visibility,
+        labels = ["kotlin", "import"],
+    )
+
+def maven_jar(
+        name:str,
+        id:str="",
+        group:str="",
+        artifact:str="",
+        version:str="",
+        sha256:str="",
+        sha1:str="",
+        repository:str="https://repo1.maven.org/maven2",
+        deps:list=None,
+        visibility:list=None,
+        labels:list=None):
+    """Downloads a precompiled JAR artifact from a Maven repository."""
+    if id:
+        parts = id.split(":")
+        if len(parts) >= 3:
+            group = parts[0]
+            artifact = parts[1]
+            version = parts[2]
+        elif len(parts) == 2:
+            group = parts[0]
+            artifact = parts[1]
+
+    if not group or not artifact or not version:
+        fail(f"maven_jar {name} requires either 'id' as 'group:artifact:version' or explicit 'group', 'artifact', 'version'")
+
+    group_path = group.replace(".", "/")
+    filename = f"{artifact}-{version}.jar"
+    repo_url = repository.rstrip("/")
+    url = f"{repo_url}/{group_path}/{artifact}/{version}/{filename}"
+
+    hashes = []
+    if sha256:
+        hashes.append(sha256)
+    elif sha1:
+        hashes.append(sha1)
+
+    dl_target = f"_{name}#download"
+    remote_file(
+        name = dl_target,
+        url = url,
+        hashes = hashes,
+        out = filename,
+    )
+
+    return filegroup(
+        name = name,
+        srcs = [f":{dl_target}"],
+        deps = deps or [],
+        visibility = visibility or ["PUBLIC"],
+        labels = labels or ["kotlin", "maven", "jvm"],
+    )
+
+kotlin_maven_jar = maven_jar
+
+def _toolchain_unpack_jdk_cmd():
+    return """
+# Unpack JDK
+tar -xzf "$SRCS_JDK" -C "$TMP_DIR"
+JDK_EXTRACTED=$(find "$TMP_DIR" -maxdepth 1 -mindepth 1 -type d | head -n 1)
+if [ -d "$JDK_EXTRACTED/Contents/Home" ]; then
+  cp -R "$JDK_EXTRACTED/Contents/Home/"* "$OUT/jdk/"
+else
+  cp -R "$JDK_EXTRACTED/"* "$OUT/jdk/"
+fi
+
+# Link java and jar binaries
+ln -sf ../jdk/bin/java "$OUT/bin/java"
+ln -sf ../jdk/bin/jar "$OUT/bin/jar"
+chmod +x "$OUT/jdk/bin/"* 2>/dev/null || true
+chmod +x "$OUT/bin/java" "$OUT/bin/jar"
+"""
+
+def _toolchain_unpack_kotlinc_cmd():
+    return """
+# Unpack Kotlinc
+if command -v unzip >/dev/null 2>&1; then
+  unzip -q "$SRCS_KOTLINC" -d "$TMP_DIR/kotlinc_unpacked"
+else
+  python3 -m zipfile -e "$SRCS_KOTLINC" "$TMP_DIR/kotlinc_unpacked"
+fi
+cp -R "$TMP_DIR/kotlinc_unpacked/kotlinc/"* "$OUT/kotlinc/"
+"""
+
+def _toolchain_unpack_jacoco_cmd():
+    return """
+# Unpack JaCoCo
+if command -v unzip >/dev/null 2>&1; then
+  unzip -q "$SRCS_JACOCO" -d "$TMP_DIR/jacoco_unpacked"
+else
+  python3 -m zipfile -e "$SRCS_JACOCO" "$TMP_DIR/jacoco_unpacked"
+fi
+cp "$TMP_DIR/jacoco_unpacked/lib/jacocoagent.jar" "$OUT/jacoco/jacocoagent.jar"
+cp "$TMP_DIR/jacoco_unpacked/lib/jacococli.jar" "$OUT/jacoco/jacococli.jar"
+"""
+
+def _toolchain_launcher_script(bin_name, exec_target):
+    return f"""
+cat << 'EOF' > "$OUT/bin/{bin_name}"
+#!/usr/bin/env bash
+DIR="$(cd "$(dirname "${{BASH_SOURCE[0]}}")/.." && pwd)"
+export JAVA_HOME="$DIR/jdk"
+export PATH="$DIR/jdk/bin:$PATH"
+exec "$DIR/{exec_target}" "$@"
+EOF
+chmod +x "$OUT/bin/{bin_name}"
+"""
+
+def _toolchain_launchers_cmd():
+    return (
+        _toolchain_launcher_script("kotlinc", "kotlinc/bin/kotlinc") + "\n" +
+        _toolchain_launcher_script("kotlin", "kotlinc/bin/kotlin")
+    )
+
+def kotlin_toolchain(
+        name:str="toolchain",
+        version:str=DEFAULT_KOTLIN_VERSION,
+        jdk_version:str=DEFAULT_JDK_VERSION,
+        kotlinc_url:str="",
+        kotlinc_hash:str="",
+        jdk_url:str="",
+        jdk_hash:str="",
+        jacoco_version:str=DEFAULT_JACOCO_VERSION,
+        jacoco_url:str="",
+        jacoco_hash:str="",
+        target_platform:str="",
+        labels:list=None,
+        visibility:list=None):
+    """Assembles a 100% hermetic Kotlin compiler, JDK runtime, and JaCoCo coverage sysroot."""
+    plat = target_platform or f"{CONFIG.OS}_{CONFIG.ARCH}"
+    jdk_info = JDK_PLATFORM_MAP.get(plat, JDK_PLATFORM_MAP["linux_amd64"])
+
+    dl_kotlinc_url = kotlinc_url or KOTLINC_URL_TEMPLATE.format(version=version)
+    resolved_kotlinc_hash = kotlinc_hash or KOTLINC_HASHES.get(version, "")
+
+    dl_jdk_url = jdk_url or jdk_info["url"]
+    resolved_jdk_hash = jdk_hash or jdk_info["hash"]
+
+    dl_jacoco_url = jacoco_url or JACOCO_URL_TEMPLATE.format(version=jacoco_version)
+    resolved_jacoco_hash = jacoco_hash or JACOCO_HASHES.get(jacoco_version, "")
+
+    dl_kotlinc_target = f"_{name}_kotlinc_dl"
+    remote_file(
+        name = dl_kotlinc_target,
+        url = dl_kotlinc_url,
+        hashes = [resolved_kotlinc_hash] if resolved_kotlinc_hash else [],
+    )
+
+    dl_jdk_target = f"_{name}_jdk_dl"
+    remote_file(
+        name = dl_jdk_target,
+        url = dl_jdk_url,
+        hashes = [resolved_jdk_hash] if resolved_jdk_hash else [],
+    )
+
+    dl_jacoco_target = f"_{name}_jacoco_dl"
+    remote_file(
+        name = dl_jacoco_target,
+        url = dl_jacoco_url,
+        hashes = [resolved_jacoco_hash] if resolved_jacoco_hash else [],
+    )
+
+    srcs = {
+        "KOTLINC": [f":{dl_kotlinc_target}"],
+        "JDK": [f":{dl_jdk_target}"],
+        "JACOCO": [f":{dl_jacoco_target}"],
+    }
+
+    entry_points = {
+        "kotlinc": f"{name}/bin/kotlinc",
+        "kotlin": f"{name}/bin/kotlin",
+        "java": f"{name}/bin/java",
+        "jar": f"{name}/bin/jar",
+        "jacoco-agent": f"{name}/jacoco/jacocoagent.jar",
+        "jacoco-cli": f"{name}/jacoco/jacococli.jar",
+    }
+
+    cmd = "\n".join([
+        'mkdir -p "$OUT/bin" "$OUT/jdk" "$OUT/kotlinc" "$OUT/jacoco"',
+        'TMP_DIR=$(mktemp -d)',
+        _toolchain_unpack_jdk_cmd(),
+        _toolchain_unpack_kotlinc_cmd(),
+        _toolchain_unpack_jacoco_cmd(),
+        'rm -rf "$TMP_DIR"',
+        _toolchain_launchers_cmd(),
+    ])
+
+    return build_rule(
+        name = name,
+        srcs = srcs,
+        outs = [name],
+        cmd = cmd,
+        entry_points = entry_points,
+        binary = True,
+        visibility = visibility,
+        labels = labels or ["kotlin", "toolchain"],
+        building_description = f"Assembling hermetic Kotlin toolchain {version} (JDK {jdk_version})...",
+    )
