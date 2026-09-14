@@ -15,7 +15,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        language: [rust, kotlin, ts]
+        language: [rust, kotlin, ts, swift]
 
     steps:
       - name: Checkout language branch
@@ -38,6 +38,12 @@ jobs:
             echo "Please resolve conflicts manually: checkout '${{ matrix.language }}', run 'git merge main', and push."
             exit 1
           fi
+
+      - name: Set up Swift
+        if: matrix.language == 'swift'
+        uses: swift-actions/setup-swift@v2
+        with:
+          swift-version: "6.0"
 
       - name: Verify build & tests on ${{ matrix.language }}
         run: |
