@@ -37,7 +37,22 @@ and dependencies on the
 - **[Usage Guide](https://github.com/wcodesoft/please-rules/blob/rust/docs/rust/usage.md)**:
   Integration guides, `.plzconfig` setup, and multi-crate layout examples.
 - **[Dependencies & Toolchains](https://github.com/wcodesoft/please-rules/blob/rust/docs/rust/dependencies.md)**:
-  Toolchain requirements, automatic path discovery, and C native dependencies.
+  ### Swift (`///swift`)
+
+Hermetic, performant build rules for Swift 6+ with native `swift-testing`
+support, multi-module linking, and code coverage on the
+[`swift`](https://github.com/wcodesoft/please-rules/tree/swift) branch:
+
+- **[Swift Documentation Overview](https://github.com/wcodesoft/please-rules/blob/swift/docs/swift/README.md)**:
+  Entry point and quick overview.
+- **[Rule Reference](https://github.com/wcodesoft/please-rules/blob/swift/docs/swift/rules.md)**:
+  Detailed API reference for `swift_library`, `swift_binary`, `swift_test`, and
+  `swift_toolchain`.
+- **[Architecture & Design](https://github.com/wcodesoft/please-rules/blob/swift/docs/swift/architecture.md)**:
+  Under-the-hood design of `please_swift`, compiler orchestration, test runner
+  synthesis, and coverage.
+- **[Usage Guide](https://github.com/wcodesoft/please-rules/blob/swift/docs/swift/usage.md)**:
+  Multi-module project layouts, `swift-testing` suites, and coverage workflows.
 
 ---
 

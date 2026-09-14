@@ -2,8 +2,52 @@
 [please]
 version = >=17.0.0
 
+[cover]
+fileextension = .swift
+fileextension = .go
+
 [Plugin "go"]
 Target = //plugins:go
 ImportPath = ""
 GoTool = //third_party/go:toolchain|go
 Stdlib = //third_party/go:std
+
+[Plugin "swift"]
+Target = //plugins:swift
+SwiftcTool = swiftc
+LlvmProfdataTool = llvm-profdata
+LlvmCovTool = llvm-cov
+PleaseSwiftTool = //tools/please_swift:please_swift
+
+[PluginDefinition]
+Name = swift
+
+[PluginConfig "please_swift_tool"]
+ConfigKey = PleaseSwiftTool
+DefaultValue = //tools:please_swift
+Help = A path or build label for the please_swift tool
+Inherit = true
+
+[PluginConfig "swiftc_tool"]
+ConfigKey = SwiftcTool
+DefaultValue = swiftc
+Help = Path to the swiftc binary or toolchain target to use
+Inherit = true
+
+[PluginConfig "llvm_profdata_tool"]
+ConfigKey = LlvmProfdataTool
+DefaultValue = llvm-profdata
+Help = Path to llvm-profdata binary or toolchain target to use
+Inherit = true
+
+[PluginConfig "llvm_cov_tool"]
+ConfigKey = LlvmCovTool
+DefaultValue = llvm-cov
+Help = Path to llvm-cov binary or toolchain target to use
+Inherit = true
+
+[PluginConfig "coverage"]
+ConfigKey = Coverage
+DefaultValue = true
+Help = Whether to collect coverage during test execution
+Inherit = true

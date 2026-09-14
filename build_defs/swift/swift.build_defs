@@ -1,0 +1,257 @@
+"""
+Please build definitions for hermetic Swift build and test rules.
+"""
+subinclude("//build_defs/swift:constants")
+
+def _swift_tool():
+    return CONFIG.SWIFT.PLEASE_SWIFT_TOOL
+
+def _swiftc_tool_arg(tools):
+    tool = CONFIG.SWIFT.SWIFTC_TOOL
+    if tool and tool != "swiftc" and (tool.startswith("//") or tool.startswith("///") or tool.startswith(":")):
+        tools["SWIFTC"] = [tool]
+        return '--swiftc "$TOOLS_SWIFTC"'
+    elif tool and tool != "swiftc":
+        return f"--swiftc '{tool}'"
+    return ""
+
+def _llvm_profdata_tool_arg(tools):
+    tool = CONFIG.SWIFT.LLVM_PROFDATA_TOOL
+    if tool and tool != "llvm-profdata" and (tool.startswith("//") or tool.startswith("///") or tool.startswith(":")):
+        tools["LLVM_PROFDATA"] = [tool]
+        return '--llvm-profdata "$TOOLS_LLVM_PROFDATA"'
+    elif tool and tool != "llvm-profdata":
+        return f"--llvm-profdata '{tool}'"
+    return ""
+
+def _llvm_cov_tool_arg(tools):
+    tool = CONFIG.SWIFT.LLVM_COV_TOOL
+    if tool and tool != "llvm-cov" and (tool.startswith("//") or tool.startswith("///") or tool.startswith(":")):
+        tools["LLVM_COV"] = [tool]
+        return '--llvm-cov "$TOOLS_LLVM_COV"'
+    elif tool and tool != "llvm-cov":
+        return f"--llvm-cov '{tool}'"
+    return ""
+
+def _join_cmd(tool_cmd, args):
+    valid_args = [a for a in args if a]
+    return f"{tool_cmd} \\\n  " + " \\\n  ".join(valid_args) + "\n"
+
+def swift_toolchain(
+        name: str = "toolchain",
+        version: str = DEFAULT_SWIFT_VERSION,
+        swift_url: str = "",
+        swift_hash: str = "",
+        target_platform: str = "",
+        labels: list = None,
+        visibility: list = None):
+    """Assembles a hermetic Swift compiler and runtime sysroot."""
+    plat = target_platform or f"{CONFIG.OS}_{CONFIG.ARCH}"
+    swift_info = SWIFT_PLATFORM_MAP.get(plat, SWIFT_PLATFORM_MAP["linux_amd64"])
+
+    dl_url = swift_url or swift_info["url"]
+    resolved_hash = swift_hash or swift_info["hash"]
+
+    dl_target = f"_{name}_swift_dl"
+    remote_file(
+        name = dl_target,
+        url = dl_url,
+        hashes = [resolved_hash] if resolved_hash else [],
+    )
+
+    strip_prefix = swift_info.get("strip_prefix", "")
+    strip_comp = "--strip-components=2" if "ubuntu" in dl_url else ""
+
+    # Extract tarball and export entrypoint binaries
+    extract_cmd = f"""
+mkdir -p "$OUT/bin" "$OUT/lib"
+tar -xzf "$SRCS" -C "$OUT" {strip_comp}
+chmod +x "$OUT/bin/swiftc" "$OUT/bin/swift" 2>/dev/null || true
+"""
+
+    return build_rule(
+        name = name,
+        srcs = [f":{dl_target}"],
+        outs = [
+            "bin/swiftc",
+            "bin/swift",
+            "bin/llvm-profdata",
+            "bin/llvm-cov",
+        ],
+        cmd = extract_cmd,
+        output_is_complete = True,
+        labels = labels or ["swift", "toolchain"],
+        visibility = visibility or ["PUBLIC"],
+    )
+
+def swift_library(
+        name: str,
+        srcs: list,
+        deps: list = None,
+        module_name: str = "",
+        swift_version: str = "",
+        flags: list = None,
+        static_stdlib: bool = False,
+        visibility: list = None,
+        labels: list = None):
+    """Compiles Swift source files into a static library archive and module interface."""
+    deps = deps or []
+    flags = flags or []
+    mod_name = module_name or name
+
+    tools = {"TOOL": [_swift_tool()]}
+    swiftc_arg = _swiftc_tool_arg(tools)
+
+    flags_str = f"--flags '{' '.join(flags)}'" if flags else ""
+
+    compile_args = [
+        '--out "$OUT"',
+        '--srcs "${SRCS:-}"',
+        '--deps "${DEPS:-}"',
+        f'--module-name "{mod_name}"',
+        f'--swift-version "{swift_version}"' if swift_version else "",
+        '--static-stdlib' if static_stdlib else "",
+        '--coverage="${COVERAGE:-true}"',
+        swiftc_arg,
+        flags_str,
+    ]
+    cmd = _join_cmd("$TOOLS_TOOL compile", compile_args)
+
+    return build_rule(
+        name = name,
+        srcs = srcs,
+        deps = deps,
+        exported_deps = deps,
+        outs = [name],
+        cmd = cmd,
+        needs_transitive_deps = True,
+        tools = tools,
+        visibility = visibility,
+        labels = labels or ["swift", "lib"],
+        building_description = f"Compiling Swift library {name} ({mod_name})...",
+    )
+
+def swift_binary(
+        name: str,
+        main: str = "",
+        srcs: list = None,
+        deps: list = None,
+        module_name: str = "",
+        flags: list = None,
+        static_stdlib: bool = False,
+        visibility: list = None,
+        labels: list = None):
+    """Compiles Swift program into a standalone executable binary."""
+    srcs = srcs or []
+    deps = deps or []
+    flags = flags or []
+    pkg = package_name()
+
+    resolved_main = ""
+    if main:
+        resolved_main = f"{pkg}/{main}" if not main.startswith(pkg) and not main.startswith("/") else main
+        if main not in srcs:
+            srcs = srcs + [main]
+
+    tools = {"TOOL": [_swift_tool()]}
+    swiftc_arg = _swiftc_tool_arg(tools)
+
+    flags_str = f"--flags '{' '.join(flags)}'" if flags else ""
+
+    binary_args = [
+        '--out "$OUT"',
+        f'--main "{resolved_main}"' if resolved_main else "",
+        '--srcs "${SRCS:-}"',
+        '--deps "${DEPS:-}"',
+        f'--module-name "{module_name}"' if module_name else "",
+        '--static-stdlib' if static_stdlib else "",
+        swiftc_arg,
+        flags_str,
+    ]
+    cmd = _join_cmd("$TOOLS_TOOL binary", binary_args)
+
+    return build_rule(
+        name = name,
+        srcs = srcs,
+        deps = deps,
+        outs = [name],
+        cmd = cmd,
+        binary = True,
+        needs_transitive_deps = True,
+        tools = tools,
+        visibility = visibility,
+        labels = labels or ["swift", "bin"],
+        building_description = f"Compiling Swift binary {name}...",
+    )
+
+def swift_test(
+        name: str,
+        srcs: list,
+        deps: list = None,
+        data: list = None,
+        framework: str = "swift-testing",
+        flags: list = None,
+        visibility: list = None,
+        labels: list = None):
+    """Runs tests using modern swift-testing or XCTest with JUnit reporting and code coverage."""
+    deps = deps or []
+    flags = flags or []
+    data = (data or []) + srcs + deps
+
+    tools = {"TOOL": [_swift_tool()]}
+    swiftc_arg = _swiftc_tool_arg(tools)
+    llvm_profdata_arg = _llvm_profdata_tool_arg(tools)
+    llvm_cov_arg = _llvm_cov_tool_arg(tools)
+
+    flags_str = f"--flags '{' '.join(flags)}'" if flags else ""
+
+    pkg = package_name()
+    full_srcs = [f"{pkg}/{s}" if not s.startswith(pkg) else s for s in srcs]
+    srcs_list = ",".join(full_srcs)
+
+    # Compile phase: build the binary
+    compile_args = [
+        '--out "$OUT"',
+        '--srcs "${SRCS:-}"',
+        '--deps "${DEPS:-}"',
+        f'--framework "{framework}"',
+        swiftc_arg,
+        flags_str,
+    ]
+    # We compile the test runner via testrunner --out so it sets up runner main if needed
+    compile_cmd = _join_cmd("$TOOLS_TOOL testrunner", compile_args + ['--compile-only'])
+
+    # Test phase: run precompiled binary or recompile with coverage if $COVERAGE is active
+    testrunner_args = [
+        f'--framework "{framework}"',
+        f'--srcs "{srcs_list}"',
+        '--deps "${DEPS:-}"',
+        '--binary "$TEST"',
+        '--results-file "test.results"',
+        '--coverage-file "${COVERAGE_FILE:-test.coverage}"',
+        '--coverage="${COVERAGE:-false}"',
+        swiftc_arg,
+        llvm_profdata_arg,
+        llvm_cov_arg,
+        flags_str,
+        '--',
+        '"$@"',
+    ]
+    test_cmd = _join_cmd("$TOOLS_TOOL testrunner", testrunner_args)
+
+    return build_rule(
+        name = name,
+        srcs = srcs,
+        deps = deps,
+        data = data,
+        outs = [name],
+        cmd = compile_cmd,
+        test_cmd = test_cmd,
+        needs_transitive_deps = True,
+        tools = tools,
+        test_tools = tools,
+        test = True,
+        visibility = visibility,
+        labels = labels or ["swift", "test"],
+        building_description = f"Building Swift test runner {name}...",
+    )
