@@ -4,10 +4,10 @@ remote_file(
     name = "please_swift",
     binary = True,
     hashes = [
-        "5e7932a4615b44706272c5e11e340c4c3c331b18305e94ded0a5ceb4feedd03e",  # linux_amd64
-        "5cea1918bfd760ca7977206b3bcc77e7095d013c84fdbf55b3e9331c1e894691",  # linux_arm64
-        "93319ebd0f765a32954d0211527c78d38bf377a0e581ce82249dab17d0ce9bdf",  # darwin_amd64
-        "6f346e26300c1e46f37d17e14f537df42daa8992c82a59a058761e37418432fa",  # darwin_arm64
+        "202a2a0fe83dbe71be5e0cc614728828375a7b3d14ac1ae7bb702f9a07131993",  # linux_amd64
+        "a145c37ee1c4644d31b1f6a51b5abbc5690bafeb813588e086ab2ff651335423",  # linux_arm64
+        "d15ca2091b6d92378304eaf116c61975d24286511f7331ffe3739ba97478323d",  # darwin_amd64
+        "c1a655d1c111d562f599c8e952920599951b602a833668670b85b8dd21dcb756",  # darwin_arm64
     ],
     url = f"https://github.com/wcodesoft/please-rules/releases/download/swift-v{_VERSION}/please_swift-{_VERSION}-{CONFIG.OS}_{CONFIG.ARCH}",
     visibility = ["PUBLIC"],

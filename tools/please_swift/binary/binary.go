@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -89,12 +90,20 @@ func Run(opts Options) error {
 	for _, inc := range includeDirs {
 		args = append(args, "-I", inc)
 	}
-	for _, arch := range archives {
-		args = append(args, arch)
-	}
-
 	args = append(args, opts.Flags...)
 	args = append(args, allSrcs...)
+
+	if runtime.GOOS == "linux" && len(archives) > 0 {
+		args = append(args, "-Xlinker", "--start-group")
+		for _, arch := range archives {
+			args = append(args, arch)
+		}
+		args = append(args, "-Xlinker", "--end-group")
+	} else {
+		for _, arch := range archives {
+			args = append(args, arch)
+		}
+	}
 
 	var stderr bytes.Buffer
 	cmd := exec.Command(opts.Swiftc, args...)

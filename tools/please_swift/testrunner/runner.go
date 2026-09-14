@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -193,11 +194,20 @@ struct __PleaseTestRunner {
 		for _, inc := range incDirs {
 			compileArgs = append(compileArgs, "-I", inc)
 		}
-		for _, arch := range archives {
-			compileArgs = append(compileArgs, arch)
-		}
 		compileArgs = append(compileArgs, extraFlags...)
 		compileArgs = append(compileArgs, compileSrcs...)
+
+		if runtime.GOOS == "linux" && len(archives) > 0 {
+			compileArgs = append(compileArgs, "-Xlinker", "--start-group")
+			for _, arch := range archives {
+				compileArgs = append(compileArgs, arch)
+			}
+			compileArgs = append(compileArgs, "-Xlinker", "--end-group")
+		} else {
+			for _, arch := range archives {
+				compileArgs = append(compileArgs, arch)
+			}
+		}
 
 		var compileErr bytes.Buffer
 		cCmd := exec.Command(opts.Swiftc, compileArgs...)
