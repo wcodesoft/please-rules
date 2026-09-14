@@ -2,26 +2,26 @@
 Default constants and platform configurations for Swift toolchains.
 """
 
-DEFAULT_SWIFT_VERSION = "6.3.3"
+DEFAULT_SWIFT_VERSION = "6.0.3"
 
 SWIFT_PLATFORM_MAP = {
     "linux_amd64": {
-        "url": "https://download.swift.org/swift-6.3.3-release/ubuntu2204/swift-6.3.3-RELEASE/swift-6.3.3-RELEASE-ubuntu22.04.tar.gz",
+        "url": "https://download.swift.org/swift-6.0.3-release/ubuntu2204/swift-6.0.3-RELEASE/swift-6.0.3-RELEASE-ubuntu22.04.tar.gz",
         "hash": "",
-        "strip_prefix": "swift-6.3.3-RELEASE-ubuntu22.04/usr",
+        "strip_prefix": "swift-6.0.3-RELEASE-ubuntu22.04/usr",
     },
     "linux_arm64": {
-        "url": "https://download.swift.org/swift-6.3.3-release/ubuntu2204-aarch64/swift-6.3.3-RELEASE/swift-6.3.3-RELEASE-ubuntu22.04-aarch64.tar.gz",
+        "url": "https://download.swift.org/swift-6.0.3-release/ubuntu2204-aarch64/swift-6.0.3-RELEASE/swift-6.0.3-RELEASE-ubuntu22.04-aarch64.tar.gz",
         "hash": "",
-        "strip_prefix": "swift-6.3.3-RELEASE-ubuntu22.04-aarch64/usr",
+        "strip_prefix": "swift-6.0.3-RELEASE-ubuntu22.04-aarch64/usr",
     },
     "darwin_amd64": {
-        "url": "https://download.swift.org/swift-6.3.3-release/xcode/swift-6.3.3-RELEASE/swift-6.3.3-RELEASE-osx.pkg",
+        "url": "https://download.swift.org/swift-6.0.3-release/xcode/swift-6.0.3-RELEASE/swift-6.0.3-RELEASE-osx.pkg",
         "hash": "",
         "strip_prefix": "usr",
     },
     "darwin_arm64": {
-        "url": "https://download.swift.org/swift-6.3.3-release/xcode/swift-6.3.3-RELEASE/swift-6.3.3-RELEASE-osx.pkg",
+        "url": "https://download.swift.org/swift-6.0.3-release/xcode/swift-6.0.3-RELEASE/swift-6.0.3-RELEASE-osx.pkg",
         "hash": "",
         "strip_prefix": "usr",
     },

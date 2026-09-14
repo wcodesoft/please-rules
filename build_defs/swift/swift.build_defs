@@ -72,16 +72,18 @@ chmod +x "$OUT/bin/swiftc" "$OUT/bin/swift" 2>/dev/null || true
     return build_rule(
         name = name,
         srcs = [f":{dl_target}"],
-        outs = [
-            "bin/swiftc",
-            "bin/swift",
-            "bin/llvm-profdata",
-            "bin/llvm-cov",
-        ],
+        outs = [name],
         cmd = extract_cmd,
-        output_is_complete = True,
-        labels = labels or ["swift", "toolchain"],
+        entry_points = {
+            "swiftc": f"{name}/bin/swiftc",
+            "swift": f"{name}/bin/swift",
+            "llvm-profdata": f"{name}/bin/llvm-profdata",
+            "llvm-cov": f"{name}/bin/llvm-cov",
+        },
+        binary = True,
+        labels = labels or ["swift", "toolchain", "manual"],
         visibility = visibility or ["PUBLIC"],
+        building_description = f"Assembling hermetic Swift toolchain {version}...",
     )
 
 def swift_library(
