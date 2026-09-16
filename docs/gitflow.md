@@ -164,35 +164,36 @@ Examples:
 ### Publishing a Release
 
 Releases are fully automated via GitHub Actions
-(`.github/workflows/release.yml`):
+(`.github/workflows/release.yml`), eliminating circular dependency loops for
+precompiled binary hashes:
 
-1. **Tag and Push**:
+1. **Trigger the Release Workflow**:
+
+   Run the workflow via `workflow_dispatch` (in GitHub Actions UI or using
+   `gh`):
 
    ```bash
-   git checkout rust
-   git pull origin rust
-   git tag rust-v0.4.0
-   git push origin rust-v0.4.0
+   gh workflow run release.yml \
+     -f language=rust \
+     -f version=0.4.2
    ```
 
-2. **Automated Release Pipeline**: Pushing the tag triggers the release
-   workflow, which:
-   - Runs unit tests and binary smoke checks.
-   - Cross-compiles static binaries for `linux_amd64`, `linux_arm64`,
-     `darwin_amd64`, and `darwin_arm64`.
-   - Generates the `checksums.txt` manifest.
-   - Creates or updates the GitHub Release with the standardized title
-     `[<Language>] v<semver>` and attaches all binaries and checksums.
+   _(Pass `-f dry_run=true` to test and build binaries without committing or
+   publishing)._
 
-Alternatively, creating the release via `gh release create` also pushes the tag
-and triggers asset generation:
-
-```bash
-gh release create rust-v0.4.0 \
-  --target rust \
-  --title "[Rust] v0.4.0" \
-  --notes "..."
-```
+2. **Automated Release Pipeline**: The workflow executes:
+   - **Validation & Smoke Checks**: Unit tests and binary `--help` sanity
+     checks.
+   - **Cross-Compilation**: Generates static binaries for `linux_amd64`,
+     `linux_arm64`, `darwin_amd64`, and `darwin_arm64`.
+   - **Checksums & Hashes**: Generates `checksums.txt` and automatically updates
+     `VERSION` and pins the computed hashes in `tools/BUILD`.
+   - **Git Commit & Tag**: Commits the release changes to the language branch
+     (`chore(<lang>): prepare release v<version>`) and creates the standardized
+     tag `<language>-v<semver>` (e.g. `rust-v0.4.2`).
+   - **GitHub Release**: Publishes the GitHub Release with the standardized
+     title `[<Language>] v<semver>` and attaches all 4 binaries and
+     `checksums.txt`.
 
 ---
 
