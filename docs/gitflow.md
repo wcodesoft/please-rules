@@ -163,14 +163,31 @@ Examples:
 
 ### Publishing a Release
 
-```bash
-# 1. Tag the release on the language branch
-git checkout rust
-git pull origin rust
-git tag rust-v0.4.0
-git push origin rust-v0.4.0
+Releases are fully automated via GitHub Actions
+(`.github/workflows/release.yml`):
 
-# 2. Publish GitHub Release with the standardized title
+1. **Tag and Push**:
+
+   ```bash
+   git checkout rust
+   git pull origin rust
+   git tag rust-v0.4.0
+   git push origin rust-v0.4.0
+   ```
+
+2. **Automated Release Pipeline**: Pushing the tag triggers the release
+   workflow, which:
+   - Runs unit tests and binary smoke checks.
+   - Cross-compiles static binaries for `linux_amd64`, `linux_arm64`,
+     `darwin_amd64`, and `darwin_arm64`.
+   - Generates the `checksums.txt` manifest.
+   - Creates or updates the GitHub Release with the standardized title
+     `[<Language>] v<semver>` and attaches all binaries and checksums.
+
+Alternatively, creating the release via `gh release create` also pushes the tag
+and triggers asset generation:
+
+```bash
 gh release create rust-v0.4.0 \
   --target rust \
   --title "[Rust] v0.4.0" \
