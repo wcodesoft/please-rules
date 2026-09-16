@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] - 2026-09-16
+
+### Added
+
+- Root `build_defs/BUILD` filegroup forwarding `:swift` and `:constants` targets matching the Kotlin plugin structure.
+- Automatically compile `swift_library` modules with `-enable-testing` by default unless `-c opt` is passed.
+
+### Changed
+
+- Standardized `please_swift` command usage and flag descriptions to use `sources` across all subcommands (`compile`, `binary`, and `testrunner`).
+
+### Fixed
+
+- Fixed Please f-string quote lexing error by using `flags_joined` across `swift_library`, `swift_binary`, and `swift_test`.
+- Updated `plugins/BUILD` to target `//build_defs/swift:swift` explicitly.
+
 ## [0.1.0] - 2026-09-14
 
 ### Added

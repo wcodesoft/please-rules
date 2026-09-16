@@ -14,9 +14,13 @@ import (
 
 func handleCompile(args []string) error {
 	cmd := flag.NewFlagSet("compile", flag.ContinueOnError)
+	cmd.Usage = func() {
+		fmt.Fprintf(cmd.Output(), "Usage:\n  please_swift compile [options] [-- sources...]\n\nOptions:\n")
+		cmd.PrintDefaults()
+	}
 	swiftc := cmd.String("swiftc", "swiftc", "Path to swiftc binary")
 	moduleName := cmd.String("module-name", "", "Swift module name")
-	srcsFlag := cmd.String("srcs", "", "Comma-separated source files")
+	srcsFlag := cmd.String("srcs", "", "Comma-separated sources")
 	depsFlag := cmd.String("deps", "", "Comma-separated dependency paths")
 	out := cmd.String("out", "", "Output directory for module and library")
 	outDir := cmd.String("out-dir", "", "Output directory for module and library")
@@ -63,10 +67,14 @@ func handleCompile(args []string) error {
 
 func handleBinary(args []string) error {
 	cmd := flag.NewFlagSet("binary", flag.ContinueOnError)
+	cmd.Usage = func() {
+		fmt.Fprintf(cmd.Output(), "Usage:\n  please_swift binary [options] [-- sources...]\n\nOptions:\n")
+		cmd.PrintDefaults()
+	}
 	swiftc := cmd.String("swiftc", "swiftc", "Path to swiftc binary")
 	out := cmd.String("out", "", "Output executable binary path")
 	mainFile := cmd.String("main", "", "Main entrypoint Swift file")
-	srcsFlag := cmd.String("srcs", "", "Comma-separated source files")
+	srcsFlag := cmd.String("srcs", "", "Comma-separated sources")
 	depsFlag := cmd.String("deps", "", "Comma-separated dependency paths")
 	moduleName := cmd.String("module-name", "", "Module name")
 	staticStdlib := cmd.Bool("static-stdlib", false, "Statically link Swift runtime")
@@ -100,11 +108,15 @@ func handleBinary(args []string) error {
 
 func handleTestRunner(args []string) error {
 	cmd := flag.NewFlagSet("testrunner", flag.ContinueOnError)
+	cmd.Usage = func() {
+		fmt.Fprintf(cmd.Output(), "Usage:\n  please_swift testrunner [options] [-- sources...]\n\nOptions:\n")
+		cmd.PrintDefaults()
+	}
 	swiftc := cmd.String("swiftc", "swiftc", "Path to swiftc binary")
 	llvmProfdata := cmd.String("llvm-profdata", "llvm-profdata", "Path to llvm-profdata")
 	llvmCov := cmd.String("llvm-cov", "llvm-cov", "Path to llvm-cov")
 	framework := cmd.String("framework", "swift-testing", "Testing framework (swift-testing or xctest)")
-	srcsFlag := cmd.String("srcs", "", "Comma-separated test source files")
+	srcsFlag := cmd.String("srcs", "", "Comma-separated test sources")
 	depsFlag := cmd.String("deps", "", "Comma-separated dependency paths")
 	out := cmd.String("out", "", "Output test executable path")
 	binary := cmd.String("binary", "", "Path to precompiled test executable")
