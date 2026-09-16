@@ -119,40 +119,43 @@ or repository-level documentation:
 
 ### Procedure 3: Creating a Language Release
 
-1. **Ensure Working Tree is Clean & Tests Pass**:
+Releases are fully automated via the GitHub Actions **Release** workflow
+(`.github/workflows/release.yml`), avoiding circular dependency issues with
+precompiled binary hashes:
+
+1. **Trigger the Release Workflow**: Run the workflow via `workflow_dispatch`
+   (in GitHub Actions UI or via `gh`):
 
    ```bash
-   git checkout rust
-   git pull origin rust
-   ./pleasew test //...
+   gh workflow run release.yml \
+     -f language=rust \
+     -f version=0.4.2
    ```
 
-2. **Tag and Push the Release**: Tag directly on the language branch using the
-   language prefix:
+   _(Optional: pass `-f dry_run=true` to validate and compile without committing
+   or publishing)._
 
-   ```bash
-   git tag rust-v0.4.0
-   git push origin rust-v0.4.0
-   ```
-
-3. **Automated Release Workflow**: Pushing the tag triggers
-   `.github/workflows/release.yml`, which:
+2. **Automated Release Pipeline**: The workflow automatically:
    - Validates the tool with unit tests and a native binary smoke check.
    - Cross-compiles static binaries for `linux_amd64`, `linux_arm64`,
      `darwin_amd64`, and `darwin_arm64`.
    - Computes SHA-256 checksums (`checksums.txt`).
-   - Automatically creates the GitHub Release (or updates it if already created)
-     with standardized title `[<Language>] v<semver>` and attaches all binaries
-     and checksums.
+   - Updates `VERSION` and pins the computed hashes in `tools/BUILD`.
+   - Commits changes to the language branch
+     (`chore(<lang>): prepare release v<version>`).
+   - Creates and pushes the standardized tag `<language>-v<semver>` (e.g.
+     `rust-v0.4.2`).
+   - Publishes the GitHub Release titled `[<Language>] v<semver>` with all
+     binaries and `checksums.txt` attached.
 
-4. **Verify Consumer Declaration**: Consumers consume this release in
+3. **Verify Consumer Declaration**: Consumers consume this release in
    `plugins/BUILD`:
    ```starlark
    plugin_repo(
        name = "rust",
        owner = "wcodesoft",
        plugin = "please-rules",
-       revision = "rust-v0.4.0",
+       revision = "rust-v0.4.2",
    )
    ```
 
