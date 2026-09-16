@@ -9,10 +9,26 @@ on:
       - "ts-v*"
   workflow_dispatch:
     inputs:
-      tag:
-        description: "Release tag to build and publish (e.g. rust-v0.4.2)"
+      language:
+        description: "Language to release"
+        required: true
+        type: choice
+        options:
+          - rust
+          - kotlin
+          - swift
+          - ts
+      version:
+        description: "Version to release (e.g. 0.4.2)"
         required: true
         type: string
+      dry_run:
+        description:
+          "Dry run (validate and build without committing, tagging, or
+          publishing)"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -27,18 +43,40 @@ jobs:
       version: ${{ steps.meta.outputs.version }}
       tool: ${{ steps.meta.outputs.tool }}
       title: ${{ steps.meta.outputs.title }}
+      target_branch: ${{ steps.meta.outputs.target_branch }}
+      checkout_ref: ${{ steps.meta.outputs.checkout_ref }}
+      dry_run: ${{ steps.meta.outputs.dry_run }}
+      skip: ${{ steps.meta.outputs.skip }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Parse release tag metadata
+      - name: Parse release metadata & options
         id: meta
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_LANG: ${{ inputs.language }}
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_DRY_RUN: ${{ inputs.dry_run }}
+          REF_NAME: ${{ github.ref_name }}
+          REF: ${{ github.ref }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG="${{ inputs.tag || github.ref_name }}"
-          LANG="${TAG%%-v*}"
-          VERSION="${TAG#*-v}"
+          if [ "${EVENT_NAME}" = "workflow_dispatch" ]; then
+            LANG="${INPUT_LANG}"
+            RAW_VERSION="${INPUT_VERSION}"
+            VERSION="${RAW_VERSION#v}"
+            TAG="${LANG}-v${VERSION}"
+            TARGET_BRANCH="${LANG}"
+            CHECKOUT_REF="${LANG}"
+            DRY_RUN="${INPUT_DRY_RUN:-false}"
+          else
+            TAG="${REF_NAME}"
+            LANG="${TAG%%-v*}"
+            RAW_VERSION="${TAG#*-v}"
+            VERSION="${RAW_VERSION#v}"
+            TARGET_BRANCH="${LANG}"
+            CHECKOUT_REF="${REF}"
+            DRY_RUN="false"
+          fi
+
           TOOL="please_${LANG}"
 
           case "$LANG" in
@@ -50,34 +88,74 @@ jobs:
           esac
 
           echo "Detected release metadata:"
-          echo "  Tag:      ${TAG}"
-          echo "  Language: ${LANG}"
-          echo "  Version:  ${VERSION}"
-          echo "  Tool:     ${TOOL}"
-          echo "  Title:    ${TITLE}"
+          echo "  Event:         ${EVENT_NAME}"
+          echo "  Tag:           ${TAG}"
+          echo "  Language:      ${LANG}"
+          echo "  Version:       ${VERSION}"
+          echo "  Tool:          ${TOOL}"
+          echo "  Title:         ${TITLE}"
+          echo "  Target Branch: ${TARGET_BRANCH}"
+          echo "  Checkout Ref:  ${CHECKOUT_REF}"
+          echo "  Dry Run:       ${DRY_RUN}"
+
+          # Idempotency check for tag push: if release assets already exist, exit early
+          if [ "${EVENT_NAME}" = "push" ]; then
+            if gh release view "${TAG}" --json assets -q '.assets[].name' 2>/dev/null | grep -q "${TOOL}-${VERSION}-linux_amd64"; then
+              echo "Release assets for '${TAG}' are already published. Skipping workflow to avoid duplicate builds."
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
 
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           echo "language=${LANG}" >> "$GITHUB_OUTPUT"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "tool=${TOOL}" >> "$GITHUB_OUTPUT"
           echo "title=${TITLE}" >> "$GITHUB_OUTPUT"
+          echo "target_branch=${TARGET_BRANCH}" >> "$GITHUB_OUTPUT"
+          echo "checkout_ref=${CHECKOUT_REF}" >> "$GITHUB_OUTPUT"
+          echo "dry_run=${DRY_RUN}" >> "$GITHUB_OUTPUT"
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout repository
+        if: steps.meta.outputs.skip != 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.meta.outputs.checkout_ref }}
+          fetch-depth: 0
+
+      - name:
+          Verify release tag does not already exist on remote
+          (workflow_dispatch)
+        if:
+          steps.meta.outputs.skip != 'true' && github.event_name ==
+          'workflow_dispatch' && steps.meta.outputs.dry_run != 'true'
+        run: |
+          TAG="${{ steps.meta.outputs.tag }}"
+          if git ls-remote --tags origin "refs/tags/${TAG}" | grep -q "${TAG}"; then
+            echo "::error::Tag '${TAG}' already exists on remote. Cannot release an already existing version."
+            exit 1
+          fi
 
       - name: Verify tool directory exists
+        if: steps.meta.outputs.skip != 'true'
         run: |
-          TOOL="please_${{ steps.meta.outputs.language }}"
+          TOOL="${{ steps.meta.outputs.tool }}"
           if [ ! -d "tools/${TOOL}" ]; then
             echo "::error::Tool directory 'tools/${TOOL}' does not exist for language '${{ steps.meta.outputs.language }}'."
             exit 1
           fi
 
       - name: Set up Go
+        if: steps.meta.outputs.skip != 'true'
         uses: actions/setup-go@v5
         with:
           go-version: "1.23"
 
       - name: Pre-build test suite (Go unit tests)
+        if: steps.meta.outputs.skip != 'true'
         run: |
-          TOOL="please_${{ steps.meta.outputs.language }}"
+          TOOL="${{ steps.meta.outputs.tool }}"
           echo "Running unit tests for ${TOOL}..."
           cd tools
           if [ ! -f go.mod ]; then
@@ -86,16 +164,18 @@ jobs:
           go test -v ./${TOOL}/...
 
       - name: Pre-build test suite (Please tests)
+        if: steps.meta.outputs.skip != 'true'
         run: |
-          TOOL="please_${{ steps.meta.outputs.language }}"
+          TOOL="${{ steps.meta.outputs.tool }}"
           echo "Running Please tests for //tools/${TOOL}/..."
           ./pleasew --plain_output test //tools/${TOOL}/...
         env:
           VERITAS_NO_HOOK: "1"
 
       - name: Binary smoke test & sanity check (runner-native linux_amd64)
+        if: steps.meta.outputs.skip != 'true'
         run: |
-          TOOL="please_${{ steps.meta.outputs.language }}"
+          TOOL="${{ steps.meta.outputs.tool }}"
           LANG="${{ steps.meta.outputs.language }}"
           mkdir -p /tmp/smoke-bin
 
@@ -127,6 +207,7 @@ jobs:
           fi
 
       - name: End-to-end compile validation
+        if: steps.meta.outputs.skip != 'true'
         run: |
           LANG="${{ steps.meta.outputs.language }}"
           if [ -d "test/${LANG}" ]; then
@@ -141,6 +222,7 @@ jobs:
   build:
     name: Build (${{ matrix.os }}_${{ matrix.arch }})
     needs: validate
+    if: needs.validate.outputs.skip != 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: true
@@ -150,6 +232,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate.outputs.checkout_ref }}
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -185,12 +269,16 @@ jobs:
   release:
     name: Publish Release & Assets
     needs: [validate, build]
+    if: needs.validate.outputs.skip != 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - name: Checkout repository
+      - name: Checkout target branch
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate.outputs.target_branch }}
+          fetch-depth: 0
 
       - name: Download all built binaries
         uses: actions/download-artifact@v4
@@ -200,21 +288,110 @@ jobs:
           merge-multiple: true
 
       - name: Compute SHA-256 Checksums
+        id: checksums
         env:
           TOOL: ${{ needs.validate.outputs.tool }}
           VERSION: ${{ needs.validate.outputs.version }}
-        working-directory: dist
         run: |
+          cd dist
           sha256sum ${TOOL}-${VERSION}-* > checksums.txt
           echo "Generated checksums.txt:"
           cat checksums.txt
 
+          echo "linux_amd64=$(sha256sum ${TOOL}-${VERSION}-linux_amd64 | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          echo "linux_arm64=$(sha256sum ${TOOL}-${VERSION}-linux_arm64 | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          echo "darwin_amd64=$(sha256sum ${TOOL}-${VERSION}-darwin_amd64 | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          echo "darwin_arm64=$(sha256sum ${TOOL}-${VERSION}-darwin_arm64 | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
+      - name:
+          Update VERSION and tools/BUILD with real hashes (workflow_dispatch)
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+          LINUX_AMD64: ${{ steps.checksums.outputs.linux_amd64 }}
+          LINUX_ARM64: ${{ steps.checksums.outputs.linux_arm64 }}
+          DARWIN_AMD64: ${{ steps.checksums.outputs.darwin_amd64 }}
+          DARWIN_ARM64: ${{ steps.checksums.outputs.darwin_arm64 }}
+        run: |
+          echo "${VERSION}" > VERSION
+
+          python3 -c '
+          import os, re
+          version = os.environ["VERSION"]
+          linux_amd64 = os.environ["LINUX_AMD64"]
+          linux_arm64 = os.environ["LINUX_ARM64"]
+          darwin_amd64 = os.environ["DARWIN_AMD64"]
+          darwin_arm64 = os.environ["DARWIN_ARM64"]
+
+          file_path = "tools/BUILD"
+          with open(file_path, "r") as f:
+              content = f.read()
+
+          content = re.sub(r"_VERSION\s*=\s*\"[^\"]+\"", f"_VERSION = \"{version}\"", content)
+          hashes_block = f"""hashes = [
+              "{linux_amd64}",  # linux_amd64
+              "{linux_arm64}",  # linux_arm64
+              "{darwin_amd64}",  # darwin_amd64
+              "{darwin_arm64}",  # darwin_arm64
+          ],"""
+          content = re.sub(r"hashes\s*=\s*\[[^\]]+\]\s*,?", hashes_block, content)
+
+          with open(file_path, "w") as f:
+              f.write(content)
+          '
+
+          echo "Diff of updated release files:"
+          git diff VERSION tools/BUILD
+
+      - name: Commit, push, and tag release (workflow_dispatch)
+        if:
+          github.event_name == 'workflow_dispatch' &&
+          needs.validate.outputs.dry_run != 'true'
+        env:
+          LANG: ${{ needs.validate.outputs.language }}
+          VERSION: ${{ needs.validate.outputs.version }}
+          TAG: ${{ needs.validate.outputs.tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add VERSION tools/BUILD
+          if git diff --staged --quiet; then
+            echo "No changes in VERSION or tools/BUILD to commit."
+          else
+            git commit -m "chore(${LANG}): prepare release v${VERSION} [skip ci]"
+            git pull --rebase origin "${LANG}"
+            git push origin "${LANG}"
+          fi
+
+          echo "Creating tag ${TAG}..."
+          git tag -a "${TAG}" -m "Release ${TAG}"
+          git push origin "${TAG}"
+
+      - name: Dry Run Summary
+        if: needs.validate.outputs.dry_run == 'true'
+        env:
+          TAG: ${{ needs.validate.outputs.tag }}
+          TITLE: ${{ needs.validate.outputs.title }}
+          VERSION: ${{ needs.validate.outputs.version }}
+          LANG: ${{ needs.validate.outputs.language }}
+        run: |
+          echo "=== DRY RUN SUMMARY ==="
+          echo "Tag:           ${TAG}"
+          echo "Title:         [${TITLE}] v${VERSION}"
+          echo "Target Branch: ${LANG}"
+          echo "Assets:"
+          ls -lh dist/
+          echo "All checks and binary builds succeeded. No commit, tag, or release was published."
+
       - name: Upload release assets
+        if: needs.validate.outputs.dry_run != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ needs.validate.outputs.tag }}
           TITLE: ${{ needs.validate.outputs.title }}
           VERSION: ${{ needs.validate.outputs.version }}
+          LANG: ${{ needs.validate.outputs.language }}
         working-directory: dist
         run: |
           FILES=(*)
@@ -228,5 +405,6 @@ jobs:
             echo "Release '${TAG}' does not exist. Creating release with assets..."
             gh release create "${TAG}" "${FILES[@]}" \
               --title "[${TITLE}] v${VERSION}" \
+              --target "${LANG}" \
               --generate-notes
           fi
