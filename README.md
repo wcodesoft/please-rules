@@ -15,15 +15,18 @@ To integrate and use rules from this repository in your Please project, see the
 
 ---
 
-## Language Rulesets
+## Supported Languages
 
-`please-rules` uses a [Hub-and-Spoke Gitflow](docs/gitflow.md) where each
+`please-rules` employs a [Hub-and-Spoke Gitflow](docs/gitflow.md) where each
 language ruleset is developed, tested, and released on its own dedicated
 long-lived branch:
 
-| Language             | Branch                                                        | Latest Release                                                                        | Documentation                                                                                       |
-| :------------------- | :------------------------------------------------------------ | :------------------------------------------------------------------------------------ | :-------------------------------------------------------------------------------------------------- |
-| **Rust (`///rust`)** | [`rust`](https://github.com/wcodesoft/please-rules/tree/rust) | [`[Rust] v0.4.0`](https://github.com/wcodesoft/please-rules/releases/tag/rust-v0.4.0) | [Rust Rules Documentation](https://github.com/wcodesoft/please-rules/blob/rust/docs/rust/README.md) |
+| Language                 | Branch                                                            | Latest Release                                                                            | Documentation                                                                                             | Description                                                                                      |
+| :----------------------- | :---------------------------------------------------------------- | :---------------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------- | :----------------------------------------------------------------------------------------------- |
+| **Rust (`///rust`)**     | [`rust`](https://github.com/wcodesoft/please-rules/tree/rust)     | [`[Rust] v0.4.1`](https://github.com/wcodesoft/please-rules/releases/tag/rust-v0.4.1)     | [Rust Rules Documentation](https://github.com/wcodesoft/please-rules/blob/rust/docs/rust/README.md)       | Hermetic toolchains, crates.io dependency management, C native linking, and `llvm-cov` coverage. |
+| **Kotlin (`///kotlin`)** | [`kotlin`](https://github.com/wcodesoft/please-rules/tree/kotlin) | [`[Kotlin] v0.1.3`](https://github.com/wcodesoft/please-rules/releases/tag/kotlin-v0.1.3) | [Kotlin Rules Documentation](https://github.com/wcodesoft/please-rules/blob/kotlin/docs/kotlin/README.md) | 100% hermetic `kotlinc` 2.1 & OpenJDK 21, JUnit XML telemetry, and JaCoCo code coverage.         |
+| **Swift (`///swift`)**   | [`swift`](https://github.com/wcodesoft/please-rules/tree/swift)   | [`[Swift] v0.1.1`](https://github.com/wcodesoft/please-rules/releases/tag/swift-v0.1.1)   | [Swift Rules Documentation](https://github.com/wcodesoft/please-rules/blob/swift/docs/swift/README.md)    | Swift 6+ rules, native `swift-testing` support, multi-module static linking, and coverage.       |
+| **TypeScript (`///ts`)** | [`ts`](https://github.com/wcodesoft/please-rules/tree/ts)         | [`[TypeScript] v0.1.0`](https://github.com/wcodesoft/please-rules/releases/tag/ts-v0.1.0) | [TypeScript Rules Documentation](https://github.com/wcodesoft/please-rules/blob/ts/docs/ts/README.md)     | Hermetic Deno v2.2 toolchain, zero `node_modules`, ephemeral import maps, bundling, and testing. |
 
 ---
 
@@ -36,9 +39,15 @@ Detailed guides, language rule references, and architecture documentation:
   setup.
 - **[Multi-Language Gitflow Guide](docs/gitflow.md)**: Repository branching
   model, release tagging, and synchronization workflows.
-- **[Rust Rules Documentation](https://github.com/wcodesoft/please-rules/blob/rust/docs/rust/README.md)**:
-  Rust architecture, rules, and usage on the
-  [`rust`](https://github.com/wcodesoft/please-rules/tree/rust) branch.
+- **Language Rulesets**:
+  - **[Rust Documentation](https://github.com/wcodesoft/please-rules/blob/rust/docs/rust/README.md)**
+    (`rust` branch)
+  - **[Kotlin Documentation](https://github.com/wcodesoft/please-rules/blob/kotlin/docs/kotlin/README.md)**
+    (`kotlin` branch)
+  - **[Swift Documentation](https://github.com/wcodesoft/please-rules/blob/swift/docs/swift/README.md)**
+    (`swift` branch)
+  - **[TypeScript Documentation](https://github.com/wcodesoft/please-rules/blob/ts/docs/ts/README.md)**
+    (`ts` branch)
 
 ---
 
@@ -60,8 +69,9 @@ To build all targets:
 
 ## Development & IDE Setup (Go / VSCode)
 
-`please-rules` builds its helper tools (such as `please_rust`) using Please's
-hermetic Go toolchain with root-relative package import paths (e.g.
+`please-rules` builds its helper tools (such as `please_rust`, `please_kotlin`,
+`please_swift`, `please_ts`) using Please's hermetic Go toolchain with
+root-relative package import paths (e.g.
 `import "tools/please_rust/testrunner"`).
 
 For optimal VSCode editor integration without conflicting with external Go

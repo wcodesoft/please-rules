@@ -54,6 +54,23 @@ support, multi-module linking, and code coverage on the
 - **[Usage Guide](https://github.com/wcodesoft/please-rules/blob/swift/docs/swift/usage.md)**:
   Multi-module project layouts, `swift-testing` suites, and coverage workflows.
 
+### Kotlin (`///kotlin`)
+
+100% hermetic support for compiling and testing Kotlin applications with OpenJDK
+21, JUnit XML telemetry, and JaCoCo code coverage on the
+[`kotlin`](https://github.com/wcodesoft/please-rules/tree/kotlin) branch:
+
+- **[Kotlin Documentation Overview](https://github.com/wcodesoft/please-rules/blob/kotlin/docs/kotlin/README.md)**:
+  Entry point and feature summary.
+- **[Rule Reference](https://github.com/wcodesoft/please-rules/blob/kotlin/docs/kotlin/rules.md)**:
+  API reference for `kotlin_library`, `kotlin_binary`, `kotlin_test`, and
+  `kotlin_jvm_import`.
+- **[Architecture & Design](https://github.com/wcodesoft/please-rules/blob/kotlin/docs/kotlin/architecture.md)**:
+  Sysroot layout, `please_kotlin` CLI orchestrator, and JaCoCo coverage
+  pipeline.
+- **[Usage Guide](https://github.com/wcodesoft/please-rules/blob/kotlin/docs/kotlin/usage.md)**:
+  `.plzconfig` setup, third-party jar dependencies, and testrunner execution.
+
 ### Swift (`///swift`)
 
 Hermetic, performant build rules for Swift 6+ with native `swift-testing`
@@ -70,6 +87,22 @@ support, multi-module linking, and code coverage on the
   synthesis, and coverage.
 - **[Usage Guide](https://github.com/wcodesoft/please-rules/blob/swift/docs/swift/usage.md)**:
   Multi-module project layouts, `swift-testing` suites, and coverage workflows.
+
+### TypeScript & Deno (`///ts`)
+
+Hermetic TypeScript and Deno build rules with zero `node_modules` and offline
+ephemeral import maps on the
+[`ts`](https://github.com/wcodesoft/please-rules/tree/ts) branch:
+
+- **[TypeScript Documentation Overview](https://github.com/wcodesoft/please-rules/blob/ts/docs/ts/README.md)**:
+  Entry point and quick overview.
+- **[Rule Reference](https://github.com/wcodesoft/please-rules/blob/ts/docs/ts/rules.md)**:
+  API reference for `ts_library`, `ts_binary`, `ts_bundle`, `ts_test`, and
+  `ts_module`.
+- **[Architecture & Design](https://github.com/wcodesoft/please-rules/blob/ts/docs/ts/architecture.md)**:
+  Sandboxing, ephemeral import maps, and `please_ts` orchestrator.
+- **[Usage Guide](https://github.com/wcodesoft/please-rules/blob/ts/docs/ts/usage.md)**:
+  Testing patterns, third-party npm tarballs, and web bundling.
 
 ---
 
