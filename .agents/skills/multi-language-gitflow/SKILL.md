@@ -127,23 +127,23 @@ or repository-level documentation:
    ./pleasew test //...
    ```
 
-2. **Tag the Release**: Tag directly on the language branch using the language
-   prefix:
+2. **Tag and Push the Release**: Tag directly on the language branch using the
+   language prefix:
 
    ```bash
    git tag rust-v0.4.0
    git push origin rust-v0.4.0
    ```
 
-3. **Publish GitHub Release**: Use the standardized title format
-   `[<Language>] v<semver>`:
-
-   ```bash
-   gh release create rust-v0.4.0 \
-     --target rust \
-     --title "[Rust] v0.4.0" \
-     --notes "..."
-   ```
+3. **Automated Release Workflow**: Pushing the tag triggers
+   `.github/workflows/release.yml`, which:
+   - Validates the tool with unit tests and a native binary smoke check.
+   - Cross-compiles static binaries for `linux_amd64`, `linux_arm64`,
+     `darwin_amd64`, and `darwin_arm64`.
+   - Computes SHA-256 checksums (`checksums.txt`).
+   - Automatically creates the GitHub Release (or updates it if already created)
+     with standardized title `[<Language>] v<semver>` and attaches all binaries
+     and checksums.
 
 4. **Verify Consumer Declaration**: Consumers consume this release in
    `plugins/BUILD`:
