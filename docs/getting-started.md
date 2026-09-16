@@ -7,67 +7,89 @@ in your [Please](https://please.build) project.
 
 ## 1. Declaring the Plugin Dependency
 
-In your project's `plugins/BUILD` file, declare the plugin repository using
-`plugin_repo`:
+In your project's `plugins/BUILD` file, declare each required language plugin
+using `plugin_repo`. Because `please-rules` uses a
+**[Hub-and-Spoke Gitflow](gitflow.md)**, specify the respective language release
+tag or branch in `revision`:
 
 ```starlark
+# plugins/BUILD
+
+# Rust plugin
 plugin_repo(
     name = "rust",
     owner = "wcodesoft",
     plugin = "please-rules",
-    revision = "rust-v0.4.0",     # or revision = "rust"
+    revision = "rust-v0.4.1",  # or revision = "rust"
+)
+
+# Kotlin plugin
+plugin_repo(
+    name = "kotlin",
+    owner = "wcodesoft",
+    plugin = "please-rules",
+    revision = "kotlin-v0.1.3",  # or revision = "kotlin"
+)
+
+# Swift plugin
+plugin_repo(
+    name = "swift",
+    owner = "wcodesoft",
+    plugin = "please-rules",
+    revision = "swift-v0.1.1",  # or revision = "swift"
+)
+
+# TypeScript / Deno plugin
+plugin_repo(
+    name = "ts",
+    owner = "wcodesoft",
+    plugin = "please-rules",
+    revision = "ts-v0.1.0",  # or revision = "ts"
 )
 ```
-
-`please-rules` uses a **[Hub-and-Spoke Gitflow](gitflow.md)** where each
-language ruleset (Rust, Kotlin, etc.) lives on its own dedicated branch.
-Consumers specify the language branch or language release tag (e.g.
-`rust-v0.4.0`) in `revision`.
 
 ---
 
 ## 2. Configuring `.plzconfig`
 
-### Option A: Hermetic Toolchain (Recommended)
+Add configuration sections for each language plugin in your project's root
+`.plzconfig`:
 
-When using `rust_toolchain`, Please downloads and manages the compiler
-hermetically. No host tools or environment variables need to be leaked:
+### Rust
 
 ```ini
-; Please configuration file
-
 [Plugin "rust"]
 Target = //plugins:rust
 RustcTool = //third_party/rust:toolchain|rustc
 ```
 
-Where `//third_party/rust:toolchain` is defined in `third_party/rust/BUILD`:
+_(Where `//third_party/rust:toolchain` is defined via
+`rust_toolchain(name = "toolchain", version = "1.85.0")`)._
 
-```starlark
-subinclude("///rust//build_defs:rust")
-
-rust_toolchain(
-    name = "toolchain",
-    version = "1.85.0",
-)
-```
-
-### Option B: Host System Toolchain
-
-If using host-installed compilers or dispatchers (such as `rustup`):
+### Kotlin
 
 ```ini
-; Please configuration file
-
-[Plugin "rust"]
-Target = //plugins:rust
-
-[build]
-passenv = PATH, HOME
+[Plugin "kotlin"]
+Target = //plugins:kotlin
+KotlincTool = //third_party/kotlin:toolchain|kotlinc
+JavaTool = //third_party/kotlin:toolchain|java
 ```
 
-Passing `PATH` and `HOME` ensures that Please's sandboxed build actions can
-resolve host `rustc` and Cargo home directories without hardcoding paths.
+### Swift
+
+```ini
+[Plugin "swift"]
+Target = //plugins:swift
+SwiftcTool = //third_party/swift:toolchain|swiftc
+```
+
+### TypeScript / Deno
+
+```ini
+[Plugin "ts"]
+Target = //plugins:ts
+DenoTool = //third_party/ts:toolchain|deno
+```
 
 ---
 
@@ -76,15 +98,25 @@ resolve host `rustc` and Cargo home directories without hardcoding paths.
 In any package where you want to use the rules, subinclude the rule definitions:
 
 ```starlark
+# Rust targets
 subinclude("///rust//build_defs:rust")
+
+# Kotlin targets
+subinclude("///kotlin//build_defs:kotlin")
+
+# Swift targets
+subinclude("///swift//build_defs:swift")
+
+# TypeScript targets
+subinclude("///ts//build_defs:ts")
 ```
 
-Alternatively, you can preload the build definitions globally in `.plzconfig`
-under `[parse]`:
+Alternatively, you can preload build definitions globally in `.plzconfig` under
+`[parse]`:
 
 ```ini
 [parse]
-preloadsubincludes = ///rust//build_defs:rust
+preloadsubincludes = ///rust//build_defs:rust, ///kotlin//build_defs:kotlin, ///swift//build_defs:swift, ///ts//build_defs:ts
 ```
 
 ---
@@ -93,9 +125,14 @@ preloadsubincludes = ///rust//build_defs:rust
 
 Explore the language-specific guides and rule references:
 
-- **[Rust Rules Documentation](https://github.com/wcodesoft/please-rules/blob/rust/docs/rust/README.md)**:
-  `rust_library`, `rust_bin`, `rust_test`, and `rust_crate` on the
-  [`rust`](https://github.com/wcodesoft/please-rules/tree/rust) branch.
+- **[Rust Rules Documentation](https://github.com/wcodesoft/please-rules/blob/rust/docs/rust/README.md)**
+  (`rust` branch)
+- **[Kotlin Rules Documentation](https://github.com/wcodesoft/please-rules/blob/kotlin/docs/kotlin/README.md)**
+  (`kotlin` branch)
+- **[Swift Rules Documentation](https://github.com/wcodesoft/please-rules/blob/swift/docs/swift/README.md)**
+  (`swift` branch)
+- **[TypeScript Rules Documentation](https://github.com/wcodesoft/please-rules/blob/ts/docs/ts/README.md)**
+  (`ts` branch)
 - **[Multi-Language Gitflow Architecture](gitflow.md)**: Details on branch
   strategy, common code syncing, and release tagging.
 - **[Documentation Portal](README.md)**: Full index of rules, architecture, and
