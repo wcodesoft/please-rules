@@ -1,0 +1,232 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "rust-v*"
+      - "kotlin-v*"
+      - "swift-v*"
+      - "ts-v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to build and publish (e.g. rust-v0.4.2)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    name: Pre-Release Testing & Smoke Verification
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      language: ${{ steps.meta.outputs.language }}
+      version: ${{ steps.meta.outputs.version }}
+      tool: ${{ steps.meta.outputs.tool }}
+      title: ${{ steps.meta.outputs.title }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Parse release tag metadata
+        id: meta
+        run: |
+          TAG="${{ inputs.tag || github.ref_name }}"
+          LANG="${TAG%%-v*}"
+          VERSION="${TAG#*-v}"
+          TOOL="please_${LANG}"
+
+          case "$LANG" in
+            rust) TITLE="Rust" ;;
+            kotlin) TITLE="Kotlin" ;;
+            swift) TITLE="Swift" ;;
+            ts) TITLE="TypeScript" ;;
+            *) TITLE="$(tr '[:lower:]' '[:upper:]' <<< "${LANG:0:1}")${LANG:1}" ;;
+          esac
+
+          echo "Detected release metadata:"
+          echo "  Tag:      ${TAG}"
+          echo "  Language: ${LANG}"
+          echo "  Version:  ${VERSION}"
+          echo "  Tool:     ${TOOL}"
+          echo "  Title:    ${TITLE}"
+
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "language=${LANG}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tool=${TOOL}" >> "$GITHUB_OUTPUT"
+          echo "title=${TITLE}" >> "$GITHUB_OUTPUT"
+
+      - name: Verify tool directory exists
+        run: |
+          TOOL="please_${{ steps.meta.outputs.language }}"
+          if [ ! -d "tools/${TOOL}" ]; then
+            echo "::error::Tool directory 'tools/${TOOL}' does not exist for language '${{ steps.meta.outputs.language }}'."
+            exit 1
+          fi
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+
+      - name: Pre-build test suite (Go unit tests)
+        run: |
+          TOOL="please_${{ steps.meta.outputs.language }}"
+          echo "Running unit tests for ${TOOL}..."
+          cd tools
+          if [ ! -f go.mod ]; then
+            printf "module tools\n\ngo 1.23\n" > go.mod
+          fi
+          go test -v ./${TOOL}/...
+
+      - name: Pre-build test suite (Please tests)
+        run: |
+          TOOL="please_${{ steps.meta.outputs.language }}"
+          echo "Running Please tests for //tools/${TOOL}/..."
+          ./pleasew --plain_output test //tools/${TOOL}/...
+        env:
+          VERITAS_NO_HOOK: "1"
+
+      - name: Binary smoke test & sanity check (runner-native linux_amd64)
+        run: |
+          TOOL="please_${{ steps.meta.outputs.language }}"
+          LANG="${{ steps.meta.outputs.language }}"
+          mkdir -p /tmp/smoke-bin
+
+          cd tools
+          if [ ! -f go.mod ]; then
+            printf "module tools\n\ngo 1.23\n" > go.mod
+          fi
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /tmp/smoke-bin/${TOOL} ./${TOOL}
+          cd ..
+          chmod +x /tmp/smoke-bin/${TOOL}
+
+          echo "Executing ${TOOL} --help sanity check..."
+          HELP_OUTPUT=$(/tmp/smoke-bin/${TOOL} --help 2>&1 || true)
+          echo "$HELP_OUTPUT"
+          if ! echo "$HELP_OUTPUT" | grep -iqE '(usage:|commands:|options:)'; then
+            echo "::error::Smoke test failed: '${TOOL} --help' did not output usage information."
+            exit 1
+          fi
+
+          echo "Validating core subcommand execution..."
+          if [ "${LANG}" = "rust" ]; then
+            /tmp/smoke-bin/${TOOL} compile --help 2>&1 | grep -iq "crate-name" || { echo "::error::please_rust compile --help failed"; exit 1; }
+          elif [ "${LANG}" = "kotlin" ]; then
+            /tmp/smoke-bin/${TOOL} testrunner --help 2>&1 | grep -iq "test-class" || { echo "::error::please_kotlin testrunner --help failed"; exit 1; }
+          elif [ "${LANG}" = "swift" ]; then
+            /tmp/smoke-bin/${TOOL} compile --help 2>&1 | grep -iq "sources" || { echo "::error::please_swift compile --help failed"; exit 1; }
+          elif [ "${LANG}" = "ts" ]; then
+            /tmp/smoke-bin/${TOOL} compile --help 2>&1 | grep -iq "sources" || { echo "::error::please_ts compile --help failed"; exit 1; }
+          fi
+
+      - name: End-to-end compile validation
+        run: |
+          LANG="${{ steps.meta.outputs.language }}"
+          if [ -d "test/${LANG}" ]; then
+            echo "Running end-to-end compile validation for ${LANG}..."
+            ./pleasew --plain_output build //test/${LANG}/...
+          else
+            echo "No test/${LANG} directory found; skipping end-to-end target build."
+          fi
+        env:
+          VERITAS_NO_HOOK: "1"
+
+  build:
+    name: Build (${{ matrix.os }}_${{ matrix.arch }})
+    needs: validate
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [linux, darwin]
+        arch: [amd64, arm64]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+
+      - name: Compile static Go binary
+        env:
+          CGO_ENABLED: "0"
+          GOOS: ${{ matrix.os }}
+          GOARCH: ${{ matrix.arch }}
+          TOOL: ${{ needs.validate.outputs.tool }}
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          BINARY_NAME="${TOOL}-${VERSION}-${{ matrix.os }}_${{ matrix.arch }}"
+          mkdir -p dist
+          cd tools
+          if [ ! -f go.mod ]; then
+            printf "module tools\n\ngo 1.23\n" > go.mod
+          fi
+          go build -trimpath -ldflags="-s -w" -o "../dist/${BINARY_NAME}" "./${TOOL}"
+          cd ..
+          chmod +x "dist/${BINARY_NAME}"
+          ls -lh "dist/${BINARY_NAME}"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ matrix.os }}_${{ matrix.arch }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    name: Publish Release & Assets
+    needs: [validate, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download all built binaries
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: binary-*
+          merge-multiple: true
+
+      - name: Compute SHA-256 Checksums
+        env:
+          TOOL: ${{ needs.validate.outputs.tool }}
+          VERSION: ${{ needs.validate.outputs.version }}
+        working-directory: dist
+        run: |
+          sha256sum ${TOOL}-${VERSION}-* > checksums.txt
+          echo "Generated checksums.txt:"
+          cat checksums.txt
+
+      - name: Upload release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.validate.outputs.tag }}
+          TITLE: ${{ needs.validate.outputs.title }}
+          VERSION: ${{ needs.validate.outputs.version }}
+        working-directory: dist
+        run: |
+          FILES=(*)
+          echo "Release assets to attach:"
+          printf '  %s\n' "${FILES[@]}"
+
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            echo "Release '${TAG}' exists. Uploading/clobbering assets..."
+            gh release upload "${TAG}" "${FILES[@]}" --clobber
+          else
+            echo "Release '${TAG}' does not exist. Creating release with assets..."
+            gh release create "${TAG}" "${FILES[@]}" \
+              --title "[${TITLE}] v${VERSION}" \
+              --generate-notes
+          fi
