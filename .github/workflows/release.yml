@@ -394,17 +394,25 @@ jobs:
           LANG: ${{ needs.validate.outputs.language }}
         working-directory: dist
         run: |
+          # Generate clean release notes using scripts/generate_release_notes.py
+          python3 ../scripts/generate_release_notes.py \
+            --changelog ../CHANGELOG.md \
+            --version "${VERSION}" \
+            --title "${TITLE}" \
+            --out /tmp/release_notes.md
+
           FILES=(*)
           echo "Release assets to attach:"
           printf '  %s\n' "${FILES[@]}"
 
           if gh release view "${TAG}" >/dev/null 2>&1; then
-            echo "Release '${TAG}' exists. Uploading/clobbering assets..."
+            echo "Release '${TAG}' exists. Updating release notes and uploading/clobbering assets..."
+            gh release edit "${TAG}" --title "[${TITLE}] v${VERSION}" --notes-file /tmp/release_notes.md
             gh release upload "${TAG}" "${FILES[@]}" --clobber
           else
             echo "Release '${TAG}' does not exist. Creating release with assets..."
             gh release create "${TAG}" "${FILES[@]}" \
               --title "[${TITLE}] v${VERSION}" \
               --target "${LANG}" \
-              --generate-notes
+              --notes-file /tmp/release_notes.md
           fi
