@@ -11,8 +11,10 @@ and this project adheres to
 
 ### Fixed
 
-- Fixed Starlark f-string quote syntax error when passing CLI `flags` in `ts_library`, `ts_binary`, `ts_bundle`, `ts_test`, and `ts_browser_test`.
-- Standardized CLI flag description and usage from singular `source files` to `sources` across `please_ts` subcommands.
+- Fixed Starlark f-string quote syntax error when passing CLI `flags` in
+  `ts_library`, `ts_binary`, `ts_bundle`, `ts_test`, and `ts_browser_test`.
+- Standardized CLI flag description and usage from singular `source files` to
+  `sources` across `please_ts` subcommands.
 
 ## [0.1.0] - 2026-09-13
 
