@@ -1,14 +1,14 @@
-name: CI (Kotlin)
+name: CI (Swift)
 
 on:
   push:
-    branches: ["kotlin", "release/kotlin*"]
+    branches: ["swift", "release/swift*"]
   pull_request:
-    branches: ["kotlin", "release/kotlin*"]
+    branches: ["swift", "release/swift*"]
 
 jobs:
   fmt:
-    name: Kotlin & Docs Formatting
+    name: Swift, Go & Docs Formatting
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -40,14 +40,19 @@ jobs:
         run: npx prettier --check "**/*.md"
 
   test:
-    name: Please Build & Test (Kotlin)
+    name: Please Build & Test (Swift)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
 
+      - name: Set up Swift
+        uses: swift-actions/setup-swift@v2
+        with:
+          swift-version: "6.0"
+
       - name: Build all targets
-        run: ./pleasew --plain_output build //...
+        run: ./pleasew --plain_output build //tools/please_swift/... //test/swift/...
         env:
           VERITAS_NO_HOOK: "1"
 
