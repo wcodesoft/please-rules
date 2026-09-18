@@ -15,7 +15,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        language: [rust, kotlin, ts, swift]
+        language: [rust, kotlin, ts, swift, wit]
 
     steps:
       - name: Checkout language branch
