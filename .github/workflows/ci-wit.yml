@@ -1,0 +1,40 @@
+name: CI (WIT)
+
+on:
+  push:
+    branches: ["wit", "release/wit*"]
+  pull_request:
+    branches: ["wit", "release/wit*"]
+
+jobs:
+  fmt:
+    name: Docs Formatting
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+
+      - name: Check Markdown formatting
+        run: npx prettier --check "**/*.md"
+
+  test:
+    name: Please Build & Test (WIT)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Build all targets
+        run: ./pleasew --plain_output build //...
+        env:
+          VERITAS_NO_HOOK: "1"
+
+      - name: Run all tests
+        run: ./pleasew --plain_output test //...
+        env:
+          VERITAS_NO_HOOK: "1"
