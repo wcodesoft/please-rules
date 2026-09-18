@@ -7,3 +7,31 @@ Target = //plugins:go
 ImportPath = ""
 GoTool = //third_party/go:toolchain|go
 Stdlib = //third_party/go:std
+
+[Plugin "wit"]
+Target = //plugins:wit
+WitBindgenTool = //tools/wit_toolchain:toolchain|wit-bindgen
+WasmToolsTool = //tools/wit_toolchain:toolchain|wasm-tools
+PleaseWitTool = //tools/please_wit:please_wit
+
+[PluginDefinition]
+Name = wit
+Description = "WebAssembly Interface Types (WIT) build rules for Please"
+
+[PluginConfig "wit_bindgen_tool"]
+ConfigKey = WitBindgenTool
+DefaultValue = wit-bindgen
+Help = Path or build label for the wit-bindgen binary
+Inherit = true
+
+[PluginConfig "wasm_tools_tool"]
+ConfigKey = WasmToolsTool
+DefaultValue = wasm-tools
+Help = Path or build label for the wasm-tools binary
+Inherit = true
+
+[PluginConfig "please_wit_tool"]
+ConfigKey = PleaseWitTool
+DefaultValue = //tools/please_wit:please_wit
+Help = Path or build label for the please_wit tool
+Inherit = true

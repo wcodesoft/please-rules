@@ -1,0 +1,9 @@
+package test:structures;
+
+interface two-sum {
+    solve: func(nums: list<s32>, target: s32) -> list<s32>;
+}
+
+world two-sum-world {
+    export two-sum;
+}
