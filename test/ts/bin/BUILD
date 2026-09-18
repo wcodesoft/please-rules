@@ -4,6 +4,7 @@ ts_binary(
     name = "app",
     main = "main.ts",
     deps = ["//test/ts/lib:calculator"],
+    flags = ["--allow-read"],
 )
 
 ts_bundle(

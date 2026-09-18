@@ -16,8 +16,12 @@ import (
 
 func handleCompile(args []string) error {
 	cmd := flag.NewFlagSet("compile", flag.ContinueOnError)
+	cmd.Usage = func() {
+		fmt.Fprintf(cmd.Output(), "Usage:\n  please_ts compile [options] [-- sources...]\n\nOptions:\n")
+		cmd.PrintDefaults()
+	}
 	out := cmd.String("out", "", "Output path/directory for the compiled library")
-	srcsFlag := cmd.String("srcs", "", "Comma-separated source files")
+	srcsFlag := cmd.String("srcs", "", "Comma-separated sources")
 	depsFlag := cmd.String("deps", "", "Comma-separated dependency paths")
 	deno := cmd.String("deno", "deno", "Path to deno binary")
 	moduleName := cmd.String("module-name", "", "Module name or package specifier alias")
@@ -50,9 +54,13 @@ func handleCompile(args []string) error {
 
 func handleBundle(args []string) error {
 	cmd := flag.NewFlagSet("bundle", flag.ContinueOnError)
+	cmd.Usage = func() {
+		fmt.Fprintf(cmd.Output(), "Usage:\n  please_ts bundle [options] [-- sources...]\n\nOptions:\n")
+		cmd.PrintDefaults()
+	}
 	out := cmd.String("out", "", "Output bundle path")
 	main := cmd.String("main", "", "Main entry point file")
-	srcsFlag := cmd.String("srcs", "", "Comma-separated source files")
+	srcsFlag := cmd.String("srcs", "", "Comma-separated sources")
 	depsFlag := cmd.String("deps", "", "Comma-separated dependency paths")
 	deno := cmd.String("deno", "deno", "Path to deno binary")
 	bundlerTool := cmd.String("bundler-tool", "", "External bundler executable (e.g. esbuild)")
@@ -93,9 +101,13 @@ func handleBundle(args []string) error {
 
 func handleBinary(args []string) error {
 	cmd := flag.NewFlagSet("binary", flag.ContinueOnError)
+	cmd.Usage = func() {
+		fmt.Fprintf(cmd.Output(), "Usage:\n  please_ts binary [options] [-- sources...]\n\nOptions:\n")
+		cmd.PrintDefaults()
+	}
 	out := cmd.String("out", "", "Output binary executable path")
 	main := cmd.String("main", "", "Main entry point file")
-	srcsFlag := cmd.String("srcs", "", "Comma-separated source files")
+	srcsFlag := cmd.String("srcs", "", "Comma-separated sources")
 	depsFlag := cmd.String("deps", "", "Comma-separated dependency paths")
 	deno := cmd.String("deno", "deno", "Path to deno binary")
 	moduleName := cmd.String("module-name", "", "Module name alias")
@@ -128,9 +140,13 @@ func handleBinary(args []string) error {
 
 func handleTestRunner(args []string) error {
 	cmd := flag.NewFlagSet("testrunner", flag.ContinueOnError)
+	cmd.Usage = func() {
+		fmt.Fprintf(cmd.Output(), "Usage:\n  please_ts testrunner [options] [-- sources...]\n\nOptions:\n")
+		cmd.PrintDefaults()
+	}
 	deno := cmd.String("deno", "deno", "Path to deno binary")
 	runner := cmd.String("runner", "deno", "Test runner to use (deno or vitest)")
-	srcsFlag := cmd.String("srcs", "", "Comma-separated test source files")
+	srcsFlag := cmd.String("srcs", "", "Comma-separated sources")
 	depsFlag := cmd.String("deps", "", "Comma-separated dependency paths")
 	moduleName := cmd.String("module-name", "", "Module name alias")
 	resultsFile := cmd.String("results-file", "test.results", "Path to write JUnit XML test results")

@@ -126,7 +126,8 @@ def ts_library(
     tools = {"TOOL": [_ts_tool()]}
     deno_arg = _deno_tool_arg(tools)
 
-    flags_str = f"--flags '{' '.join(flags)}'" if flags else ""
+    flags_joined = " ".join(flags) if flags else ""
+    flags_str = f"--flags '{flags_joined}'" if flags else ""
 
     compile_args = [
         '--out "$OUT"',
@@ -174,7 +175,8 @@ def ts_binary(
     tools = {"TOOL": [_ts_tool()]}
     deno_arg = _deno_tool_arg(tools)
 
-    flags_str = f"--flags '{' '.join(flags)}'" if flags else ""
+    flags_joined = " ".join(flags) if flags else ""
+    flags_str = f"--flags '{flags_joined}'" if flags else ""
 
     compile_args = [
         '--out "$OUT"',
@@ -229,7 +231,8 @@ def ts_bundle(
     tools = {"TOOL": [_ts_tool()]}
     deno_arg = _deno_tool_arg(tools)
 
-    flags_str = f"--flags '{' '.join(flags)}'" if flags else ""
+    flags_joined = " ".join(flags) if flags else ""
+    flags_str = f"--flags '{flags_joined}'" if flags else ""
 
     bundle_args = [
         '--out "$OUT"',
@@ -277,7 +280,8 @@ def ts_test(
     tools = {"TOOL": [_ts_tool()]}
     deno_arg = _deno_tool_arg(tools)
 
-    flags_str = f"--flags '{' '.join(flags)}'" if flags else ""
+    flags_joined = " ".join(flags) if flags else ""
+    flags_str = f"--flags '{flags_joined}'" if flags else ""
 
     compile_args = [
         '--out "$OUT"',
@@ -343,7 +347,8 @@ def ts_browser_test(
     tools = {"TOOL": [_ts_tool()]}
     deno_arg = _deno_tool_arg(tools)
 
-    flags_str = f"--flags '{' '.join(flags)}'" if flags else ""
+    flags_joined = " ".join(flags) if flags else ""
+    flags_str = f"--flags '{flags_joined}'" if flags else ""
 
     compile_args = [
         '--out "$OUT"',

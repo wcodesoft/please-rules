@@ -7,6 +7,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] - 2026-09-17
+
+### Fixed
+
+- Fixed Starlark f-string quote syntax error when passing CLI `flags` in `ts_library`, `ts_binary`, `ts_bundle`, `ts_test`, and `ts_browser_test`.
+- Standardized CLI flag description and usage from singular `source files` to `sources` across `please_ts` subcommands.
+
 ## [0.1.0] - 2026-09-13
 
 ### Added
