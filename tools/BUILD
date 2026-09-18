@@ -1,0 +1,14 @@
+_VERSION = "0.1.0"
+
+remote_file(
+    name = "please_wit",
+    binary = True,
+    hashes = [
+    "0000000000000000000000000000000000000000000000000000000000000000",  # linux_amd64
+    "0000000000000000000000000000000000000000000000000000000000000000",  # linux_arm64
+    "0000000000000000000000000000000000000000000000000000000000000000",  # darwin_amd64
+    "0000000000000000000000000000000000000000000000000000000000000000",  # darwin_arm64
+],
+    url = f"https://github.com/wcodesoft/please-rules/releases/download/wit-v{_VERSION}/please_wit-{_VERSION}-{CONFIG.OS}_{CONFIG.ARCH}",
+    visibility = ["PUBLIC"],
+)
