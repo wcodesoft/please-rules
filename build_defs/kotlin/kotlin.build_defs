@@ -6,6 +6,9 @@ subinclude("//build_defs/kotlin:constants")
 def _kotlin_tool():
     return CONFIG.KOTLIN.PLEASE_KOTLIN_TOOL
 
+def _kotlin_wasm_tool():
+    return CONFIG.KOTLIN.PLEASE_KOTLIN_WASM_TOOL
+
 def _default_jvm_target():
     return CONFIG.KOTLIN.JVM_TARGET or "21"
 
@@ -16,6 +19,15 @@ def _kotlinc_tool_arg(tools):
         return '--kotlinc "$TOOLS_KOTLINC"'
     elif tool and tool != "kotlinc":
         return f"--kotlinc '{tool}'"
+    return ""
+
+def _kotlinc_wasm_tool_arg(tools):
+    tool = CONFIG.KOTLIN.KOTLINC_WASM_TOOL
+    if tool and tool != "kotlinc-wasm" and (tool.startswith("//") or tool.startswith("///") or tool.startswith(":")):
+        tools["KOTLINC_WASM"] = [tool]
+        return '--kotlinc-wasm "$TOOLS_KOTLINC_WASM"'
+    elif tool and tool != "kotlinc-wasm":
+        return f"--kotlinc-wasm '{tool}'"
     return ""
 
 def _java_tool_arg(tools):
@@ -254,6 +266,52 @@ kt_library = kotlin_library
 kt_binary = kotlin_binary
 kt_test = kotlin_test
 
+def kotlin_wasm_binary(
+        name:str,
+        srcs:list,
+        deps:list=None,
+        target:str="wasm-js",
+        main:str="noCall",
+        flags:list=None,
+        visibility:list=None,
+        labels:list=None):
+    """Compiles Kotlin source files into a WebAssembly (.wasm) binary module."""
+    deps = deps or []
+    flags = flags or []
+    out_wasm = f"{name}.wasm"
+
+    tools = {"TOOL": [_kotlin_wasm_tool()]}
+    kotlinc_wasm_arg = _kotlinc_wasm_tool_arg(tools)
+
+    flags_str = f"--flags '{' '.join(flags)}'" if flags else ""
+
+    compile_args = [
+        '--out "$OUT"',
+        '--srcs "${SRCS:-}"',
+        '--deps "${DEPS:-}"',
+        f'--target "{target}"',
+        f'--main "{main}"',
+        f'--module-name "{name}"',
+        kotlinc_wasm_arg,
+        flags_str,
+    ]
+    cmd = _join_cmd("$TOOLS_TOOL compile", compile_args)
+
+    return build_rule(
+        name = name,
+        srcs = srcs,
+        deps = deps,
+        outs = [out_wasm],
+        cmd = cmd,
+        needs_transitive_deps = True,
+        tools = tools,
+        visibility = visibility,
+        labels = labels or ["kotlin", "wasm", "bin"],
+        building_description = f"Compiling Kotlin WebAssembly binary {name}...",
+    )
+
+kt_wasm_binary = kotlin_wasm_binary
+
 def kt_test_suite(
         name:str,
         srcs:list,
@@ -413,6 +471,7 @@ chmod +x "$OUT/bin/{bin_name}"
 def _toolchain_launchers_cmd():
     return (
         _toolchain_launcher_script("kotlinc", "kotlinc/bin/kotlinc") + "\n" +
+        _toolchain_launcher_script("kotlinc-wasm", "kotlinc/bin/kotlinc-wasm") + "\n" +
         _toolchain_launcher_script("kotlin", "kotlinc/bin/kotlin")
     )
 
@@ -472,6 +531,7 @@ def kotlin_toolchain(
 
     entry_points = {
         "kotlinc": f"{name}/bin/kotlinc",
+        "kotlinc-wasm": f"{name}/bin/kotlinc-wasm",
         "kotlin": f"{name}/bin/kotlin",
         "java": f"{name}/bin/java",
         "jar": f"{name}/bin/jar",

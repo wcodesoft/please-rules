@@ -11,7 +11,9 @@ Stdlib = //third_party/go:std
 [Plugin "kotlin"]
 Target = //plugins:kotlin
 PleaseKotlinTool = //tools/please_kotlin:please_kotlin
+PleaseKotlinWasmTool = //tools/please_kotlin_wasm:please_kotlin_wasm
 KotlincTool = //tools/kotlin_toolchain:toolchain|kotlinc
+KotlincWasmTool = //tools/kotlin_toolchain:toolchain|kotlinc-wasm
 JavaTool = //tools/kotlin_toolchain:toolchain|java
 JacocoAgent = //tools/kotlin_toolchain:toolchain|jacoco-agent
 JacocoCli = //tools/kotlin_toolchain:toolchain|jacoco-cli
@@ -26,10 +28,22 @@ DefaultValue = //tools:please_kotlin
 Help = A path or build label for the please_kotlin tool
 Inherit = true
 
+[PluginConfig "please_kotlin_wasm_tool"]
+ConfigKey = PleaseKotlinWasmTool
+DefaultValue = //tools/please_kotlin_wasm:please_kotlin_wasm
+Help = A path or build label for the please_kotlin_wasm tool
+Inherit = true
+
 [PluginConfig "kotlinc_tool"]
 ConfigKey = KotlincTool
 DefaultValue = kotlinc
 Help = Path to the kotlinc compiler to use
+Inherit = true
+
+[PluginConfig "kotlinc_wasm_tool"]
+ConfigKey = KotlincWasmTool
+DefaultValue = kotlinc-wasm
+Help = Path to the kotlinc-wasm compiler to use
 Inherit = true
 
 [PluginConfig "java_tool"]
