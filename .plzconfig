@@ -11,10 +11,10 @@ Stdlib = //third_party/go:std
 [Plugin "kotlin"]
 Target = //plugins:kotlin
 PleaseKotlinTool = //tools/please_kotlin:please_kotlin
-KotlincTool = //test/kotlin/toolchain:toolchain|kotlinc
-JavaTool = //test/kotlin/toolchain:toolchain|java
-JacocoAgent = //test/kotlin/toolchain:toolchain|jacoco-agent
-JacocoCli = //test/kotlin/toolchain:toolchain|jacoco-cli
+KotlincTool = //tools/kotlin_toolchain:toolchain|kotlinc
+JavaTool = //tools/kotlin_toolchain:toolchain|java
+JacocoAgent = //tools/kotlin_toolchain:toolchain|jacoco-agent
+JacocoCli = //tools/kotlin_toolchain:toolchain|jacoco-cli
 JvmTarget = 21
 
 [PluginDefinition]

@@ -1,10 +1,5 @@
 subinclude("//build_defs/kotlin:kotlin")
 
-kotlin_toolchain(
-    name = "toolchain",
-    visibility = ["PUBLIC"],
-)
-
 kotlin_library(
     name = "hermetic_lib",
     srcs = ["lib.kt"],
