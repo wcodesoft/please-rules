@@ -58,7 +58,7 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Build all targets
-        run: ./pleasew --plain_output build //...
+        run: ./pleasew --plain_output build //tools/please_rust/... //test/rust/...
         env:
           VERITAS_NO_HOOK: "1"
 
