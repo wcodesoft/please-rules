@@ -20,20 +20,30 @@ class TestWitBindings(unittest.TestCase):
     def test_go_bindings_generated(self):
         go_dir = os.environ.get("GO_DIR", "test/wit/go_bindings")
         self.assertTrue(os.path.isdir(go_dir), f"Go output directory {go_dir} missing")
-        files = os.listdir(go_dir)
-        self.assertTrue(any(f.endswith(".go") or f.endswith(".h") or f.endswith(".c") for f in files), f"Expected Go/C files in {files}")
+        found_go = False
+        for _, _, files in os.walk(go_dir):
+            if any(f.endswith(".go") or f.endswith(".h") or f.endswith(".c") for f in files):
+                found_go = True
+                break
+        self.assertTrue(found_go, f"Expected Go/C files in {go_dir}")
 
     def test_swift_bindings_generated(self):
         swift_dir = os.environ.get("SWIFT_DIR", "test/wit/swift_bindings")
         self.assertTrue(os.path.isdir(swift_dir), f"Swift output directory {swift_dir} missing")
         files = os.listdir(swift_dir)
         self.assertTrue(any(f.endswith(".swift") for f in files), f"Expected .swift file in {files}")
+        self.assertIn("module.modulemap", files, f"Expected module.modulemap in {files}")
+        self.assertIn("Structures.swift", files, f"Expected Structures.swift in {files}")
 
     def test_kotlin_bindings_generated(self):
         kt_dir = os.environ.get("KT_DIR", "test/wit/kt_bindings")
         self.assertTrue(os.path.isdir(kt_dir), f"Kotlin output directory {kt_dir} missing")
         files = os.listdir(kt_dir)
         self.assertTrue(any(f.endswith(".kt") for f in files), f"Expected .kt file in {files}")
+        self.assertIn("Structures.kt", files, f"Expected Structures.kt in {files}")
+        with open(os.path.join(kt_dir, "Structures.kt"), "r") as f:
+            content = f.read()
+            self.assertIn("package test.structures", content)
 
     def test_ts_bindings_generated(self):
         ts_dir = os.environ.get("TS_DIR", "test/wit/ts_bindings")

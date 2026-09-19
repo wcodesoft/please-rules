@@ -38,6 +38,9 @@ func handleGenerate(args []string) error {
 	srcsFlag := cmd.String("srcs", "", "Space or comma-separated WIT source paths or directory")
 	worldsFlag := cmd.String("worlds", "", "Comma-separated world names")
 	flagsFlag := cmd.String("flags", "", "Additional flags to pass to wit-bindgen")
+	packageFlag := cmd.String("package", "", "WIT package name or namespace (e.g. babel:structures)")
+	companionFilename := cmd.String("companion-filename", "", "Custom filename for companion file")
+	moduleName := cmd.String("module-name", "", "Module name for Swift module.modulemap")
 
 	if err := cmd.Parse(args); err != nil {
 		return err
@@ -70,12 +73,15 @@ func handleGenerate(args []string) error {
 	}
 
 	opts := generate.Options{
-		Bindgen: *bindgen,
-		Lang:    *lang,
-		Out:     *out,
-		Srcs:    srcs,
-		Worlds:  worlds,
-		Flags:   extraFlags,
+		Bindgen:           *bindgen,
+		Lang:              *lang,
+		Out:               *out,
+		Srcs:              srcs,
+		Worlds:            worlds,
+		Flags:             extraFlags,
+		Package:           *packageFlag,
+		CompanionFilename: *companionFilename,
+		ModuleName:        *moduleName,
 	}
 	return generate.Run(opts)
 }

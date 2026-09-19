@@ -102,12 +102,25 @@ def wit_library(
         visibility = visibility or ["PUBLIC"],
     )
 
+def _clean_wit_name(wit: str) -> str:
+    target = wit.split(":")[-1]
+    if target.endswith("_wit"):
+        return target[:-4]
+    return target
+
+def _to_pascal_case(s: str) -> str:
+    parts = s.replace("-", "_").split("_")
+    return "".join([p[0].upper() + p[1:] if len(p) > 1 else p.upper() for p in parts if p])
+
 def _wit_bindgen(
     name: str,
     wit: str,
     language: str,
     worlds: list = None,
     flags: list = None,
+    package: str = "",
+    filename: str = "",
+    module_name: str = "",
     visibility: list = None,
     labels: list = None,
 ):
@@ -130,6 +143,12 @@ def _wit_bindgen(
     if selected_worlds:
         worlds_arg = ",".join(selected_worlds)
         args.extend(["--worlds", f'"{worlds_arg}"'])
+    if package:
+        args.extend(["--package", f'"{package}"'])
+    if filename:
+        args.extend(["--companion-filename", f'"{filename}"'])
+    if module_name:
+        args.extend(["--module-name", f'"{module_name}"'])
     if extra_flags:
         args.extend(["--flags", f'"{extra_flags}"'])
 
@@ -149,15 +168,23 @@ def _wit_bindgen(
 def swift_wit_bindgen(
     name: str,
     wit: str,
+    filename: str = "",
+    module_name: str = "",
+    package: str = "",
     worlds: list = None,
     flags: list = None,
     visibility: list = None,
 ):
     """Generates Swift protocols and bindings from a wit_library."""
+    base_name = _clean_wit_name(wit)
+    pascal_name = _to_pascal_case(base_name)
     return _wit_bindgen(
         name = name,
         wit = wit,
         language = "swift",
+        filename = filename or f"{pascal_name}.swift",
+        module_name = module_name or pascal_name,
+        package = package,
         worlds = worlds,
         flags = flags,
         visibility = visibility,
@@ -166,15 +193,21 @@ def swift_wit_bindgen(
 def kt_wit_bindgen(
     name: str,
     wit: str,
+    filename: str = "",
+    package: str = "",
     worlds: list = None,
     flags: list = None,
     visibility: list = None,
 ):
     """Generates Kotlin interfaces and WASI bindings from a wit_library."""
+    base_name = _clean_wit_name(wit)
+    pascal_name = _to_pascal_case(base_name)
     return _wit_bindgen(
         name = name,
         wit = wit,
         language = "kotlin",
+        filename = filename or f"{pascal_name}.kt",
+        package = package,
         worlds = worlds,
         flags = flags,
         visibility = visibility,
@@ -200,15 +233,18 @@ def rust_wit_bindgen(
 def go_wit_bindgen(
     name: str,
     wit: str,
+    package: str = "",
     worlds: list = None,
     flags: list = None,
     visibility: list = None,
 ):
     """Generates Go interfaces and bindings from a wit_library."""
+    base_name = _clean_wit_name(wit)
     return _wit_bindgen(
         name = name,
         wit = wit,
         language = "go",
+        package = package or base_name,
         worlds = worlds,
         flags = flags,
         visibility = visibility,
@@ -217,15 +253,20 @@ def go_wit_bindgen(
 def ts_wit_bindgen(
     name: str,
     wit: str,
+    filename: str = "",
+    package: str = "",
     worlds: list = None,
     flags: list = None,
     visibility: list = None,
 ):
     """Generates TypeScript definitions and bindings from a wit_library."""
+    base_name = _clean_wit_name(wit)
     return _wit_bindgen(
         name = name,
         wit = wit,
         language = "ts",
+        filename = filename or f"{base_name}.d.ts",
+        package = package,
         worlds = worlds,
         flags = flags,
         visibility = visibility,
@@ -234,6 +275,7 @@ def ts_wit_bindgen(
 def cc_wit_bindgen(
     name: str,
     wit: str,
+    package: str = "",
     worlds: list = None,
     flags: list = None,
     visibility: list = None,
@@ -243,6 +285,7 @@ def cc_wit_bindgen(
         name = name,
         wit = wit,
         language = "cpp",
+        package = package,
         worlds = worlds,
         flags = flags,
         visibility = visibility,
@@ -251,15 +294,18 @@ def cc_wit_bindgen(
 def python_wit_bindgen(
     name: str,
     wit: str,
+    package: str = "",
     worlds: list = None,
     flags: list = None,
     visibility: list = None,
 ):
     """Generates Python type stubs and bindings from a wit_library."""
+    base_name = _clean_wit_name(wit)
     return _wit_bindgen(
         name = name,
         wit = wit,
         language = "python",
+        package = package or base_name,
         worlds = worlds,
         flags = flags,
         visibility = visibility,

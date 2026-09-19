@@ -11,15 +11,19 @@ import (
 )
 
 type Options struct {
-	Bindgen string
-	Lang    string
-	Out     string
-	Srcs    []string
-	Worlds  []string
-	Flags   []string
+	Bindgen           string
+	Lang              string
+	Out               string
+	Srcs              []string
+	Worlds            []string
+	Flags             []string
+	Package           string
+	CompanionFilename string
+	ModuleName        string
 }
 
 var worldRegex = regexp.MustCompile(`^\s*world\s+([a-zA-Z0-9_-]+)`)
+var packageRegex = regexp.MustCompile(`(?m)^\s*package\s+([a-zA-Z0-9_:-]+);`)
 
 // DiscoverWorlds scans all .wit files in a directory or file list and returns declared world names.
 func DiscoverWorlds(witPath string) ([]string, error) {
@@ -68,6 +72,91 @@ func DiscoverWorlds(witPath string) ([]string, error) {
 	return worlds, nil
 }
 
+// DiscoverPackage scans all .wit files in a directory or file list and returns the declared package name if found.
+func DiscoverPackage(witPath string) (string, error) {
+	var files []string
+	fi, err := os.Stat(witPath)
+	if err != nil {
+		return "", err
+	}
+
+	if fi.IsDir() {
+		entries, err := os.ReadDir(witPath)
+		if err != nil {
+			return "", err
+		}
+		for _, e := range entries {
+			if !e.IsDir() && strings.HasSuffix(e.Name(), ".wit") {
+				files = append(files, filepath.Join(witPath, e.Name()))
+			}
+		}
+	} else {
+		files = append(files, witPath)
+	}
+
+	for _, file := range files {
+		data, err := os.ReadFile(file)
+		if err != nil {
+			continue
+		}
+		matches := packageRegex.FindSubmatch(data)
+		if len(matches) > 1 {
+			return string(matches[1]), nil
+		}
+	}
+
+	return "", nil
+}
+
+// ToPascalCase converts names like "structures" or "two_sum" or "two-sum" to "Structures" or "TwoSum".
+func ToPascalCase(s string) string {
+	parts := strings.FieldsFunc(s, func(r rune) bool {
+		return r == '_' || r == '-' || r == ':' || r == '.'
+	})
+	for i, p := range parts {
+		if len(p) > 0 {
+			parts[i] = strings.ToUpper(p[:1]) + p[1:]
+		}
+	}
+	return strings.Join(parts, "")
+}
+
+// DeriveBaseName determines the logical base name for outputs based on companion filename, package, worlds, or directory name.
+func DeriveBaseName(opts Options, witPath string) string {
+	if opts.CompanionFilename != "" {
+		base := filepath.Base(opts.CompanionFilename)
+		ext := filepath.Ext(base)
+		return strings.TrimSuffix(base, ext)
+	}
+
+	pkg := opts.Package
+	if pkg == "" && witPath != "" {
+		pkg, _ = DiscoverPackage(witPath)
+	}
+	if pkg != "" {
+		if idx := strings.LastIndex(pkg, ":"); idx != -1 {
+			return pkg[idx+1:]
+		}
+		return pkg
+	}
+
+	if witPath != "" {
+		worlds, _ := DiscoverWorlds(witPath)
+		if len(worlds) > 0 {
+			w := worlds[0]
+			w = strings.TrimSuffix(w, "-world")
+			w = strings.TrimSuffix(w, "_world")
+			return w
+		}
+
+		base := filepath.Base(witPath)
+		base = strings.TrimSuffix(base, "_wit")
+		return base
+	}
+
+	return "Wit"
+}
+
 // GeneratorForLang maps our supported language string to wit-bindgen generator subcommand.
 func GeneratorForLang(lang string) string {
 	switch strings.ToLower(lang) {
@@ -88,17 +177,89 @@ func GeneratorForLang(lang string) string {
 }
 
 // GenerateCompanions generates language-specific helper and type marker files.
-func GenerateCompanions(lang, outDir string) error {
-	switch strings.ToLower(lang) {
+func GenerateCompanions(opts Options, witPath string) error {
+	outDir := opts.Out
+	baseName := DeriveBaseName(opts, witPath)
+	pascalName := ToPascalCase(baseName)
+
+	pkg := opts.Package
+	if pkg == "" && witPath != "" {
+		pkg, _ = DiscoverPackage(witPath)
+	}
+
+	switch strings.ToLower(opts.Lang) {
 	case "swift":
-		content := "// Auto-generated Swift bridging header and protocol markers for WIT\nimport Foundation\n"
-		return os.WriteFile(filepath.Join(outDir, "WitBridging.swift"), []byte(content), 0644)
+		filename := opts.CompanionFilename
+		if filename == "" {
+			if pascalName != "" {
+				filename = pascalName + ".swift"
+			} else {
+				filename = "WitBridging.swift"
+			}
+		} else if !strings.HasSuffix(filename, ".swift") {
+			filename += ".swift"
+		}
+
+		swiftContent := "// Auto-generated Swift bridging header and protocol markers for WIT\nimport Foundation\n"
+		if err := os.WriteFile(filepath.Join(outDir, filename), []byte(swiftContent), 0644); err != nil {
+			return err
+		}
+
+		modName := opts.ModuleName
+		if modName == "" {
+			if pascalName != "" {
+				modName = pascalName
+			} else {
+				modName = strings.TrimSuffix(filename, ".swift")
+			}
+		}
+
+		hName := "structures.h"
+		if entries, err := os.ReadDir(outDir); err == nil {
+			for _, e := range entries {
+				if strings.HasSuffix(e.Name(), ".h") {
+					hName = e.Name()
+					break
+				}
+			}
+		}
+
+		moduleMap := fmt.Sprintf("module %s {\n    header \"%s\"\n    export *\n}\n", modName, hName)
+		return os.WriteFile(filepath.Join(outDir, "module.modulemap"), []byte(moduleMap), 0644)
+
 	case "kotlin":
-		content := "// Auto-generated Kotlin WASI binding markers for WIT\npackage wit.bindings\n"
-		return os.WriteFile(filepath.Join(outDir, "WitBindings.kt"), []byte(content), 0644)
+		filename := opts.CompanionFilename
+		if filename == "" {
+			if pascalName != "" {
+				filename = pascalName + ".kt"
+			} else {
+				filename = "WitBindings.kt"
+			}
+		} else if !strings.HasSuffix(filename, ".kt") {
+			filename += ".kt"
+		}
+
+		ktPackage := "wit.bindings"
+		if pkg != "" {
+			ktPackage = strings.ReplaceAll(pkg, ":", ".")
+		}
+		content := fmt.Sprintf("// Auto-generated Kotlin WASI binding markers for WIT\npackage %s\n", ktPackage)
+		return os.WriteFile(filepath.Join(outDir, filename), []byte(content), 0644)
+
 	case "ts":
+		filename := opts.CompanionFilename
+		if filename == "" {
+			filename = "index.d.ts"
+		}
 		content := "// Auto-generated TypeScript definitions for WIT component\nexport interface WitComponent {\n  readonly [key: string]: unknown;\n}\n"
-		return os.WriteFile(filepath.Join(outDir, "index.d.ts"), []byte(content), 0644)
+		if err := os.WriteFile(filepath.Join(outDir, filename), []byte(content), 0644); err != nil {
+			return err
+		}
+		if filename != "index.d.ts" {
+			_ = os.WriteFile(filepath.Join(outDir, "index.d.ts"), []byte(content), 0644)
+		}
+		return nil
+
 	case "python", "py":
 		initPy := "# Auto-generated Python bindings for WIT component\n__all__ = []\n"
 		initPyi := "# Type stubs for WIT component\nfrom typing import Any\n"
@@ -177,8 +338,32 @@ func Run(opts Options) error {
 		}
 	}
 
+	var langSpecificFlags []string
+	if strings.ToLower(opts.Lang) == "go" {
+		goPkg := opts.Package
+		if goPkg == "" {
+			goPkg, _ = DiscoverPackage(witPath)
+		}
+		if goPkg != "" {
+			if idx := strings.LastIndex(goPkg, ":"); idx != -1 {
+				goPkg = goPkg[idx+1:]
+			}
+			langSpecificFlags = append(langSpecificFlags, "--pkg-name", goPkg)
+		}
+	} else if strings.ToLower(opts.Lang) == "cpp" || strings.ToLower(opts.Lang) == "cc" {
+		cppPrefix := opts.Package
+		if cppPrefix == "" {
+			cppPrefix, _ = DiscoverPackage(witPath)
+		}
+		if cppPrefix != "" {
+			cppPrefix = strings.ReplaceAll(cppPrefix, ":", "_")
+			langSpecificFlags = append(langSpecificFlags, "--internal-prefix", cppPrefix)
+		}
+	}
+
 	if len(worlds) == 0 {
 		args := []string{subcmd, "--out-dir", opts.Out}
+		args = append(args, langSpecificFlags...)
 		args = append(args, opts.Flags...)
 		args = append(args, witPath)
 
@@ -204,6 +389,7 @@ func Run(opts Options) error {
 	} else {
 		for _, w := range worlds {
 			args := []string{subcmd, "--out-dir", opts.Out, "--world", w}
+			args = append(args, langSpecificFlags...)
 			args = append(args, opts.Flags...)
 			args = append(args, witPath)
 
@@ -228,5 +414,5 @@ func Run(opts Options) error {
 		}
 	}
 
-	return GenerateCompanions(opts.Lang, opts.Out)
+	return GenerateCompanions(opts, witPath)
 }
