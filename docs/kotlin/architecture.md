@@ -71,3 +71,59 @@ flowchart TD
 
 Please parses the resulting file to display line-by-line coverage metrics in the
 terminal and HTML reports.
+
+---
+
+## 4. WebAssembly Compilation Pipeline (`tools/please_kotlin_wasm`)
+
+For WebAssembly targets, `please-rules` introduces a dedicated orchestrator tool
+(`tools/please_kotlin_wasm`) separate from the JVM compiler helper.
+
+### Two-Phase Compilation Architecture
+
+Kotlin's K2 compiler requires a two-phase pipeline to produce WebAssembly
+modules:
+
+```mermaid
+flowchart LR
+    A["Kotlin Sources (*.kt)"] -->|Phase 1: kotlinc-wasm| B["Intermediate KLIB (*.klib)"]
+    B -->|Phase 2: kotlinc-wasm -Xinclude| C["WebAssembly Binary (*.wasm)"]
+```
+
+1. **Phase 1 (KLIB Generation)**: Compiles Kotlin sources against the Kotlin
+   Wasm standard library (`kotlin-stdlib-wasm-*.klib`) into an intermediate
+   library format (`.klib`).
+2. **Phase 2 (Wasm Linking)**: Links the intermediate `.klib` into the final
+   WebAssembly bytecode (`.wasm`) and companion JavaScript glue (`.mjs`).
+
+### Library Wasm vs. Command Wasm
+
+WebAssembly distinguishes between two types of modules:
+
+- **Reactor / Library Wasm (`-main noCall`, default)**: Contains no `main()`
+  routine. Functions annotated with `@WasmExport` are exported to the
+  WebAssembly export table and can be invoked directly by external runtimes
+  (Python via `wasmtime`, Node.js/browsers via `WebAssembly.instantiate`, Go via
+  `wazero`).
+- **Command / Executable Wasm (`-main call`)**: Contains an active entry point
+  that executes `fun main()` upon module instantiation.
+
+### The 3-Tier DAG (Zero Circular Dependencies)
+
+When building WebAssembly modules from shared interface specifications (e.g.
+WIT):
+
+```mermaid
+flowchart TD
+    Contract["1. Contract: //definitions/structures:kotlin\npackage babel.structures\ninterface DisjointSet"]
+    Impl["2. Implementation: //code/kotlin/structures\npackage structures\nclass DisjointSetImpl : DisjointSet"]
+    Binary["3. Wasm Binary: //code/kotlin/structures:wasm\n(Bridge generated here)\npackage structures\n@WasmExport fun makeSet(...) = instance.makeSet(...)"]
+
+    Impl -->|depends on| Contract
+    Binary -->|depends on| Impl
+```
+
+- Contracts define pure interfaces and depend on nothing.
+- Implementations implement the interface and depend only on the contract.
+- Binary targets (`kt_wasm_binary`) assemble the implementation into a
+  standalone `.wasm` module. This ensures a strict, acyclic build graph.

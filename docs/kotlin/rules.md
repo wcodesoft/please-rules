@@ -24,7 +24,7 @@ kotlin_toolchain(
 | Name              | Type  | Default       | Description                                         |
 | :---------------- | :---- | :------------ | :-------------------------------------------------- |
 | `name`            | `str` | `"toolchain"` | Name of the toolchain target.                       |
-| `version`         | `str` | `"2.1.10"`    | Version of the Kotlin compiler.                     |
+| `version`         | `str` | `"2.4.10"`    | Version of the Kotlin compiler.                     |
 | `jdk_version`     | `str` | `"21"`        | Major version of OpenJDK to bundle.                 |
 | `kotlinc_url`     | `str` | `""`          | Optional override URL for Kotlin compiler archive.  |
 | `kotlinc_hash`    | `str` | `""`          | Optional override SHA-256 hash for Kotlin compiler. |
@@ -36,6 +36,7 @@ kotlin_toolchain(
 ### Entry Points
 
 - `:toolchain|kotlinc`: Path to hermetic `kotlinc` binary.
+- `:toolchain|kotlinc-wasm`: Path to hermetic `kotlinc-wasm` compiler.
 - `:toolchain|kotlin`: Path to hermetic `kotlin` runner.
 - `:toolchain|java`: Path to hermetic `java` binary.
 - `:toolchain|jar`: Path to hermetic `jar` packager.
@@ -91,6 +92,49 @@ kotlin_binary(
 | `deps`       | `list` | `[]`     | Dependency libraries.                                               |
 | `main_class` | `str`  | `""`     | Fully qualified main class name (auto-derived from package & file). |
 | `jvm_target` | `str`  | `""`     | Target JVM bytecode version.                                        |
+
+---
+
+## `kt_wasm_binary` (alias `kotlin_wasm_binary`)
+
+Compiles Kotlin source files into a standalone WebAssembly (`.wasm`) binary
+module.
+
+```starlark
+kt_wasm_binary(
+    name = "math_wasm",
+    srcs = ["Math.kt"],
+    target = "wasm-js",   # or "wasm-wasi"
+    main = "noCall",      # creates a library wasm module (reactor)
+)
+```
+
+### Library Wasm vs. Command Wasm
+
+`kt_wasm_binary` supports two execution models controlled by the `main`
+argument:
+
+- **Library Wasm Module (`main = "noCall"`, default)**: Compiles the `.wasm`
+  file as a **reactor/library module**. It exports functions marked with
+  `@WasmExport` without calling a main routine. External runtimes (Python via
+  `wasmtime`, Node.js/browsers via `WebAssembly.instantiate`, Go via `wazero`)
+  can invoke exported functions directly.
+- **Executable Wasm Module (`main = "call"`)**: Compiles as an executable
+  command module that automatically executes Kotlin's `fun main()` upon
+  instantiation.
+
+### Arguments
+
+| Name         | Type   | Default     | Description                                                                   |
+| :----------- | :----- | :---------- | :---------------------------------------------------------------------------- |
+| `name`       | `str`  | Required    | Name of the target; outputs `<name>.wasm`.                                    |
+| `srcs`       | `list` | Required    | Kotlin source files (`.kt`) or directories containing `.kt` files.            |
+| `deps`       | `list` | `[]`        | Dependency klib targets or directories containing `.klib` files.              |
+| `target`     | `str`  | `"wasm-js"` | WebAssembly compilation target: `"wasm-js"` or `"wasm-wasi"`.                 |
+| `main`       | `str`  | `"noCall"`  | Execution mode: `"noCall"` (library/reactor) or `"call"` (command with main). |
+| `flags`      | `list` | `[]`        | Additional flags passed directly to `kotlinc-wasm`.                           |
+| `visibility` | `list` | `None`      | Target visibility.                                                            |
+| `labels`     | `list` | `None`      | Rule labels (defaults to `["kotlin", "wasm", "bin"]`).                        |
 
 ---
 
