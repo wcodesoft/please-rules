@@ -1,6 +1,6 @@
 filegroup(
     name = "version",
-    srcs = ["VERSION"],
+    srcs = glob(["VERSION"], allow_empty = True),
     visibility = ["PUBLIC"],
 )
 
