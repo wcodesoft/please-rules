@@ -20,7 +20,7 @@ plugin_repo(
     name = "rust",
     owner = "wcodesoft",
     plugin = "please-rules",
-    revision = "rust-v0.4.1",  # or revision = "rust"
+    revision = "rust-v0.5.0",  # or revision = "rust"
 )
 
 # Kotlin plugin
@@ -28,7 +28,7 @@ plugin_repo(
     name = "kotlin",
     owner = "wcodesoft",
     plugin = "please-rules",
-    revision = "kotlin-v0.1.3",  # or revision = "kotlin"
+    revision = "kotlin-v0.2.0",  # or revision = "kotlin"
 )
 
 # Swift plugin
@@ -44,7 +44,15 @@ plugin_repo(
     name = "ts",
     owner = "wcodesoft",
     plugin = "please-rules",
-    revision = "ts-v0.1.0",  # or revision = "ts"
+    revision = "ts-v0.1.2",  # or revision = "ts"
+)
+
+# WebAssembly Interface Types (WIT) plugin
+plugin_repo(
+    name = "wit",
+    owner = "wcodesoft",
+    plugin = "please-rules",
+    revision = "wit-v0.2.0",  # or revision = "wit"
 )
 ```
 
@@ -60,19 +68,18 @@ Add configuration sections for each language plugin in your project's root
 ```ini
 [Plugin "rust"]
 Target = //plugins:rust
-RustcTool = //third_party/rust:toolchain|rustc
+RustcTool = ///rust//tools/rust_toolchain:toolchain|rustc
 ```
 
-_(Where `//third_party/rust:toolchain` is defined via
-`rust_toolchain(name = "toolchain", version = "1.85.0")`)._
+_(Where `RustcTool` points to the hermetic toolchain target or local compiler)._
 
 ### Kotlin
 
 ```ini
 [Plugin "kotlin"]
 Target = //plugins:kotlin
-KotlincTool = //third_party/kotlin:toolchain|kotlinc
-JavaTool = //third_party/kotlin:toolchain|java
+KotlincTool = ///kotlin//tools/kotlin_toolchain:toolchain|kotlinc
+JavaTool = ///kotlin//tools/kotlin_toolchain:toolchain|java
 ```
 
 ### Swift
@@ -80,7 +87,7 @@ JavaTool = //third_party/kotlin:toolchain|java
 ```ini
 [Plugin "swift"]
 Target = //plugins:swift
-SwiftcTool = //third_party/swift:toolchain|swiftc
+SwiftcTool = ///swift//tools/swift_toolchain:toolchain|swiftc
 ```
 
 ### TypeScript / Deno
@@ -88,7 +95,16 @@ SwiftcTool = //third_party/swift:toolchain|swiftc
 ```ini
 [Plugin "ts"]
 Target = //plugins:ts
-DenoTool = //third_party/ts:toolchain|deno
+DenoTool = ///ts//tools/ts_toolchain:toolchain|deno
+```
+
+### WebAssembly Interface Types (WIT)
+
+```ini
+[Plugin "wit"]
+Target = //plugins:wit
+WitBindgenTool = ///wit//tools/wit_toolchain:toolchain|wit-bindgen
+WasmToolsTool = ///wit//tools/wit_toolchain:toolchain|wasm-tools
 ```
 
 ---
@@ -109,6 +125,9 @@ subinclude("///swift//build_defs:swift")
 
 # TypeScript targets
 subinclude("///ts//build_defs:ts")
+
+# WIT targets
+subinclude("///wit//build_defs:wit")
 ```
 
 Alternatively, you can preload build definitions globally in `.plzconfig` under
@@ -116,7 +135,7 @@ Alternatively, you can preload build definitions globally in `.plzconfig` under
 
 ```ini
 [parse]
-preloadsubincludes = ///rust//build_defs:rust, ///kotlin//build_defs:kotlin, ///swift//build_defs:swift, ///ts//build_defs:ts
+preloadsubincludes = ///rust//build_defs:rust, ///kotlin//build_defs:kotlin, ///swift//build_defs:swift, ///ts//build_defs:ts, ///wit//build_defs:wit
 ```
 
 ---

@@ -1,1 +1,0 @@
-generate_release_notes_test.py
