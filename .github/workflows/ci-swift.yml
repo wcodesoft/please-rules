@@ -52,7 +52,7 @@ jobs:
           swift-version: "6.0"
 
       - name: Build all targets
-        run: ./pleasew --plain_output build //tools/please_swift/... //test/swift/...
+        run: ./pleasew --plain_output build //tools/please_swift/... //tools/swift_toolchain/... //test/swift/...
         env:
           VERITAS_NO_HOOK: "1"
 
