@@ -1,14 +1,14 @@
-_VERSION = "0.4.1"
+_VERSION = "0.5.0"
 
 remote_file(
     name = "please_rust",
     url = f"https://github.com/wcodesoft/please-rules/releases/download/rust-v{_VERSION}/please_rust-{_VERSION}-{CONFIG.OS}_{CONFIG.ARCH}",
     hashes = [
-        "e816f67c123af8ebc36e3e7e0faace7715a511e353c61ad2516e2c2fe672baf0",  # linux_amd64
-        "7dcbd5c095e8ebfec05c6b9838ce5d662327030e7f2e8039fe9bca332d5c26a3",  # linux_arm64
-        "f5ee1b73bec712b4c05db99271c3fd8934c8ec19805734bcc18a07ff21ec9bf9",  # darwin_amd64
-        "2ba15f8441985152023bdbe5f0f6862fb08d3771275c9d4caaecb4af95aee3ee",  # darwin_arm64
-    ],
+    "58e3d697a7772e7db29f3c707142af7c6bb67647b53453083f1e3cad3875d581",  # linux_amd64
+    "3ec16945bdf339eb3db7b8876a5fe641ea75eb9921bbf6869d27a06d3855b791",  # linux_arm64
+    "dcb1b32736fb987b6fc109c9ec6189023f590b63ffbb66080faede436d579041",  # darwin_amd64
+    "745233f8061483eb195a9e4819338f9475f3a5e966fc7d416545fea14d749910",  # darwin_arm64
+],
     binary = True,
     visibility = ["PUBLIC"],
 )
