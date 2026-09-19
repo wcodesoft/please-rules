@@ -1,10 +1,5 @@
 subinclude("//build_defs/rust:rust")
 
-rust_toolchain(
-    name = "toolchain",
-    version = "1.85.0",
-)
-
 rust_library(
     name = "hermetic_lib",
     srcs = ["lib.rs"],
