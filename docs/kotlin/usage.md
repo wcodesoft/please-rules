@@ -148,3 +148,160 @@ const { instance } = await WebAssembly.instantiate(wasmBuffer);
 
 console.log(instance.exports.add(10, 25)); // 35
 ```
+
+---
+
+## 5. Integrating with WebAssembly Interface Types (WIT)
+
+The Kotlin plugin works seamlessly with the `wit` plugin (`please-rules` WIT
+plugin) to provide cross-language contracts, type safety, and direct WebAssembly
+execution.
+
+### Architectural Flow
+
+```mermaid
+flowchart LR
+    WIT["disjoint_set.wit"] -->|kt_wit_bindgen (wit plugin)| Interface["interface DisjointSet\n(Generated Kotlin Contract)"]
+    Interface -->|implements| Impl["DisjointSetImpl.kt\n(Your Business Logic)"]
+    Impl -->|bundled with Bridge| Binary["kt_wasm_binary\n(kotlin plugin)"]
+    Binary --> Output["structures.wasm\n(WebAssembly Library)"]
+    Output --> Python["Python / TS / Go\n(Host Execution)"]
+```
+
+### Step 1: Define WIT Contract and Generate Kotlin Interfaces
+
+In `definitions/structures/BUILD`:
+
+```starlark
+subinclude("///wit//build_defs:wit")
+
+wit_library(
+    name = "structures_wit",
+    srcs = glob(["*.wit"]),
+    package = "babel:structures",
+)
+
+kt_wit_bindgen(
+    name = "kotlin",
+    wit = ":structures_wit",
+    visibility = ["PUBLIC"],
+)
+```
+
+This generates `babel.structures.DisjointSet` interface.
+
+### Step 2: Implement the Interface in Kotlin
+
+In `src/structures/DisjointSetImpl.kt`:
+
+```kotlin
+package structures
+
+import babel.structures.DisjointSet
+
+class DisjointSetImpl : DisjointSet {
+    private val parent = mutableMapOf<Int, Int>()
+
+    override fun makeSet(x: Int) {
+        if (!parent.containsKey(x)) parent[x] = x
+    }
+
+    override fun find(x: Int): Int? = parent[x]
+
+    override fun union(x: Int, y: Int) {
+        val rootX = find(x) ?: return
+        val rootY = find(y) ?: return
+        if (rootX != rootY) parent[rootX] = rootY
+    }
+
+    override fun isConnected(x: Int, y: Int): Boolean {
+        val rootX = find(x) ?: return false
+        val rootY = find(y) ?: return false
+        return rootX == rootY
+    }
+}
+```
+
+### Step 3: Wire Wasm Exports via Bridge
+
+In `src/structures/Bridge.kt`:
+
+```kotlin
+package structures
+
+import kotlin.wasm.WasmExport
+
+// Lazily instantiated on the first function call from Python / JS
+private val instance by lazy { DisjointSetImpl() }
+
+@WasmExport
+fun makeSet(x: Int) = instance.makeSet(x)
+
+@WasmExport
+fun find(x: Int): Int = instance.find(x) ?: -1
+
+@WasmExport
+fun union(x: Int, y: Int) = instance.union(x, y)
+
+@WasmExport
+fun isConnected(x: Int, y: Int): Boolean = instance.isConnected(x, y)
+```
+
+### Step 4: Compile to WebAssembly with `kt_wasm_binary`
+
+In `src/structures/BUILD`:
+
+```starlark
+subinclude("///kotlin//build_defs:kotlin")
+
+kt_wasm_binary(
+    name = "structures_wasm",
+    srcs = [
+        "//definitions/structures:kotlin",  # Generated WIT interfaces
+        "DisjointSetImpl.kt",               # Implementation
+        "Bridge.kt",                        # @WasmExport bridge
+    ],
+    target = "wasm-js",
+    main = "noCall",                        # Builds as a library wasm module
+    visibility = ["PUBLIC"],
+)
+```
+
+Compile with Please:
+
+```bash
+./pleasew build //src/structures:structures_wasm
+```
+
+The resulting binary `plz-out/gen/src/structures/structures_wasm.wasm` is a
+standalone library WebAssembly module.
+
+### Step 5: Call Directly in Python
+
+```python
+from wasmtime import Store, Module, Instance
+
+store = Store()
+module = Module.from_file(store.engine, "plz-out/gen/src/structures/structures_wasm.wasm")
+instance = Instance(store, module, [])
+
+exports = instance.exports(store)
+exports["makeSet"](store, 1)
+exports["makeSet"](store, 2)
+
+print("Connected?", bool(exports["isConnected"](store, 1, 2)))  # False
+
+exports["union"](store, 1, 2)
+print("Connected after union?", bool(exports["isConnected"](store, 1, 2)))  # True
+```
+
+### Why There Are Zero Circular Dependencies
+
+1. **Contract (`definitions`)**: Contains only pure interfaces
+   (`babel.structures.DisjointSet`) and depends on nothing.
+2. **Implementation (`src/structures`)**: Implements the contract and depends
+   only on the contract.
+3. **Binary (`kt_wasm_binary`)**: Compiles the implementation and export bridge
+   together into `.wasm`. The dependency graph remains a strict, clean Directed
+   Acyclic Graph (DAG):
+   $$\text{Binary} \longrightarrow \text{Implementation} \longrightarrow \text{Contract}$$
