@@ -52,7 +52,7 @@ plugin_repo(
     name = "wit",
     owner = "wcodesoft",
     plugin = "please-rules",
-    revision = "wit-v0.1.0",  # or revision = "wit"
+    revision = "wit-v0.2.0",  # or revision = "wit"
 )
 ```
 
