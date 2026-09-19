@@ -34,7 +34,7 @@ wit_library(
 ## `kt_wit_bindgen`
 
 Generates idiomatic Kotlin interfaces directly from the WIT AST. Requires
-**zero** external binaries (`wit-bindgen` is not used).
+**zero** external binaries.
 
 ```starlark
 kt_wit_bindgen(
@@ -140,11 +140,71 @@ class DisjointSet(Protocol):
 
 ---
 
-## Native Bindgen Rules (`rust_wit_bindgen`, `go_wit_bindgen`, `cc_wit_bindgen`)
+## `rust_wit_bindgen`
 
-For languages with upstream `wit-bindgen` support, these rules invoke
-`wit-bindgen`:
+Generates Rust traits, structs, and enums directly from the WIT AST. Requires
+**zero** external binaries.
 
-- `rust_wit_bindgen`: Generates Rust Guest traits and bindings.
-- `go_wit_bindgen`: Generates Go bindings and C exports.
-- `cc_wit_bindgen`: Generates C++ headers and stubs.
+```starlark
+rust_wit_bindgen(
+    name = "structures_rust",
+    wit = ":structures_wit",
+)
+```
+
+### Generated Code Example
+
+```rust
+pub trait DisjointSet {
+    fn find_root(&mut self, element: i32) -> i32;
+    fn union_sets(&mut self, a: i32, b: i32) -> bool;
+}
+```
+
+---
+
+## `go_wit_bindgen`
+
+Generates Go interfaces and struct types directly from the WIT AST. Requires
+**zero** external binaries.
+
+```starlark
+go_wit_bindgen(
+    name = "structures_go",
+    wit = ":structures_wit",
+)
+```
+
+### Generated Code Example
+
+```go
+type DisjointSet interface {
+    FindRoot(element int32) int32
+    UnionSets(a int32, b int32) bool
+}
+```
+
+---
+
+## `cc_wit_bindgen`
+
+Generates C++ abstract base classes, headers (`.h`), and companions (`.cpp`)
+directly from the WIT AST. Requires **zero** external binaries.
+
+```starlark
+cc_wit_bindgen(
+    name = "structures_cc",
+    wit = ":structures_wit",
+)
+```
+
+### Generated Code Example
+
+```cpp
+class DisjointSet {
+public:
+    virtual ~DisjointSet() = default;
+    virtual int32_t find_root(int32_t element) = 0;
+    virtual bool union_sets(int32_t a, int32_t b) = 0;
+};
+```

@@ -12,13 +12,14 @@ build graphs:
 
 - **Standalone AST Code Generation**: Pure Go lexer and AST parser inside
   `please_wit` that directly emits clean, idiomatic interface contracts for
-  **Kotlin**, **Swift**, **TypeScript**, and **Python** without downloading or
-  requiring external `wit-bindgen` or `wasm-tools` binaries.
-- **Hermetic Toolchain for Rust/Go/C++**: Seamlessly integrates official
-  `wit-bindgen` for languages with native upstream backend support.
+  **Kotlin**, **Swift**, **TypeScript**, **Python**, **Rust**, **Go**, and
+  **C++** with zero external dependencies (no external binaries or tools
+  required).
 - **Strict 3-Tier DAG Support**: Enables contract-driven multi-language
   architectures (`wit_library` $\to$ Language Interfaces $\to$ Implementation
   $\to$ WebAssembly Binaries).
+- **Hermetic & Instant**: Pure Go orchestrator built directly by Please; zero
+  external binary downloads, ensuring completely offline, fast builds.
 
 ---
 
@@ -26,15 +27,14 @@ build graphs:
 
 | Rule                 | Description                                                           | Toolchain Dependency                           |
 | :------------------- | :-------------------------------------------------------------------- | :--------------------------------------------- |
-| `wit_library`        | Packages `.wit` schema files into a consumable WIT package            | `please_wit` (pure Go)                         |
+| `wit_library`        | Packages `.wit` schema files into a consumable WIT package            | `please_wit` (pure Go, zero external binaries) |
 | `kt_wit_bindgen`     | Generates clean Kotlin interfaces from WIT AST                        | `please_wit` (pure Go, zero external binaries) |
 | `swift_wit_bindgen`  | Generates Swift protocols and module maps from WIT AST                | `please_wit` (pure Go, zero external binaries) |
 | `ts_wit_bindgen`     | Generates TypeScript interfaces and type definitions from WIT AST     | `please_wit` (pure Go, zero external binaries) |
 | `python_wit_bindgen` | Generates Python `Protocol` definitions and `.pyi` stubs from WIT AST | `please_wit` (pure Go, zero external binaries) |
-| `rust_wit_bindgen`   | Generates Rust Guest traits and bindings                              | `wit-bindgen`                                  |
-| `go_wit_bindgen`     | Generates Go interfaces and C bindings                                | `wit-bindgen`                                  |
-| `cc_wit_bindgen`     | Generates C++ headers and bindings                                    | `wit-bindgen`                                  |
-| `wit_toolchain`      | Optional hermetic toolchain for `wit-bindgen` & `wasm-tools`          | External tarballs                              |
+| `rust_wit_bindgen`   | Generates Rust traits and data types from WIT AST                     | `please_wit` (pure Go, zero external binaries) |
+| `go_wit_bindgen`     | Generates Go interfaces and struct types from WIT AST                 | `please_wit` (pure Go, zero external binaries) |
+| `cc_wit_bindgen`     | Generates C++ abstract classes and headers from WIT AST               | `please_wit` (pure Go, zero external binaries) |
 
 ---
 

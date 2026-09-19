@@ -2,24 +2,6 @@
 
 subinclude("//build_defs/wit:constants")
 
-def _wit_bindgen_tool(tools):
-    tool = CONFIG.WIT.WIT_BINDGEN_TOOL
-    if tool and (tool.startswith("//") or tool.startswith("///") or tool.startswith(":")):
-        tools["WIT_BINDGEN"] = [tool]
-        return '"$TOOLS_WIT_BINDGEN"'
-    elif tool:
-        return f'"{tool}"'
-    return "wit-bindgen"
-
-def _wasm_tools_tool(tools):
-    tool = CONFIG.WIT.WASM_TOOLS_TOOL
-    if tool and (tool.startswith("//") or tool.startswith("///") or tool.startswith(":")):
-        tools["WASM_TOOLS"] = [tool]
-        return '"$TOOLS_WASM_TOOLS"'
-    elif tool:
-        return f'"{tool}"'
-    return "wasm-tools"
-
 def _please_wit_tool(tools):
     tool = CONFIG.WIT.PLEASE_WIT_TOOL
     if tool and (tool.startswith("//") or tool.startswith("///") or tool.startswith(":")):
@@ -28,54 +10,6 @@ def _please_wit_tool(tools):
     elif tool:
         return f'"{tool}"'
     return "please_wit"
-
-def wit_toolchain(
-    name: str = "toolchain",
-    bindgen_version: str = DEFAULT_WIT_BINDGEN_VERSION,
-    wasm_tools_version: str = DEFAULT_WASM_TOOLS_VERSION,
-    target_platform: str = "",
-    visibility: list = None,
-):
-    """Assembles a 100% hermetic wit-bindgen and wasm-tools toolchain."""
-    plat = target_platform or f"{CONFIG.OS}_{CONFIG.ARCH}"
-    bindgen_info = WIT_BINDGEN_PLATFORM_MAP.get(plat, WIT_BINDGEN_PLATFORM_MAP.get("linux_amd64"))
-    wasm_info = WASM_TOOLS_PLATFORM_MAP.get(plat, WASM_TOOLS_PLATFORM_MAP.get("linux_amd64"))
-
-    bindgen_dl = f"_{name}_wit_bindgen_dl"
-    remote_file(
-        name = bindgen_dl,
-        url = bindgen_info["url"],
-        hashes = [bindgen_info["hash"]] if bindgen_info.get("hash") else [],
-    )
-
-    wasm_dl = f"_{name}_wasm_tools_dl"
-    remote_file(
-        name = wasm_dl,
-        url = wasm_info["url"],
-        hashes = [wasm_info["hash"]] if wasm_info.get("hash") else [],
-    )
-
-    tools = {}
-    please_wit_cmd = _please_wit_tool(tools)
-    cmd = f'{please_wit_cmd} toolchain --out "$OUT" --wit-bindgen-tar "$SRCS_BINDGEN" --wasm-tools-tar "$SRCS_WASM"'
-
-    return build_rule(
-        name = name,
-        srcs = {
-            "BINDGEN": [f":{bindgen_dl}"],
-            "WASM": [f":{wasm_dl}"],
-        },
-        outs = [name],
-        cmd = cmd,
-        tools = tools,
-        entry_points = {
-            "wit-bindgen": f"{name}/bin/wit-bindgen",
-            "wasm-tools": f"{name}/bin/wasm-tools",
-        },
-        binary = True,
-        labels = ["toolchain", "wit"],
-        visibility = visibility or ["PUBLIC"],
-    )
 
 def wit_library(
     name: str,
@@ -127,7 +61,6 @@ def _wit_bindgen(
     """Private core rule: generates language bindings from a wit_library."""
     tools = {}
     please_wit_cmd = _please_wit_tool(tools)
-    is_ast_lang = language in ["kotlin", "swift", "ts", "typescript", "python", "py"]
 
     selected_worlds = worlds or []
     extra_flags = " ".join(flags or [])
@@ -135,16 +68,10 @@ def _wit_bindgen(
     args = [
         please_wit_cmd,
         "generate",
-    ]
-    if not is_ast_lang:
-        bindgen_tool = _wit_bindgen_tool(tools)
-        args.extend(["--bindgen", bindgen_tool])
-
-    args.extend([
         "--lang", language,
         "--out", '"$OUT"',
         "--srcs", '"$SRCS"',
-    ])
+    ]
     if selected_worlds:
         worlds_arg = ",".join(selected_worlds)
         args.extend(["--worlds", f'"{worlds_arg}"'])

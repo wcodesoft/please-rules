@@ -9,35 +9,15 @@ import (
 	"strings"
 
 	"tools/please_wit/generate"
-	"tools/please_wit/toolchain"
 )
-
-func handleToolchain(args []string) error {
-	cmd := flag.NewFlagSet("toolchain", flag.ContinueOnError)
-	out := cmd.String("out", "", "Output directory for toolchain")
-	witBindgenTar := cmd.String("wit-bindgen-tar", "", "Path to wit-bindgen tar.gz")
-	wasmToolsTar := cmd.String("wasm-tools-tar", "", "Path to wasm-tools tar.gz")
-
-	if err := cmd.Parse(args); err != nil {
-		return err
-	}
-
-	opts := toolchain.Options{
-		Out:           *out,
-		WitBindgenTar: *witBindgenTar,
-		WasmToolsTar:  *wasmToolsTar,
-	}
-	return toolchain.Run(opts)
-}
 
 func handleGenerate(args []string) error {
 	cmd := flag.NewFlagSet("generate", flag.ContinueOnError)
-	bindgen := cmd.String("bindgen", "wit-bindgen", "Path to wit-bindgen binary")
 	lang := cmd.String("lang", "", "Target language (rust, go, cpp, swift, kotlin, ts, python)")
 	out := cmd.String("out", "", "Output directory for generated bindings")
 	srcsFlag := cmd.String("srcs", "", "Space or comma-separated WIT source paths or directory")
 	worldsFlag := cmd.String("worlds", "", "Comma-separated world names")
-	flagsFlag := cmd.String("flags", "", "Additional flags to pass to wit-bindgen")
+	flagsFlag := cmd.String("flags", "", "Additional flags")
 	packageFlag := cmd.String("package", "", "WIT package name or namespace (e.g. example:structures)")
 	companionFilename := cmd.String("companion-filename", "", "Custom filename for companion file")
 	moduleName := cmd.String("module-name", "", "Module name for Swift module.modulemap")
@@ -73,7 +53,6 @@ func handleGenerate(args []string) error {
 	}
 
 	opts := generate.Options{
-		Bindgen:           *bindgen,
 		Lang:              *lang,
 		Out:               *out,
 		Srcs:              srcs,
@@ -147,7 +126,6 @@ func handlePackage(args []string) error {
 func printUsage(w io.Writer) {
 	fmt.Fprintf(w, "please_wit - Orchestrator tool for Please WIT rules\n\n")
 	fmt.Fprintf(w, "Usage:\n")
-	fmt.Fprintf(w, "  please_wit toolchain [options]\n")
 	fmt.Fprintf(w, "  please_wit generate [options] [-- sources...]\n")
 	fmt.Fprintf(w, "  please_wit package [options] [-- sources...]\n")
 }
@@ -159,8 +137,6 @@ func runCommand(args []string) error {
 	}
 
 	switch args[0] {
-	case "toolchain":
-		return handleToolchain(args[1:])
 	case "generate":
 		return handleGenerate(args[1:])
 	case "package":

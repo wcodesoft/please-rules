@@ -9,7 +9,6 @@ go_binary(
     visibility = ["PUBLIC"],
     deps = [
         "//tools/please_wit/generate",
-        "//tools/please_wit/toolchain",
     ],
 )
 
@@ -22,6 +21,5 @@ go_test(
     ],
     deps = [
         "//tools/please_wit/generate",
-        "//tools/please_wit/toolchain",
     ],
 )

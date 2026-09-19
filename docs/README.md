@@ -106,9 +106,9 @@ TypeScript, C++, and Python on the
     `python_wit_bindgen` (`py_wit_bindgen`).
   - Unified `worlds = [...]` list parameter supporting full-package or targeted
     world generation.
-- **Toolchain & CLI**: Hermetic `wit_toolchain` downloading `wit-bindgen`
-  (v0.62.0) and `wasm-tools` (v1.259.0), driven by the `please_wit` Go
-  orchestrator CLI.
+- **Self-Contained CLI**: Pure Go `please_wit` CLI orchestrator with an embedded
+  lexer and recursive-descent AST parser, requiring zero external binaries or
+  toolchain downloads.
 
 ---
 

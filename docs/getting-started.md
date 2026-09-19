@@ -52,7 +52,7 @@ plugin_repo(
     name = "wit",
     owner = "wcodesoft",
     plugin = "please-rules",
-    revision = "wit-v0.2.0",  # or revision = "wit"
+    revision = "wit-v0.3.0",  # or revision = "wit"
 )
 ```
 
@@ -103,9 +103,10 @@ DenoTool = ///ts//tools/ts_toolchain:toolchain|deno
 ```ini
 [Plugin "wit"]
 Target = //plugins:wit
-WitBindgenTool = ///wit//tools/wit_toolchain:toolchain|wit-bindgen
-WasmToolsTool = ///wit//tools/wit_toolchain:toolchain|wasm-tools
 ```
+
+_(Zero external toolchain binaries required; `please_wit` compiles directly with
+Please)._
 
 ---
 

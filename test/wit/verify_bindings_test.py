@@ -10,22 +10,33 @@ class TestWitBindings(unittest.TestCase):
         self.assertTrue(os.path.isdir(rust_dir), f"Rust output directory {rust_dir} missing")
         files = os.listdir(rust_dir)
         self.assertTrue(any(f.endswith(".rs") for f in files), f"Expected .rs file in {files}")
+        rs_file = next(f for f in files if f.endswith(".rs"))
+        with open(os.path.join(rust_dir, rs_file), "r") as f:
+            content = f.read()
+            self.assertIn("pub trait TwoSum", content)
+            self.assertIn("fn solve(&mut self, nums: Vec<i32>, target: i32) -> Vec<i32>;", content)
 
     def test_cpp_bindings_generated(self):
         cpp_dir = os.environ.get("CPP_DIR", "test/wit/cpp_bindings")
         self.assertTrue(os.path.isdir(cpp_dir), f"C++ output directory {cpp_dir} missing")
         files = os.listdir(cpp_dir)
         self.assertTrue(any(f.endswith(".h") or f.endswith(".cpp") for f in files), f"Expected .h/.cpp file in {files}")
+        h_file = next(f for f in files if f.endswith(".h"))
+        with open(os.path.join(cpp_dir, h_file), "r") as f:
+            content = f.read()
+            self.assertIn("class TwoSum", content)
+            self.assertIn("virtual std::vector<int32_t> solve(", content)
 
     def test_go_bindings_generated(self):
         go_dir = os.environ.get("GO_DIR", "test/wit/go_bindings")
         self.assertTrue(os.path.isdir(go_dir), f"Go output directory {go_dir} missing")
-        found_go = False
-        for _, _, files in os.walk(go_dir):
-            if any(f.endswith(".go") or f.endswith(".h") or f.endswith(".c") for f in files):
-                found_go = True
-                break
-        self.assertTrue(found_go, f"Expected Go/C files in {go_dir}")
+        files = os.listdir(go_dir)
+        self.assertTrue(any(f.endswith(".go") for f in files), f"Expected .go file in {files}")
+        go_file = next(f for f in files if f.endswith(".go"))
+        with open(os.path.join(go_dir, go_file), "r") as f:
+            content = f.read()
+            self.assertIn("type TwoSum interface", content)
+            self.assertIn("Solve(nums []int32, target int32) []int32", content)
 
     def test_swift_bindings_generated(self):
         swift_dir = os.environ.get("SWIFT_DIR", "test/wit/swift_bindings")

@@ -3,9 +3,12 @@ subinclude("///go//build_defs:go")
 go_library(
     name = "generate",
     srcs = [
+        "cpp.go",
         "generate.go",
+        "golang.go",
         "kotlin.go",
         "python.go",
+        "rust.go",
         "swift.go",
         "ts.go",
     ],
@@ -18,10 +21,13 @@ go_library(
 go_test(
     name = "generate_test",
     srcs = [
+        "cpp.go",
         "generate.go",
         "generate_test.go",
+        "golang.go",
         "kotlin.go",
         "python.go",
+        "rust.go",
         "swift.go",
         "ts.go",
     ],

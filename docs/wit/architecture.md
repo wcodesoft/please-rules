@@ -5,28 +5,32 @@ self-contained AST parser, and cross-language contract generation.
 
 ---
 
-## 1. The Challenge with Upstream `wit-bindgen`
+## 1. Self-Contained Pure Go Architecture
 
-Upstream BytecodeAlliance `wit-bindgen` is designed primarily for Wasm Component
-Model Guest and Host runtimes in low-level systems languages (Rust, Go, C/C++,
-C#). It offers **no native code generators** for:
+Generating language bindings and interface definitions from WIT schemas
+traditionally relied on external precompiled binaries. This introduced several
+major challenges:
 
-- **Kotlin**
-- **Swift**
-- **TypeScript**
-- **Python**
+- **Heavyweight Toolchains**: Required downloading platform-specific tarballs
+  (~50MB per platform/arch), causing slow toolchain bootstrapping and potential
+  host glibc/musl compatibility issues.
+- **Missing Language Support**: Upstream tools had no native generators for
+  Kotlin, Swift, TypeScript, or Python interface contracts.
+- **Contract vs. Runtime Mismatch**: For contract-driven 3-tier architectures,
+  developers need clean, idiomatic interface contracts (e.g. traits, protocols,
+  abstract classes), not heavy guest component wrappers.
 
-Previously, attempting to generate code for these languages either failed or
-required falling back to C headers and generating empty marker files. Developers
-writing implementations (e.g. `class DisjointSetImpl : DisjointSet`) lacked the
-generated interface definitions to implement.
+By embedding a lightweight, recursive-descent lexer and LL(1) AST parser
+directly inside `please_wit` (pure Go), `please-rules` completely eliminates all
+external binary dependencies. Interface contracts for all 7 supported languages
+are generated with sub-second execution, total hermeticity, and zero network
+access.
 
 ---
 
 ## 2. Standalone Go AST Parser Architecture
 
-`please_wit` embeds a lightweight, recursive-descent lexer and LL(1) parser in
-`tools/please_wit/ast`:
+`please_wit` embeds a lightweight lexer and parser in `tools/please_wit/ast`:
 
 ```mermaid
 flowchart LR
@@ -36,11 +40,17 @@ flowchart LR
     AST --> SwiftGen["Swift Generator (swift.go)"]
     AST --> TSGen["TypeScript Generator (ts.go)"]
     AST --> PyGen["Python Generator (python.go)"]
+    AST --> RustGen["Rust Generator (rust.go)"]
+    AST --> GoGen["Go Generator (golang.go)"]
+    AST --> CCGen["C++ Generator (cpp.go)"]
 
     KotlinGen --> KotlinOut["Kotlin Interfaces (*.kt)"]
     SwiftGen --> SwiftOut["Swift Protocols (*.swift)"]
     TSGen --> TSOut["TS Definitions (*.d.ts)"]
     PyGen --> PyOut["Python Stubs (__init__.pyi)"]
+    RustGen --> RustOut["Rust Traits (*.rs)"]
+    GoGen --> GoOut["Go Interfaces (*.go)"]
+    CCGen --> CCOut["C++ Headers (*.h, *.cpp)"]
 ```
 
 ### AST Data Model
@@ -58,13 +68,14 @@ The AST models WIT declarations cleanly:
 
 ## 3. Zero External Binary Dependencies
 
-For contract and interface generation across Kotlin, Swift, TypeScript, and
-Python:
+For contract and interface generation across all supported languages (Kotlin,
+Swift, TypeScript, Python, Rust, Go, C++):
 
-- `please_wit` runs **100% in Go**.
-- **No `wit-bindgen` or `wasm-tools` tarball downloads are required**.
-- Build rules (`kt_wit_bindgen`, `swift_wit_bindgen`, `ts_wit_bindgen`,
-  `python_wit_bindgen`) execute instantly without toolchain bootstrap overhead.
+- `please_wit` compiles from source with Please's native Go rules.
+- **No external binaries or tarballs are downloaded or required**.
+- All binding rules (`kt_wit_bindgen`, `swift_wit_bindgen`, `ts_wit_bindgen`,
+  `python_wit_bindgen`, `rust_wit_bindgen`, `go_wit_bindgen`, `cc_wit_bindgen`)
+  execute instantly without toolchain bootstrap overhead.
 
 ---
 
