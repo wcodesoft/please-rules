@@ -89,6 +89,27 @@ ephemeral import maps on the
 - **[Usage Guide](https://github.com/wcodesoft/please-rules/blob/ts/docs/ts/usage.md)**:
   Testing patterns, third-party npm tarballs, and web bundling.
 
+### WebAssembly Interface Types (`///wit`)
+
+Hermetic build rules for WebAssembly Interface Types (WIT) bundling, multi-world
+discovery, and multi-language binding generation across Swift, Kotlin, Rust, Go,
+TypeScript, C++, and Python on the
+[`wit`](https://github.com/wcodesoft/please-rules/tree/wit) branch:
+
+- **[WIT Branch & Rules](https://github.com/wcodesoft/please-rules/tree/wit)**:
+  Entry point and rule definitions.
+- **Rule Reference**:
+  - `wit_library`: Packages one or more `.wit` interface definition files.
+  - `_wit_bindgen`: Centralized private binding generator engine.
+  - Language wrappers: `swift_wit_bindgen`, `kt_wit_bindgen`,
+    `rust_wit_bindgen`, `go_wit_bindgen`, `ts_wit_bindgen`, `cc_wit_bindgen`,
+    `python_wit_bindgen` (`py_wit_bindgen`).
+  - Unified `worlds = [...]` list parameter supporting full-package or targeted
+    world generation.
+- **Toolchain & CLI**: Hermetic `wit_toolchain` downloading `wit-bindgen`
+  (v0.62.0) and `wasm-tools` (v1.259.0), driven by the `please_wit` Go
+  orchestrator CLI.
+
 ---
 
 ## Repository Structure
