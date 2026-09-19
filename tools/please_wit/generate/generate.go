@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"tools/please_wit/ast"
 )
 
 type Options struct {
@@ -119,6 +120,141 @@ func ToPascalCase(s string) string {
 		}
 	}
 	return strings.Join(parts, "")
+}
+
+// ToCamelCase converts identifiers like "two-sum" or "two_sum" to "twoSum".
+func ToCamelCase(s string) string {
+	parts := strings.FieldsFunc(s, func(r rune) bool {
+		return r == '_' || r == '-' || r == ':' || r == '.'
+	})
+	if len(parts) == 0 {
+		return s
+	}
+	res := strings.ToLower(parts[0])
+	for i := 1; i < len(parts); i++ {
+		if len(parts[i]) > 0 {
+			res += strings.ToUpper(parts[i][:1]) + strings.ToLower(parts[i][1:])
+		}
+	}
+	return res
+}
+
+// ToSnakeCase converts identifiers to snake_case.
+func ToSnakeCase(s string) string {
+	parts := strings.FieldsFunc(s, func(r rune) bool {
+		return r == '_' || r == '-' || r == ':' || r == '.'
+	})
+	var lowerParts []string
+	for _, p := range parts {
+		if p != "" {
+			lowerParts = append(lowerParts, strings.ToLower(p))
+		}
+	}
+	return strings.Join(lowerParts, "_")
+}
+
+// IsASTLang returns true if the language is generated purely from AST without wit-bindgen.
+func IsASTLang(lang string) bool {
+	switch strings.ToLower(lang) {
+	case "kotlin", "kt", "swift", "ts", "typescript", "python", "py":
+		return true
+	default:
+		return false
+	}
+}
+
+// GenerateFromAST parses WIT source directly into an AST and generates native interfaces.
+func GenerateFromAST(opts Options, witPath string) error {
+	pkg, err := ast.ParsePath(witPath)
+	if err != nil {
+		return fmt.Errorf("failed to parse WIT definitions from %s: %w", witPath, err)
+	}
+
+	if opts.Package != "" {
+		if pkg.Namespace == "" && pkg.Name == "" {
+			parts := strings.Split(opts.Package, ":")
+			if len(parts) == 2 {
+				pkg.Namespace = parts[0]
+				pkg.Name = parts[1]
+			} else {
+				pkg.Name = opts.Package
+			}
+		}
+	}
+
+	outDir := opts.Out
+	baseName := DeriveBaseName(opts, witPath)
+	pascalName := ToPascalCase(baseName)
+
+	switch strings.ToLower(opts.Lang) {
+	case "kotlin", "kt":
+		filename := opts.CompanionFilename
+		if filename == "" {
+			if pascalName != "" {
+				filename = pascalName + ".kt"
+			} else {
+				filename = "WitBindings.kt"
+			}
+		} else if !strings.HasSuffix(filename, ".kt") {
+			filename += ".kt"
+		}
+		content := GenerateKotlinCode(pkg, opts.Package)
+		return os.WriteFile(filepath.Join(outDir, filename), []byte(content), 0644)
+
+	case "swift":
+		filename := opts.CompanionFilename
+		if filename == "" {
+			if pascalName != "" {
+				filename = pascalName + ".swift"
+			} else {
+				filename = "WitBridging.swift"
+			}
+		} else if !strings.HasSuffix(filename, ".swift") {
+			filename += ".swift"
+		}
+		content := GenerateSwiftCode(pkg)
+		if err := os.WriteFile(filepath.Join(outDir, filename), []byte(content), 0644); err != nil {
+			return err
+		}
+
+		modName := opts.ModuleName
+		if modName == "" {
+			if pascalName != "" {
+				modName = pascalName
+			} else {
+				modName = strings.TrimSuffix(filename, ".swift")
+			}
+		}
+		moduleMap := fmt.Sprintf("module %s {\n    export *\n}\n", modName)
+		return os.WriteFile(filepath.Join(outDir, "module.modulemap"), []byte(moduleMap), 0644)
+
+	case "ts", "typescript":
+		filename := opts.CompanionFilename
+		if filename == "" {
+			if baseName != "" {
+				filename = baseName + ".d.ts"
+			} else {
+				filename = "index.d.ts"
+			}
+		}
+		content := GenerateTSCode(pkg)
+		if err := os.WriteFile(filepath.Join(outDir, filename), []byte(content), 0644); err != nil {
+			return err
+		}
+		if filename != "index.d.ts" {
+			_ = os.WriteFile(filepath.Join(outDir, "index.d.ts"), []byte(content), 0644)
+		}
+		return nil
+
+	case "python", "py":
+		pyCode, pyiCode := GeneratePythonCode(pkg)
+		if err := os.WriteFile(filepath.Join(outDir, "__init__.py"), []byte(pyCode), 0644); err != nil {
+			return err
+		}
+		return os.WriteFile(filepath.Join(outDir, "__init__.pyi"), []byte(pyiCode), 0644)
+	}
+
+	return fmt.Errorf("unsupported AST language: %s", opts.Lang)
 }
 
 // DeriveBaseName determines the logical base name for outputs based on companion filename, package, worlds, or directory name.
@@ -322,6 +458,10 @@ func Run(opts Options) error {
 			}
 		}
 		witPath = tmpDir
+	}
+
+	if IsASTLang(opts.Lang) {
+		return GenerateFromAST(opts, witPath)
 	}
 
 	subcmd := GeneratorForLang(opts.Lang)

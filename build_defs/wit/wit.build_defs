@@ -127,7 +127,7 @@ def _wit_bindgen(
     """Private core rule: generates language bindings from a wit_library."""
     tools = {}
     please_wit_cmd = _please_wit_tool(tools)
-    bindgen_tool = _wit_bindgen_tool(tools)
+    is_ast_lang = language in ["kotlin", "swift", "ts", "typescript", "python", "py"]
 
     selected_worlds = worlds or []
     extra_flags = " ".join(flags or [])
@@ -135,11 +135,16 @@ def _wit_bindgen(
     args = [
         please_wit_cmd,
         "generate",
-        "--bindgen", bindgen_tool,
+    ]
+    if not is_ast_lang:
+        bindgen_tool = _wit_bindgen_tool(tools)
+        args.extend(["--bindgen", bindgen_tool])
+
+    args.extend([
         "--lang", language,
         "--out", '"$OUT"',
         "--srcs", '"$SRCS"',
-    ]
+    ])
     if selected_worlds:
         worlds_arg = ",".join(selected_worlds)
         args.extend(["--worlds", f'"{worlds_arg}"'])

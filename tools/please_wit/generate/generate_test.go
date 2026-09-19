@@ -91,7 +91,7 @@ func TestToPascalCase(t *testing.T) {
 		"two-sum":         "TwoSum",
 		"two_sum":         "TwoSum",
 		"test:structures": "TestStructures",
-		"babel_code":      "BabelCode",
+		"example_code":    "ExampleCode",
 	}
 	for in, expected := range cases {
 		got := ToPascalCase(in)
@@ -107,7 +107,7 @@ func TestDeriveBaseName(t *testing.T) {
 		t.Errorf("expected MyCustom, got %q", got)
 	}
 
-	opts = Options{Package: "babel:structures"}
+	opts = Options{Package: "example:structures"}
 	if got := DeriveBaseName(opts, ""); got != "structures" {
 		t.Errorf("expected structures, got %q", got)
 	}
@@ -185,3 +185,119 @@ func TestGenerateCompanionsCustom(t *testing.T) {
 		t.Errorf("expected module CustomModule, got: %s", string(mapContent))
 	}
 }
+
+func TestGenerateFromAST(t *testing.T) {
+	tmpDir := t.TempDir()
+	witContent := `
+package test:structures;
+
+interface two-sum {
+    solve: func(nums: list<s32>, target: s32) -> list<s32>;
+    reset: func();
+}
+`
+	witFile := filepath.Join(tmpDir, "two_sum.wit")
+	if err := os.WriteFile(witFile, []byte(witContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// 1. Kotlin
+	ktOut := filepath.Join(tmpDir, "kt_out")
+	_ = os.MkdirAll(ktOut, 0755)
+	optsKt := Options{
+		Lang: "kotlin",
+		Out:  ktOut,
+		Srcs: []string{witFile},
+	}
+	if err := Run(optsKt); err != nil {
+		t.Fatalf("Run(kotlin) failed: %v", err)
+	}
+	ktFile := filepath.Join(ktOut, "Structures.kt")
+	ktBytes, err := os.ReadFile(ktFile)
+	if err != nil {
+		t.Fatalf("failed to read %s: %v", ktFile, err)
+	}
+	ktCode := string(ktBytes)
+	if !strings.Contains(ktCode, "package test.structures") {
+		t.Errorf("expected package test.structures, got: %s", ktCode)
+	}
+	if !strings.Contains(ktCode, "public interface TwoSum {") {
+		t.Errorf("expected public interface TwoSum, got: %s", ktCode)
+	}
+	if !strings.Contains(ktCode, "fun solve(nums: List<Int>, target: Int): List<Int>") {
+		t.Errorf("expected fun solve, got: %s", ktCode)
+	}
+
+	// 2. Swift
+	swiftOut := filepath.Join(tmpDir, "swift_out")
+	_ = os.MkdirAll(swiftOut, 0755)
+	optsSwift := Options{
+		Lang: "swift",
+		Out:  swiftOut,
+		Srcs: []string{witFile},
+	}
+	if err := Run(optsSwift); err != nil {
+		t.Fatalf("Run(swift) failed: %v", err)
+	}
+	swiftFile := filepath.Join(swiftOut, "Structures.swift")
+	swiftBytes, err := os.ReadFile(swiftFile)
+	if err != nil {
+		t.Fatalf("failed to read %s: %v", swiftFile, err)
+	}
+	swiftCode := string(swiftBytes)
+	if !strings.Contains(swiftCode, "public protocol TwoSum {") {
+		t.Errorf("expected public protocol TwoSum, got: %s", swiftCode)
+	}
+	if !strings.Contains(swiftCode, "func solve(nums: [Int32], target: Int32) -> [Int32]") {
+		t.Errorf("expected func solve, got: %s", swiftCode)
+	}
+
+	// 3. TypeScript
+	tsOut := filepath.Join(tmpDir, "ts_out")
+	_ = os.MkdirAll(tsOut, 0755)
+	optsTS := Options{
+		Lang: "ts",
+		Out:  tsOut,
+		Srcs: []string{witFile},
+	}
+	if err := Run(optsTS); err != nil {
+		t.Fatalf("Run(ts) failed: %v", err)
+	}
+	tsFile := filepath.Join(tsOut, "structures.d.ts")
+	tsBytes, err := os.ReadFile(tsFile)
+	if err != nil {
+		t.Fatalf("failed to read %s: %v", tsFile, err)
+	}
+	tsCode := string(tsBytes)
+	if !strings.Contains(tsCode, "export interface TwoSum {") {
+		t.Errorf("expected export interface TwoSum, got: %s", tsCode)
+	}
+	if !strings.Contains(tsCode, "solve(nums: number[], target: number): number[];") {
+		t.Errorf("expected solve signature, got: %s", tsCode)
+	}
+
+	// 4. Python
+	pyOut := filepath.Join(tmpDir, "py_out")
+	_ = os.MkdirAll(pyOut, 0755)
+	optsPy := Options{
+		Lang: "python",
+		Out:  pyOut,
+		Srcs: []string{witFile},
+	}
+	if err := Run(optsPy); err != nil {
+		t.Fatalf("Run(python) failed: %v", err)
+	}
+	pyFile := filepath.Join(pyOut, "__init__.py")
+	pyBytes, err := os.ReadFile(pyFile)
+	if err != nil {
+		t.Fatalf("failed to read %s: %v", pyFile, err)
+	}
+	pyCode := string(pyBytes)
+	if !strings.Contains(pyCode, "class TwoSum(Protocol):") {
+		t.Errorf("expected class TwoSum(Protocol), got: %s", pyCode)
+	}
+	if !strings.Contains(pyCode, "def solve(self, nums: List[int], target: int) -> List[int]:") {
+		t.Errorf("expected def solve, got: %s", pyCode)
+	}
+}
+

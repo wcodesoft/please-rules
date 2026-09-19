@@ -38,7 +38,7 @@ func handleGenerate(args []string) error {
 	srcsFlag := cmd.String("srcs", "", "Space or comma-separated WIT source paths or directory")
 	worldsFlag := cmd.String("worlds", "", "Comma-separated world names")
 	flagsFlag := cmd.String("flags", "", "Additional flags to pass to wit-bindgen")
-	packageFlag := cmd.String("package", "", "WIT package name or namespace (e.g. babel:structures)")
+	packageFlag := cmd.String("package", "", "WIT package name or namespace (e.g. example:structures)")
 	companionFilename := cmd.String("companion-filename", "", "Custom filename for companion file")
 	moduleName := cmd.String("module-name", "", "Module name for Swift module.modulemap")
 
