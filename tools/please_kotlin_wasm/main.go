@@ -50,6 +50,8 @@ func printUsage() {
 	fmt.Fprintf(os.Stderr, "  --target <target>     WebAssembly target: wasm-js or wasm-wasi (default: wasm-js)\n")
 	fmt.Fprintf(os.Stderr, "  --main <call|noCall>  Whether to invoke main() on instantiation (default: noCall)\n")
 	fmt.Fprintf(os.Stderr, "  --module-name <name>  WebAssembly module name\n")
+	fmt.Fprintf(os.Stderr, "  --wit <path>          Path to WebAssembly Interface Types (.wit) definition\n")
+	fmt.Fprintf(os.Stderr, "  --impl <class>        Implementation class name for WIT export bridge (default: <Interface>Impl)\n")
 	fmt.Fprintf(os.Stderr, "  --flags <flags>       Additional compiler flags\n")
 }
 
@@ -63,6 +65,8 @@ func handleCompile(args []string) error {
 	target := cmd.String("target", "wasm-js", "Target WebAssembly platform (wasm-js or wasm-wasi)")
 	mainMode := cmd.String("main", "noCall", "Main function invocation mode (call or noCall)")
 	moduleName := cmd.String("module-name", "", "Module name")
+	witFlag := cmd.String("wit", "", "Path to WebAssembly Interface Types (.wit) definition")
+	implFlag := cmd.String("impl", "", "Implementation class name for WIT export bridge")
 	flags := cmd.String("flags", "", "Additional kotlinc-wasm flags")
 
 	if err := cmd.Parse(args); err != nil {
@@ -89,6 +93,8 @@ func handleCompile(args []string) error {
 		Main:        *mainMode,
 		Target:      *target,
 		ModuleName:  *moduleName,
+		Wit:         *witFlag,
+		Impl:        *implFlag,
 		Flags:       extraFlags,
 	}
 

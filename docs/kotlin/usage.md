@@ -168,7 +168,7 @@ flowchart LR
     Output --> Python["Python / TS / Go\n(Host Execution)"]
 ```
 
-### Step 1: Define WIT Contract and Generate Kotlin Interfaces
+### Step 1: Define WIT Contract
 
 In `definitions/structures/BUILD`:
 
@@ -178,26 +178,34 @@ subinclude("///wit//build_defs:wit")
 wit_library(
     name = "structures_wit",
     srcs = glob(["*.wit"]),
-    package = "babel:structures",
-)
-
-kt_wit_bindgen(
-    name = "kotlin",
-    wit = ":structures_wit",
-    visibility = ["PUBLIC"],
+    package = "contract:structures",
 )
 ```
 
-This generates `babel.structures.DisjointSet` interface.
+And `definitions/structures/structures.wit`:
+
+```wit
+package contract:structures;
+
+interface disjoint-set {
+    make-set: func(x: s32);
+    find: func(x: s32) -> s32;
+    union: func(x: s32, y: s32);
+    is-connected: func(x: s32, y: s32) -> bool;
+}
+```
 
 ### Step 2: Implement the Interface in Kotlin
+
+You only write the implementation class (`DisjointSetImpl.kt`). You do **not**
+need to write a manual bridge or a `main()` function:
 
 In `src/structures/DisjointSetImpl.kt`:
 
 ```kotlin
 package structures
 
-import babel.structures.DisjointSet
+import contract.structures.DisjointSet
 
 class DisjointSetImpl : DisjointSet {
     private val parent = mutableMapOf<Int, Int>()
@@ -222,32 +230,11 @@ class DisjointSetImpl : DisjointSet {
 }
 ```
 
-### Step 3: Wire Wasm Exports via Bridge
+### Step 3: Compile to WebAssembly with Automatic Bridge Generation
 
-In `src/structures/Bridge.kt`:
-
-```kotlin
-package structures
-
-import kotlin.wasm.WasmExport
-
-// Lazily instantiated on the first function call from Python / JS
-private val instance by lazy { DisjointSetImpl() }
-
-@WasmExport
-fun makeSet(x: Int) = instance.makeSet(x)
-
-@WasmExport
-fun find(x: Int): Int = instance.find(x) ?: -1
-
-@WasmExport
-fun union(x: Int, y: Int) = instance.union(x, y)
-
-@WasmExport
-fun isConnected(x: Int, y: Int): Boolean = instance.isConnected(x, y)
-```
-
-### Step 4: Compile to WebAssembly with `kt_wasm_binary`
+Point `kt_wasm_binary` directly to your WIT contract with `wit = "..."`. The
+toolchain automatically generates the interface and `@WasmExport` bridge
+delegating to `DisjointSetImpl()`:
 
 In `src/structures/BUILD`:
 
@@ -256,18 +243,22 @@ subinclude("///kotlin//build_defs:kotlin")
 
 kt_wasm_binary(
     name = "structures_wasm",
-    srcs = [
-        "//definitions/structures:kotlin",  # Generated WIT interfaces
-        "DisjointSetImpl.kt",               # Implementation
-        "Bridge.kt",                        # @WasmExport bridge
-    ],
+    srcs = ["DisjointSetImpl.kt"],
+    wit = "//definitions/structures:structures_wit",
     target = "wasm-js",
     main = "noCall",                        # Builds as a library wasm module
     visibility = ["PUBLIC"],
 )
 ```
 
-Compile with Please:
+> **Note on Custom Implementations**: By default, the generated bridge
+> instantiates `<Interface>Impl()` (e.g. `DisjointSetImpl()`). If your
+> implementation class has a different name, specify it via
+> `impl = "MyCustomClassName"`.
+
+If you prefer to write a custom bridge manually instead of generating it from
+WIT, you can omit `wit` and pass your own `Bridge.kt` annotated with
+`@WasmExport` in `srcs`.
 
 ```bash
 ./pleasew build //src/structures:structures_wasm

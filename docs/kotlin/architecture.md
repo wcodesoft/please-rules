@@ -115,15 +115,19 @@ WIT):
 
 ```mermaid
 flowchart TD
-    Contract["1. Contract: //definitions/structures:kotlin\npackage babel.structures\ninterface DisjointSet"]
-    Impl["2. Implementation: //code/kotlin/structures\npackage structures\nclass DisjointSetImpl : DisjointSet"]
-    Binary["3. Wasm Binary: //code/kotlin/structures:wasm\n(Bridge generated here)\npackage structures\n@WasmExport fun makeSet(...) = instance.makeSet(...)"]
+    Contract["1. Contract: //definitions/structures\npackage contract.structures\ninterface DisjointSet"]
+    Impl["2. Implementation: //src/structures\npackage structures\nclass DisjointSetImpl : DisjointSet"]
+    Binary["3. Wasm Binary: //src/structures:wasm\n(Auto-generated @WasmExport bridge)\n@WasmExport fun makeSet(...) = instance.makeSet(...)"]
 
-    Impl -->|depends on| Contract
-    Binary -->|depends on| Impl
+    Impl -->|implements| Contract
+    Binary -->|links| Impl
+    Binary -.->|reads WIT & generates bridge| Contract
 ```
 
-- Contracts define pure interfaces and depend on nothing.
-- Implementations implement the interface and depend only on the contract.
-- Binary targets (`kt_wasm_binary`) assemble the implementation into a
-  standalone `.wasm` module. This ensures a strict, acyclic build graph.
+- **Contracts** define pure interfaces from `.wit` or shared definitions and
+  depend on nothing.
+- **Implementations** implement the interface and depend only on the contract.
+- **Binary targets (`kt_wasm_binary`)** automatically parse the WIT contract,
+  generate the `@WasmExport` bridge to instantiate and delegate to the
+  implementation class, and compile the final `.wasm` library without requiring
+  manual bridge authoring or circular dependencies.

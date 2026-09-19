@@ -268,14 +268,17 @@ kt_test = kotlin_test
 
 def kotlin_wasm_binary(
         name:str,
-        srcs:list,
+        srcs:list=None,
         deps:list=None,
         target:str="wasm-js",
         main:str="noCall",
+        wit:str="",
+        impl:str="",
         flags:list=None,
         visibility:list=None,
         labels:list=None):
     """Compiles Kotlin source files into a WebAssembly (.wasm) binary module."""
+    actual_srcs = srcs or []
     deps = deps or []
     flags = flags or []
     out_wasm = f"{name}.wasm"
@@ -285,13 +288,30 @@ def kotlin_wasm_binary(
 
     flags_str = f"--flags '{' '.join(flags)}'" if flags else ""
 
+    wit_arg = ""
+    if wit:
+        if isinstance(actual_srcs, dict):
+            rule_srcs = dict(actual_srcs)
+            rule_srcs["WIT"] = [wit]
+        elif actual_srcs:
+            rule_srcs = {"SRCS": actual_srcs, "WIT": [wit]}
+        else:
+            rule_srcs = {"WIT": [wit]}
+        wit_arg = '--wit "$SRCS_WIT"'
+    else:
+        rule_srcs = actual_srcs
+
+    impl_arg = f'--impl "{impl}"' if impl else ""
+
     compile_args = [
         '--out "$OUT"',
-        '--srcs "${SRCS:-}"',
+        '--srcs "${SRCS_SRCS:-${SRCS:-}}"',
         '--deps "${DEPS:-}"',
         f'--target "{target}"',
         f'--main "{main}"',
         f'--module-name "{name}"',
+        wit_arg,
+        impl_arg,
         kotlinc_wasm_arg,
         flags_str,
     ]
@@ -299,7 +319,7 @@ def kotlin_wasm_binary(
 
     return build_rule(
         name = name,
-        srcs = srcs,
+        srcs = rule_srcs,
         deps = deps,
         outs = [out_wasm],
         cmd = cmd,

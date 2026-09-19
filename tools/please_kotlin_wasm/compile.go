@@ -1,11 +1,13 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -19,7 +21,29 @@ type WasmOptions struct {
 	Main        string // "noCall" or "call"
 	Target      string // "wasm-js" or "wasm-wasi"
 	ModuleName  string
+	Wit         string // Path to .wit file, directory, or WIT target
+	Impl        string // Optional implementation class override
 	Flags       []string
+}
+
+// WitFunc represents a function signature parsed from WIT.
+type WitFunc struct {
+	Name       string
+	Params     []WitParam
+	ReturnType string
+}
+
+// WitParam represents a function parameter in WIT.
+type WitParam struct {
+	Name string
+	Type string
+}
+
+// WitInterface represents an interface parsed from WIT.
+type WitInterface struct {
+	Name      string
+	Package   string
+	Functions []WitFunc
 }
 
 func fileExists(path string) bool {
@@ -96,6 +120,299 @@ func FindWasmStdlib(kotlincWasm string, target string) string {
 		}
 	}
 	return ""
+}
+
+// ToCamelCase converts kebab-case or snake_case identifiers to camelCase.
+func ToCamelCase(s string) string {
+	parts := strings.FieldsFunc(s, func(r rune) bool {
+		return r == '-' || r == '_'
+	})
+	if len(parts) == 0 {
+		return s
+	}
+	res := strings.ToLower(parts[0])
+	for i := 1; i < len(parts); i++ {
+		if len(parts[i]) > 0 {
+			res += strings.ToUpper(parts[i][:1]) + strings.ToLower(parts[i][1:])
+		}
+	}
+	return res
+}
+
+// ToPascalCase converts kebab-case or snake_case identifiers to PascalCase.
+func ToPascalCase(s string) string {
+	parts := strings.FieldsFunc(s, func(r rune) bool {
+		return r == '-' || r == '_'
+	})
+	if len(parts) == 0 {
+		return s
+	}
+	var res string
+	for _, p := range parts {
+		if len(p) > 0 {
+			res += strings.ToUpper(p[:1]) + strings.ToLower(p[1:])
+		}
+	}
+	return res
+}
+
+// MapWitTypeToKotlin maps standard WIT primitives to Kotlin types.
+func MapWitTypeToKotlin(witType string) string {
+	witType = strings.TrimSpace(witType)
+	switch witType {
+	case "s8":
+		return "Byte"
+	case "s16":
+		return "Short"
+	case "s32", "u8", "u16", "u32":
+		return "Int"
+	case "s64", "u64":
+		return "Long"
+	case "f32":
+		return "Float"
+	case "f64":
+		return "Double"
+	case "bool":
+		return "Boolean"
+	case "string":
+		return "String"
+	case "_", "unit":
+		return "Unit"
+	}
+
+	// Handle result<T, E>
+	if strings.HasPrefix(witType, "result<") && strings.HasSuffix(witType, ">") {
+		inner := witType[7 : len(witType)-1]
+		parts := strings.Split(inner, ",")
+		if len(parts) > 0 {
+			okType := strings.TrimSpace(parts[0])
+			if okType == "_" {
+				return "Unit"
+			}
+			mapped := MapWitTypeToKotlin(okType)
+			if mapped == "Unit" {
+				return "Unit"
+			}
+			return mapped + "?"
+		}
+		return "Unit"
+	}
+
+	// Handle list<T>
+	if strings.HasPrefix(witType, "list<") && strings.HasSuffix(witType, ">") {
+		elemType := witType[5 : len(witType)-1]
+		return fmt.Sprintf("List<%s>", MapWitTypeToKotlin(elemType))
+	}
+
+	// Handle option<T>
+	if strings.HasPrefix(witType, "option<") && strings.HasSuffix(witType, ">") {
+		elemType := witType[7 : len(witType)-1]
+		return MapWitTypeToKotlin(elemType) + "?"
+	}
+
+	return ToPascalCase(witType)
+}
+
+var funcRegex = regexp.MustCompile(`^\s*([a-zA-Z0-9_-]+)\s*:\s*func\s*\((.*?)\)(?:\s*->\s*(.+))?`)
+var packageRegex = regexp.MustCompile(`(?m)^\s*package\s+([a-zA-Z0-9_:-]+);`)
+var ifaceRegex = regexp.MustCompile(`^\s*interface\s+([a-zA-Z0-9_-]+)\s*\{`)
+var resourceRegex = regexp.MustCompile(`^\s*resource\s+([a-zA-Z0-9_-]+)\s*\{`)
+
+// ParseWit parses .wit files in a given path into WitInterface structures.
+func ParseWit(witPath string) ([]WitInterface, error) {
+	var files []string
+	fi, err := os.Stat(witPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if fi.IsDir() {
+		_ = filepath.Walk(witPath, func(path string, info os.FileInfo, err error) error {
+			if err == nil && info != nil && !info.IsDir() && strings.HasSuffix(path, ".wit") {
+				files = append(files, path)
+			}
+			return nil
+		})
+	} else {
+		files = append(files, witPath)
+	}
+
+	var interfaces []WitInterface
+
+	for _, file := range files {
+		data, err := os.ReadFile(file)
+		if err != nil {
+			continue
+		}
+
+		pkgName := ""
+		if match := packageRegex.FindStringSubmatch(string(data)); len(match) > 1 {
+			pkgName = strings.ReplaceAll(match[1], ":", ".")
+		}
+
+		scanner := bufio.NewScanner(strings.NewReader(string(data)))
+		var currentIface *WitInterface
+
+		for scanner.Scan() {
+			line := strings.TrimSpace(scanner.Text())
+			if strings.HasPrefix(line, "//") {
+				continue
+			}
+
+			if m := ifaceRegex.FindStringSubmatch(line); len(m) > 1 {
+				interfaces = append(interfaces, WitInterface{
+					Name:    m[1],
+					Package: pkgName,
+				})
+				currentIface = &interfaces[len(interfaces)-1]
+				continue
+			}
+
+			if currentIface != nil {
+				if m := resourceRegex.FindStringSubmatch(line); len(m) > 1 {
+					continue
+				}
+
+				if m := funcRegex.FindStringSubmatch(line); len(m) > 1 {
+					funcName := m[1]
+					rawParams := m[2]
+					rawReturn := strings.TrimSuffix(strings.TrimSpace(m[3]), ";")
+
+					var params []WitParam
+					if rawParams != "" {
+						for _, p := range strings.Split(rawParams, ",") {
+							p = strings.TrimSpace(p)
+							if p == "" {
+								continue
+							}
+							parts := strings.SplitN(p, ":", 2)
+							if len(parts) == 2 {
+								pName := ToCamelCase(strings.TrimSpace(parts[0]))
+								pType := MapWitTypeToKotlin(strings.TrimSpace(parts[1]))
+								params = append(params, WitParam{Name: pName, Type: pType})
+							}
+						}
+					}
+
+					retType := "Unit"
+					if rawReturn != "" {
+						retType = MapWitTypeToKotlin(rawReturn)
+					}
+
+					currentIface.Functions = append(currentIface.Functions, WitFunc{
+						Name:       funcName,
+						Params:     params,
+						ReturnType: retType,
+					})
+				}
+			}
+		}
+	}
+
+	return interfaces, nil
+}
+
+// DetectPackage finds the declared Kotlin package across source files.
+func DetectPackage(srcs []string) string {
+	pkgRegex := regexp.MustCompile(`(?m)^\s*package\s+([a-zA-Z0-9_.]+)`)
+	for _, src := range srcs {
+		data, err := os.ReadFile(src)
+		if err == nil {
+			if m := pkgRegex.FindStringSubmatch(string(data)); len(m) > 1 {
+				return m[1]
+			}
+		}
+	}
+	return ""
+}
+
+// GenerateWitArtifacts generates the Kotlin interface and @WasmExport bridge from WIT.
+func GenerateWitArtifacts(interfaces []WitInterface, implClass, targetPkg, outDir string) ([]string, error) {
+	var generated []string
+
+	for _, iface := range interfaces {
+		pascalName := ToPascalCase(iface.Name)
+		resolvedImpl := implClass
+		if resolvedImpl == "" {
+			resolvedImpl = pascalName + "Impl"
+		}
+
+		pkg := targetPkg
+		if pkg == "" {
+			pkg = iface.Package
+		}
+		if pkg == "" {
+			pkg = "wit.generated"
+		}
+
+		// 1. Generate Interface (<Interface>.kt)
+		var ifaceSb strings.Builder
+		ifaceSb.WriteString(fmt.Sprintf("// Auto-generated interface from WIT. DO NOT EDIT.\npackage %s\n\n", pkg))
+		ifaceSb.WriteString(fmt.Sprintf("public interface %s {\n", pascalName))
+
+		for _, fn := range iface.Functions {
+			camelName := ToCamelCase(fn.Name)
+			var params []string
+			for _, p := range fn.Params {
+				params = append(params, fmt.Sprintf("%s: %s", p.Name, p.Type))
+			}
+			retClause := ""
+			if fn.ReturnType != "" && fn.ReturnType != "Unit" {
+				retClause = ": " + fn.ReturnType
+			}
+			ifaceSb.WriteString(fmt.Sprintf("    fun %s(%s)%s\n", camelName, strings.Join(params, ", "), retClause))
+		}
+		ifaceSb.WriteString("}\n")
+
+		ifaceFile := filepath.Join(outDir, pascalName+".kt")
+		if err := os.WriteFile(ifaceFile, []byte(ifaceSb.String()), 0644); err != nil {
+			return nil, err
+		}
+		generated = append(generated, ifaceFile)
+
+		// 2. Generate Export Bridge (<Interface>Bridge.kt)
+		var bridgeSb strings.Builder
+		bridgeSb.WriteString(fmt.Sprintf("// Auto-generated WebAssembly export bridge from WIT. DO NOT EDIT.\npackage %s\n\n", pkg))
+		bridgeSb.WriteString("import kotlin.wasm.WasmExport\n\n")
+		bridgeSb.WriteString(fmt.Sprintf("private val instance by lazy { %s() }\n\n", resolvedImpl))
+
+		for _, fn := range iface.Functions {
+			camelName := ToCamelCase(fn.Name)
+			var params []string
+			var callArgs []string
+			for _, p := range fn.Params {
+				params = append(params, fmt.Sprintf("%s: %s", p.Name, p.Type))
+				callArgs = append(callArgs, p.Name)
+			}
+
+			bridgeSb.WriteString("@WasmExport\n")
+			callExpr := fmt.Sprintf("instance.%s(%s)", camelName, strings.Join(callArgs, ", "))
+
+			if fn.ReturnType == "" || fn.ReturnType == "Unit" {
+				bridgeSb.WriteString(fmt.Sprintf("fun %s(%s) {\n    %s\n}\n\n", camelName, strings.Join(params, ", "), callExpr))
+			} else if strings.HasSuffix(fn.ReturnType, "?") {
+				// Provide fallback for nullable returns to Wasm
+				baseType := strings.TrimSuffix(fn.ReturnType, "?")
+				fallback := "-1"
+				if baseType == "Boolean" {
+					fallback = "false"
+				} else if baseType == "String" {
+					fallback = `""`
+				}
+				bridgeSb.WriteString(fmt.Sprintf("fun %s(%s): %s {\n    return %s ?: %s\n}\n\n", camelName, strings.Join(params, ", "), baseType, callExpr, fallback))
+			} else {
+				bridgeSb.WriteString(fmt.Sprintf("fun %s(%s): %s {\n    return %s\n}\n\n", camelName, strings.Join(params, ", "), fn.ReturnType, callExpr))
+			}
+		}
+
+		bridgeFile := filepath.Join(outDir, pascalName+"Bridge.kt")
+		if err := os.WriteFile(bridgeFile, []byte(bridgeSb.String()), 0644); err != nil {
+			return nil, err
+		}
+		generated = append(generated, bridgeFile)
+	}
+
+	return generated, nil
 }
 
 // DiscoverWasmSources recursively expands source directories and files to collect .kt files.
@@ -228,9 +545,33 @@ func CompileWasm(opts WasmOptions) error {
 		return fmt.Errorf("output path (--out) is required")
 	}
 
+	// Setup working directory
+	tmpDir, err := os.MkdirTemp("", "kt-wasm-*")
+	if err != nil {
+		return fmt.Errorf("failed to create temporary working directory: %w", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
 	allSources := DiscoverWasmSources(append(opts.Srcs, opts.Deps...))
+
+	// If WIT contract is specified, parse it and auto-generate interface & bridge
+	if opts.Wit != "" {
+		witInterfaces, err := ParseWit(opts.Wit)
+		if err != nil {
+			return fmt.Errorf("failed to parse WIT definitions from %s: %w", opts.Wit, err)
+		}
+		if len(witInterfaces) > 0 {
+			targetPkg := DetectPackage(allSources)
+			generatedFiles, err := GenerateWitArtifacts(witInterfaces, opts.Impl, targetPkg, tmpDir)
+			if err != nil {
+				return fmt.Errorf("failed to generate WIT artifacts: %w", err)
+			}
+			allSources = append(allSources, generatedFiles...)
+		}
+	}
+
 	if len(allSources) == 0 {
-		return fmt.Errorf("no Kotlin source files (.kt) found in srcs or deps")
+		return fmt.Errorf("no Kotlin source files (.kt) found in srcs, deps, or generated from wit")
 	}
 
 	kotlincWasm, err := ResolveKotlincWasm(opts.KotlincWasm)
@@ -267,13 +608,6 @@ func CompileWasm(opts WasmOptions) error {
 		}
 	}
 	librariesArg := strings.Join(klibList, string(os.PathListSeparator))
-
-	// Setup working directory
-	tmpDir, err := os.MkdirTemp("", "kt-wasm-*")
-	if err != nil {
-		return fmt.Errorf("failed to create temporary working directory: %w", err)
-	}
-	defer os.RemoveAll(tmpDir)
 
 	moduleName := opts.ModuleName
 	if moduleName == "" {
@@ -335,7 +669,6 @@ func CompileWasm(opts WasmOptions) error {
 	// Phase 3: Deliver output artifact
 	generatedWasm := filepath.Join(phase2OutDir, moduleName+".wasm")
 	if !fileExists(generatedWasm) {
-		// Look for any generated .wasm file
 		entries, _ := os.ReadDir(phase2OutDir)
 		for _, e := range entries {
 			if strings.HasSuffix(e.Name(), ".wasm") {

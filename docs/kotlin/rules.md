@@ -125,16 +125,18 @@ argument:
 
 ### Arguments
 
-| Name         | Type   | Default     | Description                                                                   |
-| :----------- | :----- | :---------- | :---------------------------------------------------------------------------- |
-| `name`       | `str`  | Required    | Name of the target; outputs `<name>.wasm`.                                    |
-| `srcs`       | `list` | Required    | Kotlin source files (`.kt`) or directories containing `.kt` files.            |
-| `deps`       | `list` | `[]`        | Dependency klib targets or directories containing `.klib` files.              |
-| `target`     | `str`  | `"wasm-js"` | WebAssembly compilation target: `"wasm-js"` or `"wasm-wasi"`.                 |
-| `main`       | `str`  | `"noCall"`  | Execution mode: `"noCall"` (library/reactor) or `"call"` (command with main). |
-| `flags`      | `list` | `[]`        | Additional flags passed directly to `kotlinc-wasm`.                           |
-| `visibility` | `list` | `None`      | Target visibility.                                                            |
-| `labels`     | `list` | `None`      | Rule labels (defaults to `["kotlin", "wasm", "bin"]`).                        |
+| Name         | Type   | Default     | Description                                                                                   |
+| :----------- | :----- | :---------- | :-------------------------------------------------------------------------------------------- |
+| `name`       | `str`  | Required    | Name of the target; outputs `<name>.wasm`.                                                    |
+| `srcs`       | `list` | `[]`        | Kotlin source files (`.kt`) or directories containing `.kt` files (e.g. implementation).      |
+| `wit`        | `str`  | `""`        | Optional path to a `.wit` file or directory for automatic interface and bridge generation.    |
+| `impl`       | `str`  | `""`        | Optional implementation class name to instantiate in the bridge (default: `<Interface>Impl`). |
+| `deps`       | `list` | `[]`        | Dependency klib targets or directories containing `.klib` files.                              |
+| `target`     | `str`  | `"wasm-js"` | WebAssembly compilation target: `"wasm-js"` or `"wasm-wasi"`.                                 |
+| `main`       | `str`  | `"noCall"`  | Execution mode: `"noCall"` (library/reactor) or `"call"` (command with main).                 |
+| `flags`      | `list` | `[]`        | Additional flags passed directly to `kotlinc-wasm`.                                           |
+| `visibility` | `list` | `None`      | Target visibility.                                                                            |
+| `labels`     | `list` | `None`      | Rule labels (defaults to `["kotlin", "wasm", "bin"]`).                                        |
 
 ---
 
