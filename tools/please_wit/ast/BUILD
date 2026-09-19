@@ -12,8 +12,10 @@ go_library(
 go_test(
     name = "ast_test",
     srcs = [
-        "ast.go",
         "ast_test.go",
-        "parser.go",
+        "parser_test.go",
+    ],
+    deps = [
+        ":ast",
     ],
 )

@@ -5,6 +5,7 @@ go_library(
     srcs = [
         "cpp.go",
         "generate.go",
+        "generator.go",
         "golang.go",
         "kotlin.go",
         "python.go",
@@ -21,17 +22,17 @@ go_library(
 go_test(
     name = "generate_test",
     srcs = [
-        "cpp.go",
-        "generate.go",
+        "cpp_test.go",
         "generate_test.go",
-        "golang.go",
-        "kotlin.go",
-        "python.go",
-        "rust.go",
-        "swift.go",
-        "ts.go",
+        "golang_test.go",
+        "kotlin_test.go",
+        "python_test.go",
+        "rust_test.go",
+        "swift_test.go",
+        "ts_test.go",
     ],
     deps = [
+        ":generate",
         "//tools/please_wit/ast",
     ],
 )

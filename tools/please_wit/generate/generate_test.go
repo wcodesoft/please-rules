@@ -3,8 +3,8 @@ package generate
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
+	"tools/please_wit/ast"
 )
 
 func TestDiscoverWorlds(t *testing.T) {
@@ -42,192 +42,149 @@ world my-world-2 {
 	}
 }
 
+func TestDeriveBaseName(t *testing.T) {
+	// 1. CompanionFilename set
+	opts1 := Options{CompanionFilename: "custom-name.kt"}
+	if base := DeriveBaseName(opts1, ""); base != "custom-name" {
+		t.Errorf("expected custom-name, got %q", base)
+	}
 
+	// 2. Derive from package name in options
+	opts2 := Options{Package: "test:structures"}
+	if base := DeriveBaseName(opts2, ""); base != "structures" {
+		t.Errorf("expected structures, got %q", base)
+	}
 
-func TestGenerateFromAST(t *testing.T) {
+	// 3. Fallback when package name and witPath are empty
+	opts3 := Options{}
+	if base := DeriveBaseName(opts3, ""); base != "Wit" {
+		t.Errorf("expected Wit, got %q", base)
+	}
+}
+
+func TestGenerateUnknownLanguage(t *testing.T) {
 	tmpDir := t.TempDir()
-	witContent := `
-package test:structures;
-
-interface two-sum {
-    solve: func(nums: list<s32>, target: s32) -> list<s32>;
-    reset: func();
-}
-`
-	witFile := filepath.Join(tmpDir, "two_sum.wit")
-	if err := os.WriteFile(witFile, []byte(witContent), 0644); err != nil {
-		t.Fatal(err)
+	opts := Options{
+		Lang: "unsupported-lang",
+		Out:  tmpDir,
+		Srcs: []string{"dummy.wit"},
 	}
-
-	// 1. Kotlin
-	ktOut := filepath.Join(tmpDir, "kt_out")
-	_ = os.MkdirAll(ktOut, 0755)
-	optsKt := Options{
-		Lang: "kotlin",
-		Out:  ktOut,
-		Srcs: []string{witFile},
-	}
-	if err := Run(optsKt); err != nil {
-		t.Fatalf("Run(kotlin) failed: %v", err)
-	}
-	ktFile := filepath.Join(ktOut, "Structures.kt")
-	ktBytes, err := os.ReadFile(ktFile)
-	if err != nil {
-		t.Fatalf("failed to read %s: %v", ktFile, err)
-	}
-	ktCode := string(ktBytes)
-	if !strings.Contains(ktCode, "package test.structures") {
-		t.Errorf("expected package test.structures, got: %s", ktCode)
-	}
-	if !strings.Contains(ktCode, "public interface TwoSum {") {
-		t.Errorf("expected public interface TwoSum, got: %s", ktCode)
-	}
-	if !strings.Contains(ktCode, "fun solve(nums: List<Int>, target: Int): List<Int>") {
-		t.Errorf("expected fun solve, got: %s", ktCode)
-	}
-
-	// 2. Swift
-	swiftOut := filepath.Join(tmpDir, "swift_out")
-	_ = os.MkdirAll(swiftOut, 0755)
-	optsSwift := Options{
-		Lang: "swift",
-		Out:  swiftOut,
-		Srcs: []string{witFile},
-	}
-	if err := Run(optsSwift); err != nil {
-		t.Fatalf("Run(swift) failed: %v", err)
-	}
-	swiftFile := filepath.Join(swiftOut, "Structures.swift")
-	swiftBytes, err := os.ReadFile(swiftFile)
-	if err != nil {
-		t.Fatalf("failed to read %s: %v", swiftFile, err)
-	}
-	swiftCode := string(swiftBytes)
-	if !strings.Contains(swiftCode, "public protocol TwoSum {") {
-		t.Errorf("expected public protocol TwoSum, got: %s", swiftCode)
-	}
-	if !strings.Contains(swiftCode, "func solve(nums: [Int32], target: Int32) -> [Int32]") {
-		t.Errorf("expected func solve, got: %s", swiftCode)
-	}
-
-	// 3. TypeScript
-	tsOut := filepath.Join(tmpDir, "ts_out")
-	_ = os.MkdirAll(tsOut, 0755)
-	optsTS := Options{
-		Lang: "ts",
-		Out:  tsOut,
-		Srcs: []string{witFile},
-	}
-	if err := Run(optsTS); err != nil {
-		t.Fatalf("Run(ts) failed: %v", err)
-	}
-	tsFile := filepath.Join(tsOut, "structures.d.ts")
-	tsBytes, err := os.ReadFile(tsFile)
-	if err != nil {
-		t.Fatalf("failed to read %s: %v", tsFile, err)
-	}
-	tsCode := string(tsBytes)
-	if !strings.Contains(tsCode, "export interface TwoSum {") {
-		t.Errorf("expected export interface TwoSum, got: %s", tsCode)
-	}
-	if !strings.Contains(tsCode, "solve(nums: number[], target: number): number[];") {
-		t.Errorf("expected solve signature, got: %s", tsCode)
-	}
-
-	// 4. Python
-	pyOut := filepath.Join(tmpDir, "py_out")
-	_ = os.MkdirAll(pyOut, 0755)
-	optsPy := Options{
-		Lang: "python",
-		Out:  pyOut,
-		Srcs: []string{witFile},
-	}
-	if err := Run(optsPy); err != nil {
-		t.Fatalf("Run(python) failed: %v", err)
-	}
-	pyFile := filepath.Join(pyOut, "__init__.py")
-	pyBytes, err := os.ReadFile(pyFile)
-	if err != nil {
-		t.Fatalf("failed to read %s: %v", pyFile, err)
-	}
-	pyCode := string(pyBytes)
-	if !strings.Contains(pyCode, "class TwoSum(Protocol):") {
-		t.Errorf("expected class TwoSum(Protocol), got: %s", pyCode)
-	}
-	if !strings.Contains(pyCode, "def solve(self, nums: List[int], target: int) -> List[int]:") {
-		t.Errorf("expected def solve, got: %s", pyCode)
-	}
-
-	// 5. Rust
-	rustOut := filepath.Join(tmpDir, "rust_out")
-	_ = os.MkdirAll(rustOut, 0755)
-	optsRust := Options{
-		Lang: "rust",
-		Out:  rustOut,
-		Srcs: []string{witFile},
-	}
-	if err := Run(optsRust); err != nil {
-		t.Fatalf("Run(rust) failed: %v", err)
-	}
-	rustFile := filepath.Join(rustOut, "structures.rs")
-	rustBytes, err := os.ReadFile(rustFile)
-	if err != nil {
-		t.Fatalf("failed to read %s: %v", rustFile, err)
-	}
-	rustCode := string(rustBytes)
-	if !strings.Contains(rustCode, "pub trait TwoSum {") {
-		t.Errorf("expected pub trait TwoSum, got: %s", rustCode)
-	}
-	if !strings.Contains(rustCode, "fn solve(&mut self, nums: Vec<i32>, target: i32) -> Vec<i32>;") {
-		t.Errorf("expected fn solve, got: %s", rustCode)
-	}
-
-	// 6. Go
-	goOut := filepath.Join(tmpDir, "go_out")
-	_ = os.MkdirAll(goOut, 0755)
-	optsGo := Options{
-		Lang: "go",
-		Out:  goOut,
-		Srcs: []string{witFile},
-	}
-	if err := Run(optsGo); err != nil {
-		t.Fatalf("Run(go) failed: %v", err)
-	}
-	goFile := filepath.Join(goOut, "structures.go")
-	goBytes, err := os.ReadFile(goFile)
-	if err != nil {
-		t.Fatalf("failed to read %s: %v", goFile, err)
-	}
-	goCode := string(goBytes)
-	if !strings.Contains(goCode, "type TwoSum interface {") {
-		t.Errorf("expected type TwoSum interface, got: %s", goCode)
-	}
-	if !strings.Contains(goCode, "Solve(nums []int32, target int32) []int32") {
-		t.Errorf("expected Solve method, got: %s", goCode)
-	}
-
-	// 7. C++
-	cppOut := filepath.Join(tmpDir, "cpp_out")
-	_ = os.MkdirAll(cppOut, 0755)
-	optsCpp := Options{
-		Lang: "cpp",
-		Out:  cppOut,
-		Srcs: []string{witFile},
-	}
-	if err := Run(optsCpp); err != nil {
-		t.Fatalf("Run(cpp) failed: %v", err)
-	}
-	cppHFile := filepath.Join(cppOut, "structures.h")
-	cppHBytes, err := os.ReadFile(cppHFile)
-	if err != nil {
-		t.Fatalf("failed to read %s: %v", cppHFile, err)
-	}
-	cppHCode := string(cppHBytes)
-	if !strings.Contains(cppHCode, "class TwoSum {") {
-		t.Errorf("expected class TwoSum, got: %s", cppHCode)
-	}
-	if !strings.Contains(cppHCode, "virtual std::vector<int32_t> solve(") {
-		t.Errorf("expected virtual solve method, got: %s", cppHCode)
+	err := Run(opts)
+	if err == nil {
+		t.Errorf("expected error for unsupported language, got nil")
 	}
 }
 
+func TestGetGenerator(t *testing.T) {
+	cases := []struct {
+		lang     string
+		expected string
+	}{
+		{"kotlin", "kotlin"},
+		{"kt", "kotlin"},
+		{"swift", "swift"},
+		{"ts", "typescript"},
+		{"typescript", "typescript"},
+		{"python", "python"},
+		{"py", "python"},
+		{"rust", "rust"},
+		{"rs", "rust"},
+		{"go", "go"},
+		{"golang", "go"},
+		{"cpp", "cpp"},
+		{"cc", "cpp"},
+		{"c", "cpp"},
+		{"cxx", "cpp"},
+	}
+
+	for _, tc := range cases {
+		gen, err := GetGenerator(tc.lang)
+		if err != nil {
+			t.Fatalf("GetGenerator(%q) failed: %v", tc.lang, err)
+		}
+		if gen.Name() != tc.expected {
+			t.Errorf("GetGenerator(%q).Name() = %q, want %q", tc.lang, gen.Name(), tc.expected)
+		}
+	}
+}
+
+func TestMapWitType(t *testing.T) {
+	s32Type := &ast.TypeRef{Kind: ast.KindPrimitive, Name: "s32"}
+	stringType := &ast.TypeRef{Kind: ast.KindPrimitive, Name: "string"}
+	listS32 := &ast.TypeRef{Kind: ast.KindList, TypeArgs: []*ast.TypeRef{s32Type}}
+	optString := &ast.TypeRef{Kind: ast.KindOption, TypeArgs: []*ast.TypeRef{stringType}}
+	namedType := &ast.TypeRef{Kind: ast.KindNamed, Name: "custom-data"}
+
+	tests := []struct {
+		lang     string
+		typeRef  *ast.TypeRef
+		expected string
+	}{
+		// Kotlin
+		{"kotlin", nil, "Unit"},
+		{"kotlin", s32Type, "Int"},
+		{"kotlin", stringType, "String"},
+		{"kotlin", listS32, "List<Int>"},
+		{"kotlin", optString, "String?"},
+		{"kotlin", namedType, "CustomData"},
+
+		// Swift
+		{"swift", nil, "Void"},
+		{"swift", s32Type, "Int32"},
+		{"swift", stringType, "String"},
+		{"swift", listS32, "[Int32]"},
+		{"swift", optString, "String?"},
+		{"swift", namedType, "CustomData"},
+
+		// TypeScript
+		{"typescript", nil, "void"},
+		{"typescript", s32Type, "number"},
+		{"typescript", stringType, "string"},
+		{"typescript", listS32, "number[]"},
+		{"typescript", optString, "string | null"},
+		{"typescript", namedType, "CustomData"},
+
+		// Python
+		{"python", nil, "None"},
+		{"python", s32Type, "int"},
+		{"python", stringType, "str"},
+		{"python", listS32, "List[int]"},
+		{"python", optString, "Optional[str]"},
+		{"python", namedType, "CustomData"},
+
+		// Rust
+		{"rust", nil, "()"},
+		{"rust", s32Type, "i32"},
+		{"rust", stringType, "String"},
+		{"rust", listS32, "Vec<i32>"},
+		{"rust", optString, "Option<String>"},
+		{"rust", namedType, "CustomData"},
+
+		// Go
+		{"go", nil, ""},
+		{"go", s32Type, "int32"},
+		{"go", stringType, "string"},
+		{"go", listS32, "[]int32"},
+		{"go", optString, "*string"},
+		{"go", namedType, "CustomData"},
+
+		// C++
+		{"cpp", nil, "void"},
+		{"cpp", s32Type, "int32_t"},
+		{"cpp", stringType, "std::string"},
+		{"cpp", listS32, "std::vector<int32_t>"},
+		{"cpp", optString, "std::optional<std::string>"},
+		{"cpp", namedType, "CustomData"},
+	}
+
+	for _, tc := range tests {
+		gen, err := GetGenerator(tc.lang)
+		if err != nil {
+			t.Fatalf("GetGenerator(%q) failed: %v", tc.lang, err)
+		}
+		got := gen.MapWitType(tc.typeRef)
+		if got != tc.expected {
+			t.Errorf("[%s] MapWitType(%v) = %q, want %q", tc.lang, tc.typeRef, got, tc.expected)
+		}
+	}
+}
