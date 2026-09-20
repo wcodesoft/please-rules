@@ -42,6 +42,19 @@ func Run(opts Options) error {
 	return runEsbuildBundler(opts)
 }
 
+func isValidEsbuildAlias(name string) bool {
+	if name == "" || name == "." || name == ".." {
+		return false
+	}
+	if strings.HasPrefix(name, "./") || strings.HasPrefix(name, "../") || strings.HasPrefix(name, "/") || strings.HasPrefix(name, "\\") {
+		return false
+	}
+	if strings.Contains(name, "://") {
+		return false
+	}
+	return true
+}
+
 func buildEsbuildArgs(opts Options, im *importmap.ImportMap) []string {
 	args := []string{opts.Main, "--outfile=" + opts.Out, "--bundle"}
 	if opts.Format != "" {
@@ -55,24 +68,45 @@ func buildEsbuildArgs(opts Options, im *importmap.ImportMap) []string {
 	}
 
 	if im != nil {
-		keys := make([]string, 0, len(im.Imports))
-		for k := range im.Imports {
-			keys = append(keys, k)
-		}
-		sort.Slice(keys, func(i, j int) bool {
-			if len(keys[i]) != len(keys[j]) {
-				return len(keys[i]) > len(keys[j])
+		aliasMap := make(map[string]string)
+		// First pass: add exact matches (keys without trailing slash), which typically point to entry files.
+		for k, target := range im.Imports {
+			if strings.HasSuffix(k, "/") {
+				continue
 			}
-			return keys[i] < keys[j]
-		})
-
-		for _, k := range keys {
-			target := im.Imports[k]
-			kClean := strings.TrimSuffix(k, "/")
+			if !isValidEsbuildAlias(k) {
+				continue
+			}
 			tClean := strings.TrimSuffix(target, "/")
-			if kClean != "" && tClean != "" {
-				args = append(args, fmt.Sprintf("--alias:%s=%s", kClean, tClean))
+			if tClean != "" {
+				aliasMap[k] = tClean
 			}
+		}
+		// Second pass: add directory prefix matches if not already mapped.
+		for k, target := range im.Imports {
+			if !strings.HasSuffix(k, "/") {
+				continue
+			}
+			kClean := strings.TrimSuffix(k, "/")
+			if !isValidEsbuildAlias(kClean) {
+				continue
+			}
+			if _, exists := aliasMap[kClean]; !exists {
+				tClean := strings.TrimSuffix(target, "/")
+				if tClean != "" {
+					aliasMap[kClean] = tClean
+				}
+			}
+		}
+
+		aliasKeys := make([]string, 0, len(aliasMap))
+		for k := range aliasMap {
+			aliasKeys = append(aliasKeys, k)
+		}
+		sort.Strings(aliasKeys)
+
+		for _, k := range aliasKeys {
+			args = append(args, fmt.Sprintf("--alias:%s=%s", k, aliasMap[k]))
 		}
 	}
 
