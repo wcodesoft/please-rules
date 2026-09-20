@@ -41,6 +41,7 @@ type JUnitTestSuites struct {
 	Tests    int              `xml:"tests,attr"`
 	Failures int              `xml:"failures,attr"`
 	Errors   int              `xml:"errors,attr"`
+	Skipped  int              `xml:"skipped,attr,omitempty"`
 	Time     string           `xml:"time,attr"`
 }
 
@@ -49,6 +50,7 @@ type JUnitTestSuite struct {
 	Tests     int             `xml:"tests,attr"`
 	Failures  int             `xml:"failures,attr"`
 	Errors    int             `xml:"errors,attr"`
+	Skipped   int             `xml:"skipped,attr,omitempty"`
 	Time      string          `xml:"time,attr"`
 	TestCases []JUnitTestCase `xml:"testcase"`
 }
@@ -57,7 +59,12 @@ type JUnitTestCase struct {
 	Name      string        `xml:"name,attr"`
 	ClassName string        `xml:"classname,attr"`
 	Time      string        `xml:"time,attr"`
+	Skipped   *JUnitSkipped `xml:"skipped,omitempty"`
 	Failure   *JUnitFailure `xml:"failure,omitempty"`
+}
+
+type JUnitSkipped struct {
+	Message string `xml:"message,attr,omitempty"`
 }
 
 type JUnitFailure struct {
@@ -71,6 +78,7 @@ type ParsedTestCase struct {
 	Name     string
 	Duration float64
 	Passed   bool
+	Skipped  bool
 	Failure  string
 }
 
@@ -170,7 +178,11 @@ import Darwin
 @main
 struct __PleaseTestRunner {
     static func main() async {
-        let exitCode: CInt = await Testing.__swiftPMEntryPoint()
+        var args = Testing.__CommandLineArguments_v0()
+        if let env = getenv("PLEASE_SWIFT_XUNIT_OUTPUT") {
+            args.xunitOutput = String(cString: env)
+        }
+        let exitCode: CInt = await Testing.__swiftPMEntryPoint(passing: args)
         exit(exitCode)
     }
 }
@@ -228,6 +240,11 @@ struct __PleaseTestRunner {
 
 	testCmd := exec.Command(testBinary, opts.TestArgs...)
 	testCmd.Env = append(os.Environ(), "LLVM_PROFILE_FILE="+profPattern)
+	if absResults, err := filepath.Abs(opts.ResultsFile); err == nil {
+		testCmd.Env = append(testCmd.Env, "PLEASE_SWIFT_XUNIT_OUTPUT="+absResults)
+	} else {
+		testCmd.Env = append(testCmd.Env, "PLEASE_SWIFT_XUNIT_OUTPUT="+opts.ResultsFile)
+	}
 
 	var stdoutBuf, stderrBuf bytes.Buffer
 	testCmd.Stdout = io.MultiWriter(os.Stdout, &stdoutBuf)
@@ -239,26 +256,34 @@ struct __PleaseTestRunner {
 
 	fullOutput := stdoutBuf.String() + "\n" + stderrBuf.String()
 
-	// 4. Parse test results & write JUnit XML
-	cases := parseTestOutput(fullOutput, opts.Framework)
-	if len(cases) == 0 {
-		// Fallback single testcase
-		passed := testErr == nil
-		failMsg := ""
-		if !passed {
-			failMsg = fmt.Sprintf("Test execution failed: %v", testErr)
-		}
-		cases = append(cases, ParsedTestCase{
-			Suite:    "SwiftTestSuite",
-			Name:     "Execution",
-			Duration: elapsed,
-			Passed:   passed,
-			Failure:  failMsg,
-		})
+	// 4. Check if native xUnit XML was produced; otherwise fall back to output parsing
+	var cases []ParsedTestCase
+	hasResultsFile := false
+	if info, err := os.Stat(opts.ResultsFile); err == nil && info.Size() > 0 {
+		hasResultsFile = true
 	}
 
-	if err := writeJUnitResults(opts.ResultsFile, cases, elapsed); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to write JUnit test results: %v\n", err)
+	if !hasResultsFile {
+		cases = parseTestOutput(fullOutput, opts.Framework)
+		if len(cases) == 0 {
+			// Fallback single testcase
+			passed := testErr == nil
+			failMsg := ""
+			if !passed {
+				failMsg = fmt.Sprintf("Test execution failed: %v", testErr)
+			}
+			cases = append(cases, ParsedTestCase{
+				Suite:    "SwiftTestSuite",
+				Name:     "Execution",
+				Duration: elapsed,
+				Passed:   passed,
+				Failure:  failMsg,
+			})
+		}
+
+		if err := writeJUnitResults(opts.ResultsFile, cases, elapsed); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to write JUnit test results: %v\n", err)
+		}
 	}
 
 	// 5. Handle coverage if enabled
@@ -273,7 +298,7 @@ struct __PleaseTestRunner {
 	}
 
 	for _, c := range cases {
-		if !c.Passed {
+		if !c.Passed && !c.Skipped {
 			return fmt.Errorf("one or more tests failed")
 		}
 	}
@@ -281,47 +306,112 @@ struct __PleaseTestRunner {
 	return nil
 }
 
+func cleanSwiftTestName(raw string) string {
+	name := strings.TrimSpace(raw)
+	name = strings.Trim(name, `"'`+"`")
+	name = strings.TrimSuffix(name, "()")
+	name = strings.Trim(name, `"'`+"`")
+	return strings.TrimSpace(name)
+}
+
+func isTestRunSummary(raw string) bool {
+	trimmed := strings.TrimSpace(raw)
+	return trimmed == "run" || strings.HasPrefix(trimmed, "run with ") || strings.HasPrefix(trimmed, "run ")
+}
+
 func parseTestOutput(output, framework string) []ParsedTestCase {
 	var results []ParsedTestCase
 
+	ansiRegex := regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
+	cleanOutput := ansiRegex.ReplaceAllString(output, "")
+
+	// Detect suite name if present (e.g. "◇ Suite Foo started" or "✔ Suite Foo passed")
+	suiteName := "SwiftTesting"
+	suiteRe := regexp.MustCompile(`(?:◇|✔)\s+Suite\s+(.+?)\s+(?:started|passed)`)
+	allSuites := suiteRe.FindAllStringSubmatch(cleanOutput, -1)
+	uniqueSuites := make(map[string]bool)
+	for _, m := range allSuites {
+		if len(m) > 1 {
+			s := cleanSwiftTestName(m[1])
+			if s != "" {
+				uniqueSuites[s] = true
+			}
+		}
+	}
+	if len(uniqueSuites) == 1 {
+		for s := range uniqueSuites {
+			suiteName = s
+		}
+	}
+
 	// swift-testing format:
-	// ✔ Test <name>() passed after X.XXX seconds.
-	// ✘ Test <name>() failed after X.XXX seconds with N issues.
-	// ✘ Test <name>() recorded an issue at <file>:<line>:<col>: <msg>
-	swiftTestingPassedRe := regexp.MustCompile(`✔\s+Test\s+([^\s]+)\s+passed after\s+([0-9.]+)\s+seconds`)
-	swiftTestingFailedRe := regexp.MustCompile(`✘\s+Test\s+([^\s]+)\s+failed after\s+([0-9.]+)\s+seconds`)
-	swiftTestingIssueRe := regexp.MustCompile(`✘\s+Test\s+([^\s]+)\s+recorded an issue at\s+(.*)`)
+	// ✔ Test <name> passed after X.XXX seconds.
+	// ✘ Test <name> failed after X.XXX seconds with N issues.
+	// ✘ Test <name> recorded an issue at <file>:<line>:<col>: <msg>
+	// ➜ Test <name> skipped: <reason>
+	swiftTestingPassedRe := regexp.MustCompile(`✔\s+Test\s+(.+?)\s+passed after\s+([0-9.]+)\s+seconds`)
+	swiftTestingFailedRe := regexp.MustCompile(`✘\s+Test\s+(.+?)\s+failed after\s+([0-9.]+)\s+seconds`)
+	swiftTestingIssueRe := regexp.MustCompile(`✘\s+Test\s+(.+?)\s+recorded an issue at\s+(.*)`)
+	swiftTestingSkippedRe := regexp.MustCompile(`➜\s+Test\s+(.+?)\s+skipped(?::\s*(.*))?`)
 
 	issuesByTest := make(map[string][]string)
-	for _, match := range swiftTestingIssueRe.FindAllStringSubmatch(output, -1) {
-		testName := strings.TrimSuffix(match[1], "()")
+	for _, match := range swiftTestingIssueRe.FindAllStringSubmatch(cleanOutput, -1) {
+		if isTestRunSummary(match[1]) {
+			continue
+		}
+		testName := cleanSwiftTestName(match[1])
 		issuesByTest[testName] = append(issuesByTest[testName], match[2])
 	}
 
-	for _, match := range swiftTestingPassedRe.FindAllStringSubmatch(output, -1) {
-		name := strings.TrimSuffix(match[1], "()")
+	for _, match := range swiftTestingPassedRe.FindAllStringSubmatch(cleanOutput, -1) {
+		if isTestRunSummary(match[1]) {
+			continue
+		}
+		name := cleanSwiftTestName(match[1])
 		duration, _ := strconv.ParseFloat(match[2], 64)
 		results = append(results, ParsedTestCase{
-			Suite:    "SwiftTesting",
+			Suite:    suiteName,
 			Name:     name,
 			Duration: duration,
 			Passed:   true,
 		})
 	}
 
-	for _, match := range swiftTestingFailedRe.FindAllStringSubmatch(output, -1) {
-		name := strings.TrimSuffix(match[1], "()")
+	for _, match := range swiftTestingFailedRe.FindAllStringSubmatch(cleanOutput, -1) {
+		if isTestRunSummary(match[1]) {
+			continue
+		}
+		name := cleanSwiftTestName(match[1])
 		duration, _ := strconv.ParseFloat(match[2], 64)
 		issueDetails := strings.Join(issuesByTest[name], "\n")
 		if issueDetails == "" {
 			issueDetails = "Test failed"
 		}
 		results = append(results, ParsedTestCase{
-			Suite:    "SwiftTesting",
+			Suite:    suiteName,
 			Name:     name,
 			Duration: duration,
 			Passed:   false,
 			Failure:  issueDetails,
+		})
+	}
+
+	for _, match := range swiftTestingSkippedRe.FindAllStringSubmatch(cleanOutput, -1) {
+		if isTestRunSummary(match[1]) {
+			continue
+		}
+		name := cleanSwiftTestName(match[1])
+		reason := "Test skipped"
+		if len(match) > 2 && strings.TrimSpace(match[2]) != "" {
+			reason = strings.Trim(strings.TrimSpace(match[2]), `"`)
+		}
+		results = append(results, ParsedTestCase{
+			Suite:    suiteName,
+			Name:     name,
+			Duration: 0.0,
+			Passed:   true,
+			Skipped:  true,
+			Failure:  reason,
 		})
 	}
 
@@ -335,7 +425,7 @@ func parseTestOutput(output, framework string) []ParsedTestCase {
 	xctestPassedRe := regexp.MustCompile(`Test Case '-\[([^ ]+) ([^\]]+)\]' passed \(([0-9.]+) seconds\)`)
 	xctestFailedRe := regexp.MustCompile(`Test Case '-\[([^ ]+) ([^\]]+)\]' failed \(([0-9.]+) seconds\)`)
 
-	for _, match := range xctestPassedRe.FindAllStringSubmatch(output, -1) {
+	for _, match := range xctestPassedRe.FindAllStringSubmatch(cleanOutput, -1) {
 		duration, _ := strconv.ParseFloat(match[3], 64)
 		results = append(results, ParsedTestCase{
 			Suite:    match[1],
@@ -345,7 +435,7 @@ func parseTestOutput(output, framework string) []ParsedTestCase {
 		})
 	}
 
-	for _, match := range xctestFailedRe.FindAllStringSubmatch(output, -1) {
+	for _, match := range xctestFailedRe.FindAllStringSubmatch(cleanOutput, -1) {
 		duration, _ := strconv.ParseFloat(match[3], 64)
 		results = append(results, ParsedTestCase{
 			Suite:    match[1],
@@ -370,6 +460,7 @@ func writeJUnitResults(path string, cases []ParsedTestCase, totalTime float64) e
 	var suites []JUnitTestSuite
 	totalTests := 0
 	totalFailures := 0
+	totalSkipped := 0
 
 	for suiteName, suiteCases := range suitesMap {
 		s := JUnitTestSuite{
@@ -384,7 +475,13 @@ func writeJUnitResults(path string, cases []ParsedTestCase, totalTime float64) e
 			}
 			suiteTime += c.Duration
 			totalTests++
-			if !c.Passed {
+			if c.Skipped {
+				tc.Skipped = &JUnitSkipped{
+					Message: c.Failure,
+				}
+				s.Skipped++
+				totalSkipped++
+			} else if !c.Passed {
 				tc.Failure = &JUnitFailure{
 					Message:  c.Failure,
 					Contents: c.Failure,
@@ -404,6 +501,7 @@ func writeJUnitResults(path string, cases []ParsedTestCase, totalTime float64) e
 		Tests:    totalTests,
 		Failures: totalFailures,
 		Errors:   0,
+		Skipped:  totalSkipped,
 		Time:     fmt.Sprintf("%.4f", totalTime),
 	}
 

@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.2] - 2026-09-20
+
+### Added
+
+- Native JUnit/xUnit XML test report generation for `swift-testing` via `Testing.__CommandLineArguments_v0.xunitOutput`.
+- Support for skipped test reporting and detection of test suite names.
+
+### Fixed
+
+- Correct quantity of tests reported for Swift tests with spaces, backticks, or custom display names in `swift-testing`.
+- Robust fallback test output parsing for quoted test names, skipped tests, and execution status.
+
 ## [0.1.1] - 2026-09-16
 
 ### Added

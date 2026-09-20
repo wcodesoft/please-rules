@@ -35,6 +35,69 @@ func TestParseTestOutputSwiftTesting(t *testing.T) {
 	}
 }
 
+func TestParseTestOutputSwiftTestingWithSpacesAndQuotes(t *testing.T) {
+	output := `
+◇ Test run started.
+↳ Testing Library Version: 6.3.3
+↳ Target Platform: x86_64-unknown-linux-gnu
+◇ Suite QueueTest started.
+◇ Test "add elements to queue and then confirm queue size" started.
+◇ Test "removing elements from the queue in the correct order" started.
+◇ Test "queue size should be zero when initialized" started.
+◇ Test "first and last elements of the queue" started.
+✔ Test "first and last elements of the queue" passed after 0.003 seconds.
+✔ Test "queue size should be zero when initialized" passed after 0.002 seconds.
+✔ Test "removing elements from the queue in the correct order" passed after 0.003 seconds.
+✔ Test "add elements to queue and then confirm queue size" passed after 0.003 seconds.
+✔ Suite QueueTest passed after 0.006 seconds.
+✔ Test run with 4 tests in 1 suite passed after 0.008 seconds.
+`
+	cases := parseTestOutput(output, "swift-testing")
+	if len(cases) != 4 {
+		t.Fatalf("expected 4 test cases, got %d", len(cases))
+	}
+
+	expectedNames := []string{
+		"first and last elements of the queue",
+		"queue size should be zero when initialized",
+		"removing elements from the queue in the correct order",
+		"add elements to queue and then confirm queue size",
+	}
+
+	for i, expected := range expectedNames {
+		if cases[i].Name != expected {
+			t.Errorf("expected case %d to have name %q, got %q", i, expected, cases[i].Name)
+		}
+		if cases[i].Suite != "QueueTest" {
+			t.Errorf("expected case %d to have suite QueueTest, got %q", i, cases[i].Suite)
+		}
+		if !cases[i].Passed {
+			t.Errorf("expected case %d to have passed", i)
+		}
+	}
+}
+
+func TestParseTestOutputSwiftTestingSkipped(t *testing.T) {
+	output := `
+◇ Test run started.
+↳ Testing Library Version: 6.3.3
+➜ Test testSkipped() skipped: "not implemented yet"
+✔ Test testPassed() passed after 0.001 seconds.
+✔ Test run with 2 tests in 0 suites passed after 0.002 seconds.
+`
+	cases := parseTestOutput(output, "swift-testing")
+	if len(cases) != 2 {
+		t.Fatalf("expected 2 test cases, got %d", len(cases))
+	}
+	if cases[0].Name != "testPassed" || !cases[0].Passed {
+		t.Errorf("expected testPassed passed, got %+v", cases[0])
+	}
+	if cases[1].Name != "testSkipped" || !cases[1].Skipped || cases[1].Failure != "not implemented yet" {
+		t.Errorf("expected testSkipped skipped with reason, got %+v", cases[1])
+	}
+}
+
+
 func TestParseTestOutputXCTest(t *testing.T) {
 	output := `
 Test Suite 'All tests' started at 2026-09-14 20:00:00.000
