@@ -1,7 +1,9 @@
 package testrunner
 
 import (
+	"bufio"
 	"bytes"
+	"encoding/json"
 	"encoding/xml"
 	"fmt"
 	"io"
@@ -15,6 +17,33 @@ import (
 	"strings"
 	"time"
 )
+
+// JSON Event Stream structs
+type StreamRecord struct {
+	Kind    string          `json:"kind"`
+	Payload json.RawMessage `json:"payload"`
+	Version int             `json:"version"`
+}
+
+type TestMetadata struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	DisplayName string `json:"displayName"`
+	Kind        string `json:"kind"`
+}
+
+type EventPayload struct {
+	Kind     string `json:"kind"`
+	TestID   string `json:"testID"`
+	Instant  struct {
+		Absolute float64 `json:"absolute"`
+	} `json:"instant"`
+	Comments []string `json:"_comments"`
+	Messages []struct {
+		Symbol string `json:"symbol"`
+		Text   string `json:"text"`
+	} `json:"messages"`
+}
 
 // RunOptions configures the execution of the Swift test runner.
 type RunOptions struct {
@@ -179,8 +208,9 @@ import Darwin
 struct __PleaseTestRunner {
     static func main() async {
         var args = Testing.__CommandLineArguments_v0()
-        if let env = getenv("PLEASE_SWIFT_XUNIT_OUTPUT") {
-            args.xunitOutput = String(cString: env)
+        if let eventsPath = getenv("PLEASE_SWIFT_EVENTS_OUTPUT") {
+            args.eventStreamOutputPath = String(cString: eventsPath)
+            args.eventStreamSchemaVersion = "0"
         }
         let exitCode: CInt = await Testing.__swiftPMEntryPoint(passing: args)
         exit(exitCode)
@@ -238,13 +268,12 @@ struct __PleaseTestRunner {
 	_ = os.MkdirAll(profDir, 0755)
 	profPattern := filepath.Join(profDir, "test_%p.profraw")
 
+	eventsPath := filepath.Join(tmpDir, "events.ndjson")
 	testCmd := exec.Command(testBinary, opts.TestArgs...)
-	testCmd.Env = append(os.Environ(), "LLVM_PROFILE_FILE="+profPattern)
-	if absResults, err := filepath.Abs(opts.ResultsFile); err == nil {
-		testCmd.Env = append(testCmd.Env, "PLEASE_SWIFT_XUNIT_OUTPUT="+absResults)
-	} else {
-		testCmd.Env = append(testCmd.Env, "PLEASE_SWIFT_XUNIT_OUTPUT="+opts.ResultsFile)
-	}
+	testCmd.Env = append(os.Environ(),
+		"LLVM_PROFILE_FILE="+profPattern,
+		"PLEASE_SWIFT_EVENTS_OUTPUT="+eventsPath,
+	)
 
 	var stdoutBuf, stderrBuf bytes.Buffer
 	testCmd.Stdout = io.MultiWriter(os.Stdout, &stdoutBuf)
@@ -256,17 +285,17 @@ struct __PleaseTestRunner {
 
 	fullOutput := stdoutBuf.String() + "\n" + stderrBuf.String()
 
-	// 4. Check if native xUnit XML was produced; otherwise fall back to output parsing
+	// 4. Parse test results from JSON event stream (or fall back to output parser)
 	var cases []ParsedTestCase
-	hasResultsFile := false
-	if info, err := os.Stat(opts.ResultsFile); err == nil && info.Size() > 0 {
-		hasResultsFile = true
+	if info, err := os.Stat(eventsPath); err == nil && info.Size() > 0 {
+		if parsed, err := parseEventStream(eventsPath); err == nil && len(parsed) > 0 {
+			cases = parsed
+		}
 	}
 
-	if !hasResultsFile {
+	if len(cases) == 0 {
 		cases = parseTestOutput(fullOutput, opts.Framework)
 		if len(cases) == 0 {
-			// Fallback single testcase
 			passed := testErr == nil
 			failMsg := ""
 			if !passed {
@@ -280,10 +309,10 @@ struct __PleaseTestRunner {
 				Failure:  failMsg,
 			})
 		}
+	}
 
-		if err := writeJUnitResults(opts.ResultsFile, cases, elapsed); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to write JUnit test results: %v\n", err)
-		}
+	if err := writeJUnitResults(opts.ResultsFile, cases, elapsed); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to write JUnit test results: %v\n", err)
 	}
 
 	// 5. Handle coverage if enabled
@@ -304,6 +333,153 @@ struct __PleaseTestRunner {
 	}
 
 	return nil
+}
+
+func parseEventStream(path string) ([]ParsedTestCase, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	testsByID := make(map[string]TestMetadata)
+	suitesByID := make(map[string]TestMetadata)
+	startTimes := make(map[string]float64)
+	issuesByID := make(map[string][]string)
+	var results []ParsedTestCase
+
+	resolveSuiteName := func(meta TestMetadata) string {
+		for suiteID, sMeta := range suitesByID {
+			if strings.HasPrefix(meta.ID, suiteID+"/") {
+				if sMeta.DisplayName != "" {
+					return cleanSwiftTestName(sMeta.DisplayName)
+				}
+				return cleanSwiftTestName(sMeta.Name)
+			}
+		}
+		return "SwiftTesting"
+	}
+
+	resolveTestName := func(meta TestMetadata) string {
+		testName := cleanSwiftTestName(meta.DisplayName)
+		if testName == "" {
+			testName = cleanSwiftTestName(meta.Name)
+		}
+		return testName
+	}
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		var rec StreamRecord
+		if err := json.Unmarshal(scanner.Bytes(), &rec); err != nil {
+			continue
+		}
+
+		switch rec.Kind {
+		case "test":
+			var meta TestMetadata
+			if err := json.Unmarshal(rec.Payload, &meta); err == nil {
+				if meta.Kind == "suite" {
+					suitesByID[meta.ID] = meta
+				} else {
+					testsByID[meta.ID] = meta
+				}
+			}
+
+		case "event":
+			var ev EventPayload
+			if err := json.Unmarshal(rec.Payload, &ev); err != nil {
+				continue
+			}
+
+			switch ev.Kind {
+			case "testStarted":
+				startTimes[ev.TestID] = ev.Instant.Absolute
+
+			case "issueRecorded":
+				var parts []string
+				for _, m := range ev.Messages {
+					if m.Text != "" {
+						parts = append(parts, m.Text)
+					}
+				}
+				for _, c := range ev.Comments {
+					if c != "" {
+						alreadyPresent := false
+						for _, p := range parts {
+							if strings.Contains(p, c) {
+								alreadyPresent = true
+								break
+							}
+						}
+						if !alreadyPresent {
+							parts = append(parts, c)
+						}
+					}
+				}
+				if len(parts) > 0 {
+					issuesByID[ev.TestID] = append(issuesByID[ev.TestID], strings.Join(parts, " - "))
+				}
+
+			case "testSkipped":
+				meta, ok := testsByID[ev.TestID]
+				if ok && meta.Kind == "function" {
+					reason := "Test skipped"
+					if len(ev.Comments) > 0 {
+						reason = strings.Join(ev.Comments, "; ")
+					}
+					results = append(results, ParsedTestCase{
+						Suite:    resolveSuiteName(meta),
+						Name:     resolveTestName(meta),
+						Duration: 0.0,
+						Passed:   true,
+						Skipped:  true,
+						Failure:  reason,
+					})
+				}
+
+			case "testEnded":
+				meta, ok := testsByID[ev.TestID]
+				if !ok || meta.Kind != "function" {
+					continue
+				}
+
+				duration := 0.0
+				if start, ok := startTimes[ev.TestID]; ok && ev.Instant.Absolute >= start {
+					duration = ev.Instant.Absolute - start
+				}
+
+				issues := issuesByID[ev.TestID]
+				hasFailed := len(issues) > 0
+				for _, m := range ev.Messages {
+					if m.Symbol == "fail" {
+						hasFailed = true
+						if len(issues) == 0 {
+							issues = append(issues, m.Text)
+						}
+					}
+				}
+
+				failMsg := ""
+				if hasFailed {
+					failMsg = strings.Join(issues, "\n")
+					if failMsg == "" {
+						failMsg = "Test failed"
+					}
+				}
+
+				results = append(results, ParsedTestCase{
+					Suite:    resolveSuiteName(meta),
+					Name:     resolveTestName(meta),
+					Duration: duration,
+					Passed:   !hasFailed,
+					Failure:  failMsg,
+				})
+			}
+		}
+	}
+
+	return results, scanner.Err()
 }
 
 func cleanSwiftTestName(raw string) string {

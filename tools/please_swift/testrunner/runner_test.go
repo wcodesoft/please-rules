@@ -97,6 +97,48 @@ func TestParseTestOutputSwiftTestingSkipped(t *testing.T) {
 	}
 }
 
+func TestParseEventStream(t *testing.T) {
+	ndjson := `{"kind":"test","payload":{"displayName":"MathSuite","id":"test_bin.MathSuite","kind":"suite","name":"MathSuite"},"version":0}
+{"kind":"test","payload":{"displayName":"addition test","id":"test_bin.MathSuite/addition test/MathTests.swift:10:6","kind":"function","name":"addition test()"},"version":0}
+{"kind":"test","payload":{"displayName":"failing test","id":"test_bin.MathSuite/failing test/MathTests.swift:15:6","kind":"function","name":"failing test()"},"version":0}
+{"kind":"test","payload":{"displayName":"skipped test","id":"test_bin.MathSuite/skipped test/MathTests.swift:20:6","kind":"function","name":"skipped test()"},"version":0}
+{"kind":"event","payload":{"instant":{"absolute":100.0},"kind":"testStarted"},"version":0}
+{"kind":"event","payload":{"instant":{"absolute":100.1},"kind":"testStarted","testID":"test_bin.MathSuite/addition test/MathTests.swift:10:6"},"version":0}
+{"kind":"event","payload":{"_comments":["WIP feature"],"instant":{"absolute":100.15},"kind":"testSkipped","testID":"test_bin.MathSuite/skipped test/MathTests.swift:20:6"},"version":0}
+{"kind":"event","payload":{"instant":{"absolute":100.2},"kind":"testEnded","messages":[{"symbol":"pass","text":"Test passed"}],"testID":"test_bin.MathSuite/addition test/MathTests.swift:10:6"},"version":0}
+{"kind":"event","payload":{"instant":{"absolute":100.25},"kind":"testStarted","testID":"test_bin.MathSuite/failing test/MathTests.swift:15:6"},"version":0}
+{"kind":"event","payload":{"_comments":["Math is broken"],"instant":{"absolute":100.3},"kind":"issueRecorded","messages":[{"symbol":"fail","text":"Expectation failed"}],"testID":"test_bin.MathSuite/failing test/MathTests.swift:15:6"},"version":0}
+{"kind":"event","payload":{"instant":{"absolute":100.35},"kind":"testEnded","messages":[{"symbol":"fail","text":"Test failed"}],"testID":"test_bin.MathSuite/failing test/MathTests.swift:15:6"},"version":0}
+`
+	tmpFile, err := os.CreateTemp("", "events_test_*.ndjson")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(tmpFile.Name())
+	if _, err := tmpFile.WriteString(ndjson); err != nil {
+		t.Fatal(err)
+	}
+	tmpFile.Close()
+
+	cases, err := parseEventStream(tmpFile.Name())
+	if err != nil {
+		t.Fatalf("unexpected error parsing event stream: %v", err)
+	}
+
+	if len(cases) != 3 {
+		t.Fatalf("expected 3 test cases, got %d", len(cases))
+	}
+
+	if cases[0].Name != "skipped test" || !cases[0].Skipped || cases[0].Suite != "MathSuite" {
+		t.Errorf("unexpected skipped test case: %+v", cases[0])
+	}
+	if cases[1].Name != "addition test" || !cases[1].Passed || cases[1].Suite != "MathSuite" {
+		t.Errorf("unexpected passed test case: %+v", cases[1])
+	}
+	if cases[2].Name != "failing test" || cases[2].Passed || cases[2].Suite != "MathSuite" || !strings.Contains(cases[2].Failure, "Expectation failed") {
+		t.Errorf("unexpected failed test case: %+v", cases[2])
+	}
+}
 
 func TestParseTestOutputXCTest(t *testing.T) {
 	output := `

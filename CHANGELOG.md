@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.3] - 2026-09-20
+
+### Added
+
+- Support for internal Swift Testing JSON Event Streaming (`eventStreamOutputPath`) parsed directly in Go (`parseEventStream`).
+- Detailed failure descriptions and issue records extracted directly from structured event stream payloads into JUnit XML test reports.
+
+### Changed
+
+- Transitioned primary test result extraction from text/xUnit output to internal NDJSON event stream processing while keeping intermediate JSON files private to temporary run directories.
+
 ## [0.1.2] - 2026-09-20
 
 ### Added
