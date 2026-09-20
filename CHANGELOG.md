@@ -7,6 +7,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-09-19
+
+### Removed
+
+- Removed external toolchain dependencies and precompiled binaries across all
+  targets and rules.
+- Removed `wit_toolchain` rule; code generation is now 100% self-contained in
+  pure Go.
+
+### Added
+
+- Pure Go AST lexer and recursive-descent parser (`tools/please_wit/ast`).
+- Pure Go code generators for Kotlin, Swift, TypeScript, Python, Rust, Go, and
+  C++ (`tools/please_wit/generate`).
+- Support for AST-driven interface definitions across all 7 supported target
+  languages.
+
 ## [0.2.0] - 2026-09-19
 
 ### Added
