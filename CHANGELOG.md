@@ -7,6 +7,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-09-20
+
+### Changed
+
+- Defaulted `ts_bundle` to use `esbuild` via hermetic Deno for bundling,
+  minification, and module resolution.
+- Synthesize import maps directly into `esbuild` `--alias` flags to accurately
+  resolve bare specifiers and subpath package mappings.
+
+### Removed
+
+- Removed naive regex-based `minifyJS` and sequential file concatenation in
+  `please_ts bundle` that corrupted code containing URLs and regular expressions.
+
 ## [0.2.0] - 2026-09-20
 
 ### Added
