@@ -165,6 +165,9 @@ jobs:
             printf "module tools\n\ngo 1.23\n" > go.mod
           fi
           go test -v ./${TOOL}/...
+          if [ "${{ steps.meta.outputs.language }}" = "kotlin" ]; then
+            go test -v ./please_kotlin_wasm/...
+          fi
 
       - name: Pre-build test suite (Please tests)
         if: steps.meta.outputs.skip != 'true'
@@ -203,6 +206,9 @@ jobs:
             /tmp/smoke-bin/${TOOL} compile --help 2>&1 | grep -iq "crate-name" || { echo "::error::please_rust compile --help failed"; exit 1; }
           elif [ "${LANG}" = "kotlin" ]; then
             /tmp/smoke-bin/${TOOL} testrunner --help 2>&1 | grep -iq "test-class" || { echo "::error::please_kotlin testrunner --help failed"; exit 1; }
+            CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /tmp/smoke-bin/please_kotlin_wasm ./please_kotlin_wasm
+            chmod +x /tmp/smoke-bin/please_kotlin_wasm
+            /tmp/smoke-bin/please_kotlin_wasm --help 2>&1 | grep -iq "kotlinc-wasm" || { echo "::error::please_kotlin_wasm --help failed"; exit 1; }
           elif [ "${LANG}" = "swift" ]; then
             /tmp/smoke-bin/${TOOL} compile --help 2>&1 | grep -iq "sources" || { echo "::error::please_swift compile --help failed"; exit 1; }
           elif [ "${LANG}" = "ts" ]; then
@@ -260,6 +266,11 @@ jobs:
             printf "module tools\n\ngo 1.23\n" > go.mod
           fi
           go build -trimpath -ldflags="-s -w" -o "../dist/${BINARY_NAME}" "./${TOOL}"
+          if [ "${{ needs.validate.outputs.language }}" = "kotlin" ]; then
+            WASM_BINARY_NAME="please_kotlin_wasm-${VERSION}-${{ matrix.os }}_${{ matrix.arch }}"
+            go build -trimpath -ldflags="-s -w" -o "../dist/${WASM_BINARY_NAME}" "./please_kotlin_wasm"
+            chmod +x "../dist/${WASM_BINARY_NAME}"
+          fi
           cd ..
           chmod +x "dist/${BINARY_NAME}"
           ls -lh "dist/${BINARY_NAME}"
@@ -299,7 +310,7 @@ jobs:
           VERSION: ${{ needs.validate.outputs.version }}
         run: |
           cd dist
-          sha256sum ${TOOL}-${VERSION}-* > checksums.txt
+          sha256sum * > checksums.txt
           echo "Generated checksums.txt:"
           cat checksums.txt
 
@@ -307,6 +318,13 @@ jobs:
           echo "linux_arm64=$(sha256sum ${TOOL}-${VERSION}-linux_arm64 | awk '{print $1}')" >> "$GITHUB_OUTPUT"
           echo "darwin_amd64=$(sha256sum ${TOOL}-${VERSION}-darwin_amd64 | awk '{print $1}')" >> "$GITHUB_OUTPUT"
           echo "darwin_arm64=$(sha256sum ${TOOL}-${VERSION}-darwin_arm64 | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
+          if [ -f "please_kotlin_wasm-${VERSION}-linux_amd64" ]; then
+            echo "wasm_linux_amd64=$(sha256sum please_kotlin_wasm-${VERSION}-linux_amd64 | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+            echo "wasm_linux_arm64=$(sha256sum please_kotlin_wasm-${VERSION}-linux_arm64 | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+            echo "wasm_darwin_amd64=$(sha256sum please_kotlin_wasm-${VERSION}-darwin_amd64 | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+            echo "wasm_darwin_arm64=$(sha256sum please_kotlin_wasm-${VERSION}-darwin_arm64 | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          fi
 
       - name:
           Update VERSION and tools/BUILD with real hashes (workflow_dispatch)
@@ -317,6 +335,10 @@ jobs:
           LINUX_ARM64: ${{ steps.checksums.outputs.linux_arm64 }}
           DARWIN_AMD64: ${{ steps.checksums.outputs.darwin_amd64 }}
           DARWIN_ARM64: ${{ steps.checksums.outputs.darwin_arm64 }}
+          WASM_LINUX_AMD64: ${{ steps.checksums.outputs.wasm_linux_amd64 }}
+          WASM_LINUX_ARM64: ${{ steps.checksums.outputs.wasm_linux_arm64 }}
+          WASM_DARWIN_AMD64: ${{ steps.checksums.outputs.wasm_darwin_amd64 }}
+          WASM_DARWIN_ARM64: ${{ steps.checksums.outputs.wasm_darwin_arm64 }}
         run: |
           echo "${VERSION}" > VERSION
 
@@ -339,7 +361,34 @@ jobs:
               "{darwin_amd64}",  # darwin_amd64
               "{darwin_arm64}",  # darwin_arm64
           ],"""
-          content = re.sub(r"hashes\s*=\s*\[[^\]]+\]\s*,?", hashes_block, content)
+
+          # If WASM hashes exist, update please_kotlin and please_kotlin_wasm blocks individually
+          wasm_linux_amd64 = os.environ.get("WASM_LINUX_AMD64")
+          if wasm_linux_amd64:
+              wasm_linux_arm64 = os.environ["WASM_LINUX_ARM64"]
+              wasm_darwin_amd64 = os.environ["WASM_DARWIN_AMD64"]
+              wasm_darwin_arm64 = os.environ["WASM_DARWIN_ARM64"]
+              wasm_hashes_block = f"""hashes = [
+              "{wasm_linux_amd64}",  # linux_amd64
+              "{wasm_linux_arm64}",  # linux_arm64
+              "{wasm_darwin_amd64}",  # darwin_amd64
+              "{wasm_darwin_arm64}",  # darwin_arm64
+          ],"""
+              pattern = r"(name\s*=\s*\"please_kotlin\",[\s\S]*?hashes\s*=\s*\[)[^\]]+(\],)"
+              content = re.sub(pattern, lambda m: m.group(1) + f"""
+              "{linux_amd64}",  # linux_amd64
+              "{linux_arm64}",  # linux_arm64
+              "{darwin_amd64}",  # darwin_amd64
+              "{darwin_arm64}",  # darwin_arm64\n          """ + m.group(2), content)
+
+              pattern_wasm = r"(name\s*=\s*\"please_kotlin_wasm\",[\s\S]*?hashes\s*=\s*\[)[^\]]+(\],)"
+              content = re.sub(pattern_wasm, lambda m: m.group(1) + f"""
+              "{wasm_linux_amd64}",  # linux_amd64
+              "{wasm_linux_arm64}",  # linux_arm64
+              "{wasm_darwin_amd64}",  # darwin_amd64
+              "{wasm_darwin_arm64}",  # darwin_arm64\n          """ + m.group(2), content)
+          else:
+              content = re.sub(r"hashes\s*=\s*\[[^\]]+\]\s*,?", hashes_block, content)
 
           with open(file_path, "w") as f:
               f.write(content)
