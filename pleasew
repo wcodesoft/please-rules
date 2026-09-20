@@ -155,8 +155,29 @@ run_please_and_hook() {
 
     if [ "${is_test_run}" = true ] && [ "${VERITAS_NO_HOOK:-}" != "1" ]; then
         if [ -f "plz-out/log/test_results.xml" ]; then
-            if command -v veritas > /dev/null 2>&1; then
-                veritas report-tests plz-out/log/test_results.xml > /dev/null 2>&1 || true
+            veritas_bin=""
+            if [ -x "plz-out/bin/analyzer/veritas" ]; then
+                veritas_bin="./plz-out/bin/analyzer/veritas"
+            elif command -v veritas > /dev/null 2>&1; then
+                veritas_bin="veritas"
+            fi
+
+            if [ -n "${veritas_bin}" ]; then
+                # Determine Veritas server URL from config or default
+                veritas_server="http://localhost:8080"
+                if [ -f ".veritas/config.json" ]; then
+                    cfg_server="$(sed -n 's/.*"server"[ \t]*:[ \t]*"\([^"]*\)".*/\1/p' .veritas/config.json 2>/dev/null | head -n 1)"
+                    if [ -n "${cfg_server}" ]; then
+                        veritas_server="${cfg_server}"
+                    fi
+                fi
+
+                # Fast reachability check (1s timeout). If the server is offline or unreachable, do nothing.
+                if command -v curl > /dev/null 2>&1; then
+                    if curl -s --connect-timeout 1 --max-time 1 -o /dev/null "${veritas_server}" 2>/dev/null; then
+                        "${veritas_bin}" report-tests plz-out/log/test_results.xml > /dev/null 2>&1 || true
+                    fi
+                fi
             fi
         fi
     fi
