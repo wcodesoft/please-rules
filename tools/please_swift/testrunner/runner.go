@@ -210,7 +210,6 @@ struct __PleaseTestRunner {
         var args = Testing.__CommandLineArguments_v0()
         if let eventsPath = getenv("PLEASE_SWIFT_EVENTS_OUTPUT") {
             args.eventStreamOutputPath = String(cString: eventsPath)
-            args.eventStreamSchemaVersion = "0"
         }
         let exitCode: CInt = await Testing.__swiftPMEntryPoint(passing: args)
         exit(exitCode)
