@@ -71,13 +71,27 @@ ts_library(
 
 ### Arguments
 
-| Argument      | Type   | Default    | Description                                           |
-| :------------ | :----- | :--------- | :---------------------------------------------------- |
-| `name`        | `str`  | (required) | Target name.                                          |
-| `srcs`        | `list` | (required) | List of `.ts`, `.tsx`, `.js`, or `.mjs` source files. |
-| `deps`        | `list` | `[]`       | Dependent libraries or `ts_module` targets.           |
-| `module_name` | `str`  | `""`       | Module alias for bare import specifiers.              |
-| `flags`       | `list` | `[]`       | Additional flags passed to `deno check`.              |
+| Argument      | Type   | Default    | Description                                                                                                                                 |
+| :------------ | :----- | :--------- | :------------------------------------------------------------------------------------------------------------------------------------------ |
+| `name`        | `str`  | (required) | Target name.                                                                                                                                |
+| `srcs`        | `list` | (required) | List of `.ts`, `.tsx`, `.js`, or `.mjs` source files.                                                                                       |
+| `deps`        | `list` | `[]`       | Dependent libraries or `ts_module` targets.                                                                                                 |
+| `module_name` | `str`  | `""`       | Optional module alias for bare specifiers. If omitted, automatically derived from `[plugin "ts"] ModulePrefix` and the Please package path. |
+| `flags`       | `list` | `[]`       | Additional flags passed to `deno check`.                                                                                                    |
+
+#### Subpath Imports & Package Mapping
+
+When a `ts_library` contains multiple files, `please_ts` automatically generates
+import map entries for each file under the module prefix, enabling consumers to
+import individual files directly without barrel `index.ts` files:
+
+```typescript
+import { MetricCard } from "@repo/dashboard/components/MetricCard";
+import { Badge } from "@repo/dashboard/components/Badge";
+```
+
+Both extensionless (`@module/File`) and explicit extension (`@module/File.ts`)
+specifiers are supported.
 
 ---
 

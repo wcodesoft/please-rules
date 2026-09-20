@@ -19,6 +19,22 @@ def _join_cmd(tool_cmd, args):
     valid_args = [a for a in args if a]
     return f"{tool_cmd} \\\n  " + " \\\n  ".join(valid_args) + "\n"
 
+def _resolve_module_name(name: str, module_name: str = "") -> str:
+    """Resolves module name, automatically deriving from ModulePrefix and package path if omitted."""
+    if module_name:
+        return module_name
+    prefix = (CONFIG.TS.MODULE_PREFIX or "").strip()
+    pkg = package_name()
+    pkg_basename = pkg.split("/")[-1] if pkg else ""
+    if not name or name == pkg_basename or name == "lib":
+        subpath = pkg
+    else:
+        subpath = f"{pkg}/{name}" if pkg else name
+    if prefix:
+        prefix = prefix.rstrip("/")
+        return f"{prefix}/{subpath}" if subpath else prefix
+    return subpath
+
 def ts_toolchain(
         name: str = "toolchain",
         version: str = DEFAULT_DENO_VERSION,
@@ -129,11 +145,12 @@ def ts_library(
     flags_joined = " ".join(flags) if flags else ""
     flags_str = f"--flags '{flags_joined}'" if flags else ""
 
+    resolved_module = _resolve_module_name(name, module_name)
     compile_args = [
         '--out "$OUT"',
         '--srcs "${SRCS:-}"',
         '--deps "${DEPS:-}"',
-        f'--module-name "{module_name}"' if module_name else "",
+        f'--module-name "{resolved_module}"' if resolved_module else "",
         deno_arg,
         flags_str,
     ]
@@ -178,12 +195,13 @@ def ts_binary(
     flags_joined = " ".join(flags) if flags else ""
     flags_str = f"--flags '{flags_joined}'" if flags else ""
 
+    resolved_module = _resolve_module_name(name, module_name)
     compile_args = [
         '--out "$OUT"',
         f'--main "{resolved_main}"',
         '--srcs "${SRCS:-}"',
         '--deps "${DEPS:-}"',
-        f'--module-name "{module_name}"' if module_name else "",
+        f'--module-name "{resolved_module}"' if resolved_module else "",
         deno_arg,
         flags_str,
     ]
@@ -234,12 +252,13 @@ def ts_bundle(
     flags_joined = " ".join(flags) if flags else ""
     flags_str = f"--flags '{flags_joined}'" if flags else ""
 
+    resolved_module = _resolve_module_name(name, module_name)
     bundle_args = [
         '--out "$OUT"',
         f'--main "{resolved_main}"',
         '--srcs "${SRCS:-}"',
         '--deps "${DEPS:-}"',
-        f'--module-name "{module_name}"' if module_name else "",
+        f'--module-name "{resolved_module}"' if resolved_module else "",
         f'--format "{format}"',
         '--minify' if minify else "",
         '--sourcemap' if sourcemap else "",
@@ -283,11 +302,12 @@ def ts_test(
     flags_joined = " ".join(flags) if flags else ""
     flags_str = f"--flags '{flags_joined}'" if flags else ""
 
+    resolved_module = _resolve_module_name(name, module_name)
     compile_args = [
         '--out "$OUT"',
         '--srcs "${SRCS:-}"',
         '--deps "${DEPS:-}"',
-        f'--module-name "{module_name}"' if module_name else "",
+        f'--module-name "{resolved_module}"' if resolved_module else "",
         deno_arg,
         flags_str,
     ]
@@ -300,7 +320,7 @@ def ts_test(
         f'--runner "{runner}"',
         f'--srcs "{srcs_list}"',
         '--deps "${DEPS:-}"',
-        f'--module-name "{module_name}"' if module_name else "",
+        f'--module-name "{resolved_module}"' if resolved_module else "",
         '--results-file "test.results"',
         '--coverage-file "${COVERAGE_FILE:-test.coverage}"',
         '--coverage="${COVERAGE:-false}"',
@@ -350,11 +370,12 @@ def ts_browser_test(
     flags_joined = " ".join(flags) if flags else ""
     flags_str = f"--flags '{flags_joined}'" if flags else ""
 
+    resolved_module = _resolve_module_name(name, module_name)
     compile_args = [
         '--out "$OUT"',
         '--srcs "${SRCS:-}"',
         '--deps "${DEPS:-}"',
-        f'--module-name "{module_name}"' if module_name else "",
+        f'--module-name "{resolved_module}"' if resolved_module else "",
         deno_arg,
         flags_str,
     ]
@@ -367,7 +388,7 @@ def ts_browser_test(
         f'--browser-binary "{browser_binary}"' if browser_binary else "",
         f'--srcs "{srcs_list}"',
         '--deps "${DEPS:-}"',
-        f'--module-name "{module_name}"' if module_name else "",
+        f'--module-name "{resolved_module}"' if resolved_module else "",
         '--results-file "test.results"',
         '--coverage-file "${COVERAGE_FILE:-test.coverage}"',
         '--coverage="${COVERAGE:-false}"',

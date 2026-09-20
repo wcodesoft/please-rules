@@ -28,6 +28,7 @@ type ModuleMetadata struct {
 	Entry      string            `json:"entry"`
 	Types      string            `json:"types,omitempty"`
 	Imports    map[string]string `json:"imports,omitempty"`
+	Files      []string          `json:"files,omitempty"`
 	SourcePath string            `json:"source_path,omitempty"`
 }
 
@@ -43,10 +44,36 @@ func Synthesize(moduleName string, srcs []string, deps []string, workingDir stri
 			im.Imports[moduleName] = relEntry
 			if !strings.HasSuffix(moduleName, "/") {
 				dir := filepath.Dir(relEntry)
+				if !strings.HasPrefix(dir, ".") && !strings.HasPrefix(dir, "/") {
+					dir = "./" + dir
+				}
 				if !strings.HasSuffix(dir, "/") {
 					dir += "/"
 				}
 				im.Imports[moduleName+"/"] = dir
+			}
+		}
+
+		for _, src := range srcs {
+			relPath, err := relativeTo(workingDir, src)
+			if err != nil {
+				continue
+			}
+			base := filepath.Base(src)
+			ext := filepath.Ext(base)
+			nameWithoutExt := strings.TrimSuffix(base, ext)
+
+			im.Imports[moduleName+"/"+base] = relPath
+			im.Imports[moduleName+"/"+nameWithoutExt] = relPath
+
+			// Also map relative subpath if source is in a subfolder relative to target entry
+			entryDir := filepath.Dir(entry)
+			if relToEntry, err := filepath.Rel(entryDir, src); err == nil && !strings.HasPrefix(relToEntry, "..") {
+				subClean := strings.TrimSuffix(relToEntry, filepath.Ext(relToEntry))
+				if subClean != base && subClean != nameWithoutExt {
+					im.Imports[moduleName+"/"+relToEntry] = relPath
+					im.Imports[moduleName+"/"+subClean] = relPath
+				}
 			}
 		}
 	}
@@ -190,21 +217,45 @@ func loadMetadata(im *ImportMap, metaFile string, workingDir string) error {
 		}
 	}
 
-	// Also map any source files in baseDir by relative name
+	// Map any source files in baseDir and meta.Files under meta.Name and relative names
+	if meta.Name != "" {
+		for _, f := range meta.Files {
+			filePath := filepath.Join(baseDir, f)
+			if rel, err := relativeTo(workingDir, filePath); err == nil {
+				ext := filepath.Ext(f)
+				nameWithoutExt := strings.TrimSuffix(f, ext)
+				im.Imports[meta.Name+"/"+f] = rel
+				im.Imports[meta.Name+"/"+nameWithoutExt] = rel
+				im.Imports["./"+f] = rel
+				im.Imports[f] = rel
+			}
+		}
+	}
+
 	if entries, err := os.ReadDir(baseDir); err == nil {
 		for _, e := range entries {
 			if !e.IsDir() && isSourceFile(e.Name()) {
 				filePath := filepath.Join(baseDir, e.Name())
 				if rel, err := relativeTo(workingDir, filePath); err == nil {
-					im.Imports["./"+e.Name()] = rel
-					im.Imports[e.Name()] = rel
+					name := e.Name()
+					ext := filepath.Ext(name)
+					nameWithoutExt := strings.TrimSuffix(name, ext)
+					if meta.Name != "" {
+						im.Imports[meta.Name+"/"+name] = rel
+						im.Imports[meta.Name+"/"+nameWithoutExt] = rel
+					}
+					im.Imports["./"+name] = rel
+					im.Imports[name] = rel
 				}
 			}
 		}
 	}
 
 	for k, v := range meta.Imports {
-		if k == meta.Name || k == meta.Name+"/" || k == meta.Entry || k == "./"+meta.Entry {
+		if meta.Name != "" && (k == meta.Name || strings.HasPrefix(k, meta.Name+"/")) {
+			continue
+		}
+		if k == meta.Entry || k == "./"+meta.Entry {
 			continue
 		}
 		resolved := v
