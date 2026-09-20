@@ -152,6 +152,25 @@ func (g *SwiftGenerator) processTypeAliases(sb *strings.Builder, typeDefs []ast.
 	}
 }
 
+func (g *SwiftGenerator) processResources(sb *strings.Builder, resources []ast.Resource) {
+	for _, res := range resources {
+		sb.WriteString(fmt.Sprintf("public protocol %s {\n", ToPascalCase(res.Name)))
+		for _, fn := range res.Methods {
+			var params []string
+			for _, p := range fn.Params {
+				params = append(params, fmt.Sprintf("%s: %s", ToCamelCase(p.Name), g.MapWitType(p.Type)))
+			}
+			retType := g.MapWitType(fn.Results)
+			retClause := ""
+			if retType != "Void" {
+				retClause = " -> " + retType
+			}
+			sb.WriteString(fmt.Sprintf("    func %s(%s)%s\n", ToCamelCase(fn.Name), strings.Join(params, ", "), retClause))
+		}
+		sb.WriteString("}\n\n")
+	}
+}
+
 func (g *SwiftGenerator) processProtocol(sb *strings.Builder, iface ast.Interface) {
 	sb.WriteString(fmt.Sprintf("public protocol %s {\n", ToPascalCase(iface.Name)))
 	for _, fn := range iface.Functions {
@@ -184,8 +203,21 @@ func (g *SwiftGenerator) generateSwiftCode(pkg *ast.Package) string {
 		// 3. Type aliases
 		g.processTypeAliases(&sb, iface.TypeDefs)
 
-		// 4. Protocol declaration
-		g.processProtocol(&sb, iface)
+		// 4. Resources
+		g.processResources(&sb, iface.Resources)
+
+		// 5. Protocol declaration
+		hasResourceWithSameName := false
+		for _, res := range iface.Resources {
+			if ToPascalCase(res.Name) == ToPascalCase(iface.Name) {
+				hasResourceWithSameName = true
+				break
+			}
+		}
+
+		if !hasResourceWithSameName || len(iface.Functions) > 0 {
+			g.processProtocol(&sb, iface)
+		}
 	}
 
 	return sb.String()

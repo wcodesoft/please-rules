@@ -135,6 +135,26 @@ func (g *RustGenerator) processTypeAliases(sb *strings.Builder, typeDefs []ast.T
 	}
 }
 
+func (g *RustGenerator) processResources(sb *strings.Builder, resources []ast.Resource) {
+	for _, res := range resources {
+		sb.WriteString(fmt.Sprintf("pub trait %s {\n", ToPascalCase(res.Name)))
+		for _, fn := range res.Methods {
+			var params []string
+			params = append(params, "&mut self")
+			for _, p := range fn.Params {
+				params = append(params, fmt.Sprintf("%s: %s", ToSnakeCase(p.Name), g.MapWitType(p.Type)))
+			}
+			retType := g.MapWitType(fn.Results)
+			retClause := ""
+			if retType != "()" {
+				retClause = " -> " + retType
+			}
+			sb.WriteString(fmt.Sprintf("    fn %s(%s)%s;\n", ToSnakeCase(fn.Name), strings.Join(params, ", "), retClause))
+		}
+		sb.WriteString("}\n\n")
+	}
+}
+
 func (g *RustGenerator) processTrait(sb *strings.Builder, iface ast.Interface) {
 	sb.WriteString(fmt.Sprintf("pub trait %s {\n", ToPascalCase(iface.Name)))
 	for _, fn := range iface.Functions {
@@ -167,8 +187,21 @@ func (g *RustGenerator) generateRustCode(pkg *ast.Package) string {
 		// 3. Type aliases
 		g.processTypeAliases(&sb, iface.TypeDefs)
 
-		// 4. Trait declaration
-		g.processTrait(&sb, iface)
+		// 4. Resources
+		g.processResources(&sb, iface.Resources)
+
+		// 5. Trait declaration
+		hasResourceWithSameName := false
+		for _, res := range iface.Resources {
+			if ToPascalCase(res.Name) == ToPascalCase(iface.Name) {
+				hasResourceWithSameName = true
+				break
+			}
+		}
+
+		if !hasResourceWithSameName || len(iface.Functions) > 0 {
+			g.processTrait(&sb, iface)
+		}
 	}
 
 	return sb.String()

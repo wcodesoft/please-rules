@@ -328,6 +328,13 @@ func (p *Parser) parseInterface() (*Interface, error) {
 					return nil, err
 				}
 				iface.TypeDefs = append(iface.TypeDefs, *tdef)
+			case "resource":
+				p.next()
+				res, err := p.parseResource()
+				if err != nil {
+					return nil, err
+				}
+				iface.Resources = append(iface.Resources, *res)
 			default:
 				// Function declaration: <name>: func(...) [-> ...] ;
 				fn, err := p.parseFunction()
@@ -595,6 +602,101 @@ func (p *Parser) parseTypeDef() (*TypeDef, error) {
 		p.next()
 	}
 	return &TypeDef{Name: name, Type: tRef}, nil
+}
+
+func (p *Parser) parseResource() (*Resource, error) {
+	name, err := p.expectIdent()
+	if err != nil {
+		return nil, err
+	}
+
+	res := &Resource{Name: name}
+
+	if p.peek().Type == TokenSemicolon {
+		p.next()
+		return res, nil
+	}
+
+	if _, err := p.expect(TokenLBrace); err != nil {
+		return nil, err
+	}
+
+	for p.peek().Type != TokenRBrace && p.peek().Type != TokenEOF {
+		tok := p.peek()
+		if tok.Type == TokenIdent {
+			switch tok.Value {
+			case "constructor":
+				p.next()
+				fn, err := p.parseConstructor()
+				if err != nil {
+					return nil, err
+				}
+				res.Constructor = fn
+			case "static":
+				p.next()
+				fn, err := p.parseFunction()
+				if err != nil {
+					return nil, err
+				}
+				res.Static = append(res.Static, *fn)
+			default:
+				fn, err := p.parseFunction()
+				if err != nil {
+					return nil, err
+				}
+				res.Methods = append(res.Methods, *fn)
+			}
+		} else {
+			p.next()
+		}
+	}
+
+	if _, err := p.expect(TokenRBrace); err != nil {
+		return nil, err
+	}
+
+	return res, nil
+}
+
+func (p *Parser) parseConstructor() (*Function, error) {
+	if _, err := p.expect(TokenLParen); err != nil {
+		return nil, err
+	}
+
+	var params []Param
+	for p.peek().Type != TokenRParen && p.peek().Type != TokenEOF {
+		pName, err := p.expectIdent()
+		if err != nil {
+			return nil, err
+		}
+		if _, err := p.expect(TokenColon); err != nil {
+			return nil, err
+		}
+		pType, err := p.parseTypeRef()
+		if err != nil {
+			return nil, err
+		}
+		params = append(params, Param{Name: pName, Type: pType})
+
+		if p.peek().Type == TokenComma {
+			p.next()
+		} else {
+			break
+		}
+	}
+
+	if _, err := p.expect(TokenRParen); err != nil {
+		return nil, err
+	}
+
+	if p.peek().Type == TokenSemicolon {
+		p.next()
+	}
+
+	return &Function{
+		Name:   "constructor",
+		Params: params,
+	}, nil
 }
 
 func (p *Parser) parseWorld() (*World, error) {

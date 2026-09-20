@@ -103,6 +103,15 @@ type TypeDef struct {
 	Type *TypeRef
 }
 
+// Resource represents a resource declaration in a WIT interface.
+type Resource struct {
+	Name        string
+	Doc         string
+	Constructor *Function
+	Methods     []Function
+	Static      []Function
+}
+
 // Interface represents an interface block in WIT.
 type Interface struct {
 	Name      string
@@ -111,6 +120,7 @@ type Interface struct {
 	Records   []Record
 	Enums     []Enum
 	TypeDefs  []TypeDef
+	Resources []Resource
 }
 
 // World represents a world definition in WIT.

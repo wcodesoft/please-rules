@@ -579,3 +579,65 @@ func TestParser_ParseFileAndPathErrors(t *testing.T) {
 		t.Errorf("expected error when directory contains malformed WIT, got nil")
 	}
 }
+
+func TestParser_Resource(t *testing.T) {
+	content := `
+	package babel:structures;
+
+	interface disjoint-set {
+		resource disjoint-set {
+			constructor();
+			make-set: func(x: s32);
+			find: func(x: s32) -> option<s32>;
+			union: func(x: s32, y: s32);
+			is-connected: func(x: s32, y: s32) -> bool;
+			static reset-all: func();
+		}
+
+		resource handle-only;
+	}
+	`
+
+	pkg, err := ParseContent(content)
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+
+	if len(pkg.Interfaces) != 1 {
+		t.Fatalf("expected 1 interface, got %d", len(pkg.Interfaces))
+	}
+
+	iface := pkg.Interfaces[0]
+	if len(iface.Resources) != 2 {
+		t.Fatalf("expected 2 resources, got %d", len(iface.Resources))
+	}
+
+	ds := iface.Resources[0]
+	if ds.Name != "disjoint-set" {
+		t.Errorf("expected resource name disjoint-set, got %q", ds.Name)
+	}
+	if ds.Constructor == nil {
+		t.Fatalf("expected constructor, got nil")
+	}
+	if len(ds.Constructor.Params) != 0 {
+		t.Errorf("expected 0 constructor params, got %d", len(ds.Constructor.Params))
+	}
+	if len(ds.Methods) != 4 {
+		t.Fatalf("expected 4 methods, got %d", len(ds.Methods))
+	}
+	if ds.Methods[0].Name != "make-set" || len(ds.Methods[0].Params) != 1 {
+		t.Errorf("unexpected method 0: %+v", ds.Methods[0])
+	}
+	if ds.Methods[3].Name != "is-connected" || ds.Methods[3].Results.Name != "bool" {
+		t.Errorf("unexpected method 3: %+v", ds.Methods[3])
+	}
+	if len(ds.Static) != 1 || ds.Static[0].Name != "reset-all" {
+		t.Errorf("expected 1 static method reset-all, got %+v", ds.Static)
+	}
+
+	handle := iface.Resources[1]
+	if handle.Name != "handle-only" {
+		t.Errorf("expected resource handle-only, got %q", handle.Name)
+	}
+}
+

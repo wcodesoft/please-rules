@@ -141,6 +141,21 @@ func (g *TypeScriptGenerator) processTypeAliases(sb *strings.Builder, typeDefs [
 	}
 }
 
+func (g *TypeScriptGenerator) processResources(sb *strings.Builder, resources []ast.Resource) {
+	for _, res := range resources {
+		sb.WriteString(fmt.Sprintf("export interface %s {\n", ToPascalCase(res.Name)))
+		for _, fn := range res.Methods {
+			var params []string
+			for _, p := range fn.Params {
+				params = append(params, fmt.Sprintf("%s: %s", ToCamelCase(p.Name), g.MapWitType(p.Type)))
+			}
+			retType := g.MapWitType(fn.Results)
+			sb.WriteString(fmt.Sprintf("  %s(%s): %s;\n", ToCamelCase(fn.Name), strings.Join(params, ", "), retType))
+		}
+		sb.WriteString("}\n\n")
+	}
+}
+
 func (g *TypeScriptGenerator) processInterface(sb *strings.Builder, iface ast.Interface) {
 	sb.WriteString(fmt.Sprintf("export interface %s {\n", ToPascalCase(iface.Name)))
 	for _, fn := range iface.Functions {
@@ -168,8 +183,21 @@ func (g *TypeScriptGenerator) generateTSCode(pkg *ast.Package) string {
 		// 3. Type aliases
 		g.processTypeAliases(&sb, iface.TypeDefs)
 
-		// 4. Interface declaration
-		g.processInterface(&sb, iface)
+		// 4. Resources
+		g.processResources(&sb, iface.Resources)
+
+		// 5. Interface declaration
+		hasResourceWithSameName := false
+		for _, res := range iface.Resources {
+			if ToPascalCase(res.Name) == ToPascalCase(iface.Name) {
+				hasResourceWithSameName = true
+				break
+			}
+		}
+
+		if !hasResourceWithSameName || len(iface.Functions) > 0 {
+			g.processInterface(&sb, iface)
+		}
 	}
 
 	return sb.String()

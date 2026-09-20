@@ -143,6 +143,27 @@ func (g *PythonGenerator) processProtocol(sb *strings.Builder, iface ast.Interfa
 	}
 }
 
+func (g *PythonGenerator) processResources(sb *strings.Builder, resources []ast.Resource, exportedNames *[]string) {
+	for _, res := range resources {
+		resName := ToPascalCase(res.Name)
+		*exportedNames = append(*exportedNames, resName)
+		sb.WriteString(fmt.Sprintf("class %s(Protocol):\n", resName))
+		if len(res.Methods) == 0 {
+			sb.WriteString("    pass\n\n")
+		} else {
+			for _, fn := range res.Methods {
+				var params []string
+				params = append(params, "self")
+				for _, p := range fn.Params {
+					params = append(params, fmt.Sprintf("%s: %s", ToSnakeCase(p.Name), g.MapWitType(p.Type)))
+				}
+				retType := g.MapWitType(fn.Results)
+				sb.WriteString(fmt.Sprintf("    def %s(%s) -> %s:\n        ...\n\n", ToSnakeCase(fn.Name), strings.Join(params, ", "), retType))
+			}
+		}
+	}
+}
+
 func (g *PythonGenerator) generatePythonCode(pkg *ast.Package) (pyCode, pyiCode string) {
 	var sb strings.Builder
 	g.writeHeader(&sb)
@@ -151,7 +172,18 @@ func (g *PythonGenerator) generatePythonCode(pkg *ast.Package) (pyCode, pyiCode 
 
 	for _, iface := range pkg.Interfaces {
 		ifaceName := ToPascalCase(iface.Name)
-		exportedNames = append(exportedNames, ifaceName)
+
+		hasResourceWithSameName := false
+		for _, res := range iface.Resources {
+			if ToPascalCase(res.Name) == ifaceName {
+				hasResourceWithSameName = true
+				break
+			}
+		}
+
+		if !hasResourceWithSameName || len(iface.Functions) > 0 {
+			exportedNames = append(exportedNames, ifaceName)
+		}
 
 		// 1. Records
 		g.processRecords(&sb, iface.Records, &exportedNames)
@@ -159,8 +191,13 @@ func (g *PythonGenerator) generatePythonCode(pkg *ast.Package) (pyCode, pyiCode 
 		// 2. Enums
 		g.processEnums(&sb, iface.Enums, &exportedNames)
 
-		// 3. Protocol
-		g.processProtocol(&sb, iface, &exportedNames)
+		// 3. Resources
+		g.processResources(&sb, iface.Resources, &exportedNames)
+
+		// 4. Protocol
+		if !hasResourceWithSameName || len(iface.Functions) > 0 {
+			g.processProtocol(&sb, iface, &exportedNames)
+		}
 	}
 
 	var allList []string
