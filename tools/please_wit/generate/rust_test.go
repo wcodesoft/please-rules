@@ -1,124 +1,169 @@
 package generate
 
 import (
-	"os"
-	"path/filepath"
-	"strings"
 	"testing"
 	"tools/please_wit/ast"
 )
 
-func TestGenerateRust(t *testing.T) {
-	tmpDir := t.TempDir()
-	witContent := `
-package test:structures;
+func TestRustGenerator_MapWitType(t *testing.T) {
+	gen := &RustGenerator{}
 
-interface two-sum {
-    solve: func(nums: list<s32>, target: s32) -> list<s32>;
-    reset: func();
-}
-
-interface records-and-enums {
-    record point {
-        x: f64,
-        y: f64,
-    }
-
-    enum color {
-        red,
-        green,
-        blue,
-    }
-}
-`
-	witFile := filepath.Join(tmpDir, "structures.wit")
-	if err := os.WriteFile(witFile, []byte(witContent), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	rustOut := filepath.Join(tmpDir, "rust_out")
-	_ = os.MkdirAll(rustOut, 0755)
-
-	opts := Options{
-		Lang: "rust",
-		Out:  rustOut,
-		Srcs: []string{witFile},
-	}
-	if err := Run(opts); err != nil {
-		t.Fatalf("Run(rust) failed: %v", err)
+	tests := []struct {
+		name    string
+		typeRef *ast.TypeRef
+		want    string
+	}{
+		{name: "nil", typeRef: nil, want: "()"},
+		{name: "s8", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "s8"}, want: "i8"},
+		{name: "s16", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "s16"}, want: "i16"},
+		{name: "s32", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "s32"}, want: "i32"},
+		{name: "s64", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "s64"}, want: "i64"},
+		{name: "u8", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "u8"}, want: "u8"},
+		{name: "u16", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "u16"}, want: "u16"},
+		{name: "u32", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "u32"}, want: "u32"},
+		{name: "u64", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "u64"}, want: "u64"},
+		{name: "f32", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "f32"}, want: "f32"},
+		{name: "f64", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "f64"}, want: "f64"},
+		{name: "bool", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "bool"}, want: "bool"},
+		{name: "string", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "string"}, want: "String"},
+		{name: "char", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "char"}, want: "char"},
+		{name: "unit", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "unit"}, want: "()"},
+		{name: "underscore", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "_"}, want: "()"},
+		{name: "list of s32", typeRef: &ast.TypeRef{Kind: ast.KindList, TypeArgs: []*ast.TypeRef{{Kind: ast.KindPrimitive, Name: "s32"}}}, want: "Vec<i32>"},
+		{name: "empty list", typeRef: &ast.TypeRef{Kind: ast.KindList}, want: "Vec<()>"},
+		{name: "option of string", typeRef: &ast.TypeRef{Kind: ast.KindOption, TypeArgs: []*ast.TypeRef{{Kind: ast.KindPrimitive, Name: "string"}}}, want: "Option<String>"},
+		{name: "empty option", typeRef: &ast.TypeRef{Kind: ast.KindOption}, want: "Option<()>"},
+		{name: "result of s32", typeRef: &ast.TypeRef{Kind: ast.KindResult, TypeArgs: []*ast.TypeRef{{Kind: ast.KindPrimitive, Name: "s32"}}}, want: "Result<i32, ()>"},
+		{name: "result of s32 and string", typeRef: &ast.TypeRef{Kind: ast.KindResult, TypeArgs: []*ast.TypeRef{{Kind: ast.KindPrimitive, Name: "s32"}, {Kind: ast.KindPrimitive, Name: "string"}}}, want: "Result<i32, String>"},
+		{name: "empty result", typeRef: &ast.TypeRef{Kind: ast.KindResult}, want: "Result<(), ()>"},
+		{name: "tuple of s32 and string", typeRef: &ast.TypeRef{Kind: ast.KindTuple, TypeArgs: []*ast.TypeRef{{Kind: ast.KindPrimitive, Name: "s32"}, {Kind: ast.KindPrimitive, Name: "string"}}}, want: "(i32, String)"},
+		{name: "named type", typeRef: &ast.TypeRef{Kind: ast.KindNamed, Name: "my-point"}, want: "MyPoint"},
 	}
 
-	rustFile := filepath.Join(rustOut, "structures.rs")
-	rustBytes, err := os.ReadFile(rustFile)
-	if err != nil {
-		t.Fatalf("failed to read %s: %v", rustFile, err)
-	}
-	rustCode := string(rustBytes)
-
-	// Verify trait TwoSum
-	if !strings.Contains(rustCode, "pub trait TwoSum {") {
-		t.Errorf("expected pub trait TwoSum, got: %s", rustCode)
-	}
-	if !strings.Contains(rustCode, "fn solve(&mut self, nums: Vec<i32>, target: i32) -> Vec<i32>;") {
-		t.Errorf("expected fn solve, got: %s", rustCode)
-	}
-	if !strings.Contains(rustCode, "fn reset(&mut self);") {
-		t.Errorf("expected fn reset, got: %s", rustCode)
-	}
-
-	// Verify struct Point
-	if !strings.Contains(rustCode, "pub struct Point {") {
-		t.Errorf("expected pub struct Point, got: %s", rustCode)
-	}
-	if !strings.Contains(rustCode, "pub x: f64,") || !strings.Contains(rustCode, "pub y: f64,") {
-		t.Errorf("expected pub x, pub y in Point, got: %s", rustCode)
-	}
-
-	// Verify enum Color
-	if !strings.Contains(rustCode, "pub enum Color {") {
-		t.Errorf("expected pub enum Color, got: %s", rustCode)
-	}
-	if !strings.Contains(rustCode, "Red,") || !strings.Contains(rustCode, "Green,") || !strings.Contains(rustCode, "Blue,") {
-		t.Errorf("expected enum variants in Color, got: %s", rustCode)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := gen.MapWitType(tc.typeRef)
+			if got != tc.want {
+				t.Errorf("name: %s, want: %q, got: %q", tc.name, tc.want, got)
+			}
+		})
 	}
 }
 
 func TestRustGeneratorDirect(t *testing.T) {
-	pkg := &ast.Package{
-		Namespace: "demo",
-		Name:      "api",
-		Interfaces: []ast.Interface{
-			{
-				Name: "greeter",
-				Functions: []ast.Function{
+	gen := &RustGenerator{}
+
+	t.Run("generator name", func(t *testing.T) {
+		want := "rust"
+		got := gen.Name()
+		if got != want {
+			t.Errorf("name: generator name, want: %q, got: %q", want, got)
+		}
+	})
+
+	tests := []struct {
+		name        string
+		pkg         *ast.Package
+		opts        Options
+		baseName    string
+		wantContent string
+	}{
+		{
+			name: "basic interface with params and return",
+			pkg: &ast.Package{
+				Namespace: "demo",
+				Name:      "api",
+				Interfaces: []ast.Interface{
 					{
-						Name: "say-hello",
-						Params: []ast.Param{
-							{Name: "name", Type: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "string"}},
+						Name: "greeter",
+						Functions: []ast.Function{
+							{
+								Name: "say-hello",
+								Params: []ast.Param{
+									{Name: "name", Type: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "string"}},
+								},
+								Results: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "string"},
+							},
 						},
-						Results: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "string"},
 					},
 				},
 			},
+			opts:     Options{},
+			baseName: "api",
+			wantContent: `// Auto-generated by please_wit from WIT AST. DO NOT EDIT.
+
+pub trait Greeter {
+    fn say_hello(&mut self, name: String) -> String;
+}
+
+`,
+		},
+		{
+			name: "records, enums, and type aliases",
+			pkg: &ast.Package{
+				Name: "types",
+				Interfaces: []ast.Interface{
+					{
+						Name: "data-service",
+						Records: []ast.Record{
+							{
+								Name: "user",
+								Fields: []ast.Field{
+									{Name: "id", Type: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "s64"}},
+									{Name: "name", Type: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "string"}},
+								},
+							},
+						},
+						Enums: []ast.Enum{
+							{
+								Name:  "status",
+								Cases: []ast.EnumCase{{Name: "active"}, {Name: "inactive"}},
+							},
+						},
+						TypeDefs: []ast.TypeDef{
+							{Name: "user-id", Type: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "s64"}},
+						},
+					},
+				},
+			},
+			opts:     Options{},
+			baseName: "types",
+			wantContent: `// Auto-generated by please_wit from WIT AST. DO NOT EDIT.
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct User {
+    pub id: i64,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Status {
+    Active,
+    Inactive,
+}
+
+pub type UserId = i64;
+
+pub trait DataService {
+}
+
+`,
 		},
 	}
 
-	gen := &RustGenerator{}
-	if gen.Name() != "rust" {
-		t.Errorf("expected name 'rust', got %q", gen.Name())
-	}
-
-	files, err := gen.Generate(pkg, Options{}, "api")
-	if err != nil {
-		t.Fatalf("Generate failed: %v", err)
-	}
-	if len(files) != 1 {
-		t.Fatalf("expected 1 file, got %d", len(files))
-	}
-	if files[0].Name != "api.rs" {
-		t.Errorf("expected api.rs, got %q", files[0].Name)
-	}
-	if !strings.Contains(files[0].Content, "pub trait Greeter {") {
-		t.Errorf("expected pub trait Greeter, got: %s", files[0].Content)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			files, err := gen.Generate(tc.pkg, tc.opts, tc.baseName)
+			if err != nil {
+				t.Fatalf("Generate failed: %v", err)
+			}
+			if len(files) != 1 {
+				t.Fatalf("expected 1 file, got %d", len(files))
+			}
+			got := files[0].Content
+			if got != tc.wantContent {
+				t.Errorf("name: %s, want: %q, got: %q", tc.name, tc.wantContent, got)
+			}
+		})
 	}
 }

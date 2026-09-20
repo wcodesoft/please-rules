@@ -1,139 +1,182 @@
 package generate
 
 import (
-	"os"
-	"path/filepath"
-	"strings"
 	"testing"
 	"tools/please_wit/ast"
 )
 
-func TestGenerateSwift(t *testing.T) {
-	tmpDir := t.TempDir()
-	witContent := `
-package test:structures;
+func TestSwiftGenerator_MapWitType(t *testing.T) {
+	gen := &SwiftGenerator{}
 
-interface two-sum {
-    solve: func(nums: list<s32>, target: s32) -> list<s32>;
-    reset: func();
-}
-
-interface records-and-enums {
-    record point {
-        x: f64,
-        y: f64,
-    }
-
-    enum color {
-        red,
-        green,
-        blue,
-    }
-}
-`
-	witFile := filepath.Join(tmpDir, "structures.wit")
-	if err := os.WriteFile(witFile, []byte(witContent), 0644); err != nil {
-		t.Fatal(err)
+	tests := []struct {
+		name    string
+		typeRef *ast.TypeRef
+		want    string
+	}{
+		{name: "nil", typeRef: nil, want: "Void"},
+		{name: "s8", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "s8"}, want: "Int8"},
+		{name: "s16", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "s16"}, want: "Int16"},
+		{name: "s32", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "s32"}, want: "Int32"},
+		{name: "s64", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "s64"}, want: "Int64"},
+		{name: "u8", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "u8"}, want: "UInt8"},
+		{name: "u16", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "u16"}, want: "UInt16"},
+		{name: "u32", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "u32"}, want: "UInt32"},
+		{name: "u64", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "u64"}, want: "UInt64"},
+		{name: "f32", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "f32"}, want: "Float"},
+		{name: "f64", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "f64"}, want: "Double"},
+		{name: "bool", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "bool"}, want: "Bool"},
+		{name: "string", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "string"}, want: "String"},
+		{name: "char", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "char"}, want: "Character"},
+		{name: "unit", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "unit"}, want: "Void"},
+		{name: "underscore", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "_"}, want: "Void"},
+		{name: "list of s32", typeRef: &ast.TypeRef{Kind: ast.KindList, TypeArgs: []*ast.TypeRef{{Kind: ast.KindPrimitive, Name: "s32"}}}, want: "[Int32]"},
+		{name: "empty list", typeRef: &ast.TypeRef{Kind: ast.KindList}, want: "[Any]"},
+		{name: "option of string", typeRef: &ast.TypeRef{Kind: ast.KindOption, TypeArgs: []*ast.TypeRef{{Kind: ast.KindPrimitive, Name: "string"}}}, want: "String?"},
+		{name: "empty option", typeRef: &ast.TypeRef{Kind: ast.KindOption}, want: "Any?"},
+		{name: "result of s32", typeRef: &ast.TypeRef{Kind: ast.KindResult, TypeArgs: []*ast.TypeRef{{Kind: ast.KindPrimitive, Name: "s32"}}}, want: "Int32?"},
+		{name: "result of void", typeRef: &ast.TypeRef{Kind: ast.KindResult, TypeArgs: []*ast.TypeRef{{Kind: ast.KindPrimitive, Name: "unit"}}}, want: "Void"},
+		{name: "empty result", typeRef: &ast.TypeRef{Kind: ast.KindResult}, want: "Void"},
+		{name: "tuple of s32 and string", typeRef: &ast.TypeRef{Kind: ast.KindTuple, TypeArgs: []*ast.TypeRef{{Kind: ast.KindPrimitive, Name: "s32"}, {Kind: ast.KindPrimitive, Name: "string"}}}, want: "(Int32, String)"},
+		{name: "named type", typeRef: &ast.TypeRef{Kind: ast.KindNamed, Name: "my-point"}, want: "MyPoint"},
 	}
 
-	swiftOut := filepath.Join(tmpDir, "swift_out")
-	_ = os.MkdirAll(swiftOut, 0755)
-
-	opts := Options{
-		Lang: "swift",
-		Out:  swiftOut,
-		Srcs: []string{witFile},
-	}
-	if err := Run(opts); err != nil {
-		t.Fatalf("Run(swift) failed: %v", err)
-	}
-
-	swiftFile := filepath.Join(swiftOut, "Structures.swift")
-	swiftBytes, err := os.ReadFile(swiftFile)
-	if err != nil {
-		t.Fatalf("failed to read %s: %v", swiftFile, err)
-	}
-	swiftCode := string(swiftBytes)
-
-	// Verify header
-	if !strings.Contains(swiftCode, "import Foundation") {
-		t.Errorf("expected import Foundation, got: %s", swiftCode)
-	}
-
-	// Verify protocol TwoSum
-	if !strings.Contains(swiftCode, "public protocol TwoSum {") {
-		t.Errorf("expected public protocol TwoSum, got: %s", swiftCode)
-	}
-	if !strings.Contains(swiftCode, "func solve(nums: [Int32], target: Int32) -> [Int32]") {
-		t.Errorf("expected func solve signature, got: %s", swiftCode)
-	}
-	if !strings.Contains(swiftCode, "func reset()") {
-		t.Errorf("expected func reset signature, got: %s", swiftCode)
-	}
-
-	// Verify struct Point
-	if !strings.Contains(swiftCode, "public struct Point: Equatable, Codable {") {
-		t.Errorf("expected public struct Point, got: %s", swiftCode)
-	}
-
-	// Verify enum Color
-	if !strings.Contains(swiftCode, "public enum Color: String, Codable {") {
-		t.Errorf("expected public enum Color, got: %s", swiftCode)
-	}
-
-	// Verify module.modulemap generated
-	modMapFile := filepath.Join(swiftOut, "module.modulemap")
-	modBytes, err := os.ReadFile(modMapFile)
-	if err != nil {
-		t.Fatalf("failed to read modulemap %s: %v", modMapFile, err)
-	}
-	if !strings.Contains(string(modBytes), "module Structures {") {
-		t.Errorf("expected module Structures in modulemap, got: %s", string(modBytes))
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := gen.MapWitType(tc.typeRef)
+			if got != tc.want {
+				t.Errorf("name: %s, want: %q, got: %q", tc.name, tc.want, got)
+			}
+		})
 	}
 }
 
 func TestSwiftGeneratorDirect(t *testing.T) {
-	pkg := &ast.Package{
-		Namespace: "demo",
-		Name:      "api",
-		Interfaces: []ast.Interface{
-			{
-				Name: "greeter",
-				Functions: []ast.Function{
+	gen := &SwiftGenerator{}
+
+	t.Run("generator name", func(t *testing.T) {
+		want := "swift"
+		got := gen.Name()
+		if got != want {
+			t.Errorf("name: generator name, want: %q, got: %q", want, got)
+		}
+	})
+
+	tests := []struct {
+		name          string
+		pkg           *ast.Package
+		opts          Options
+		baseName      string
+		wantContent   string
+		wantModulemap string
+	}{
+		{
+			name: "basic interface with params and return",
+			pkg: &ast.Package{
+				Namespace: "demo",
+				Name:      "api",
+				Interfaces: []ast.Interface{
 					{
-						Name: "say-hello",
-						Params: []ast.Param{
-							{Name: "name", Type: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "string"}},
+						Name: "greeter",
+						Functions: []ast.Function{
+							{
+								Name: "say-hello",
+								Params: []ast.Param{
+									{Name: "name", Type: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "string"}},
+								},
+								Results: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "string"},
+							},
 						},
-						Results: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "string"},
 					},
 				},
 			},
+			opts:     Options{},
+			baseName: "api",
+			wantContent: `// Auto-generated by please_wit from WIT AST. DO NOT EDIT.
+import Foundation
+
+public protocol Greeter {
+    func sayHello(name: String) -> String
+}
+
+`,
+			wantModulemap: `module Api {
+    export *
+}
+`,
+		},
+		{
+			name: "records, enums, and type aliases",
+			pkg: &ast.Package{
+				Name: "types",
+				Interfaces: []ast.Interface{
+					{
+						Name: "data-service",
+						Records: []ast.Record{
+							{
+								Name: "user",
+								Fields: []ast.Field{
+									{Name: "id", Type: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "s64"}},
+									{Name: "name", Type: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "string"}},
+								},
+							},
+						},
+						Enums: []ast.Enum{
+							{
+								Name:  "status",
+								Cases: []ast.EnumCase{{Name: "active"}, {Name: "inactive"}},
+							},
+						},
+						TypeDefs: []ast.TypeDef{
+							{Name: "user-id", Type: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "s64"}},
+						},
+					},
+				},
+			},
+			opts:     Options{},
+			baseName: "types",
+			wantContent: `// Auto-generated by please_wit from WIT AST. DO NOT EDIT.
+import Foundation
+
+public struct User: Equatable, Codable {
+    public var id: Int64
+    public var name: String
+}
+
+public enum Status: String, Codable {
+    case active
+    case inactive
+}
+
+public typealias UserId = Int64
+
+public protocol DataService {
+}
+
+`,
+			wantModulemap: `module Types {
+    export *
+}
+`,
 		},
 	}
 
-	gen := &SwiftGenerator{}
-	if gen.Name() != "swift" {
-		t.Errorf("expected name 'swift', got %q", gen.Name())
-	}
-
-	files, err := gen.Generate(pkg, Options{}, "api")
-	if err != nil {
-		t.Fatalf("Generate failed: %v", err)
-	}
-	if len(files) != 2 {
-		t.Fatalf("expected 2 files (swift and modulemap), got %d", len(files))
-	}
-	if files[0].Name != "Api.swift" {
-		t.Errorf("expected filename 'Api.swift', got %q", files[0].Name)
-	}
-	if files[1].Name != "module.modulemap" {
-		t.Errorf("expected modulemap, got %q", files[1].Name)
-	}
-	if !strings.Contains(files[0].Content, "public protocol Greeter") {
-		t.Errorf("expected public protocol Greeter, got: %s", files[0].Content)
-	}
-	if !strings.Contains(files[1].Content, "module Api {") {
-		t.Errorf("expected module Api in modulemap, got: %s", files[1].Content)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			files, err := gen.Generate(tc.pkg, tc.opts, tc.baseName)
+			if err != nil {
+				t.Fatalf("Generate failed: %v", err)
+			}
+			if len(files) != 2 {
+				t.Fatalf("expected 2 files (swift and modulemap), got %d", len(files))
+			}
+			got := files[0].Content
+			if got != tc.wantContent {
+				t.Errorf("name: %s (content), want: %q, got: %q", tc.name, tc.wantContent, got)
+			}
+			got = files[1].Content
+			if got != tc.wantModulemap {
+				t.Errorf("name: %s (modulemap), want: %q, got: %q", tc.name, tc.wantModulemap, got)
+			}
+		})
 	}
 }

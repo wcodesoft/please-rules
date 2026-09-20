@@ -1,145 +1,248 @@
 package generate
 
 import (
-	"os"
-	"path/filepath"
-	"strings"
 	"testing"
 	"tools/please_wit/ast"
 )
 
-func TestGenerateCpp(t *testing.T) {
-	tmpDir := t.TempDir()
-	witContent := `
-package test:structures;
+func TestCppGenerator_MapWitType(t *testing.T) {
+	gen := &CppGenerator{}
 
-interface two-sum {
-    solve: func(nums: list<s32>, target: s32) -> list<s32>;
-    reset: func();
+	tests := []struct {
+		name    string
+		typeRef *ast.TypeRef
+		want    string
+	}{
+		{name: "nil", typeRef: nil, want: "void"},
+		{name: "s8", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "s8"}, want: "int8_t"},
+		{name: "s16", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "s16"}, want: "int16_t"},
+		{name: "s32", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "s32"}, want: "int32_t"},
+		{name: "s64", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "s64"}, want: "int64_t"},
+		{name: "u8", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "u8"}, want: "uint8_t"},
+		{name: "u16", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "u16"}, want: "uint16_t"},
+		{name: "u32", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "u32"}, want: "uint32_t"},
+		{name: "u64", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "u64"}, want: "uint64_t"},
+		{name: "f32", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "f32"}, want: "float"},
+		{name: "f64", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "f64"}, want: "double"},
+		{name: "bool", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "bool"}, want: "bool"},
+		{name: "string", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "string"}, want: "std::string"},
+		{name: "char", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "char"}, want: "char32_t"},
+		{name: "unit", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "unit"}, want: "void"},
+		{name: "underscore", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "_"}, want: "void"},
+		{name: "list of s32", typeRef: &ast.TypeRef{Kind: ast.KindList, TypeArgs: []*ast.TypeRef{{Kind: ast.KindPrimitive, Name: "s32"}}}, want: "std::vector<int32_t>"},
+		{name: "empty list", typeRef: &ast.TypeRef{Kind: ast.KindList}, want: "std::vector<void>"},
+		{name: "option of string", typeRef: &ast.TypeRef{Kind: ast.KindOption, TypeArgs: []*ast.TypeRef{{Kind: ast.KindPrimitive, Name: "string"}}}, want: "std::optional<std::string>"},
+		{name: "empty option", typeRef: &ast.TypeRef{Kind: ast.KindOption}, want: "std::optional<void>"},
+		{name: "result of s32", typeRef: &ast.TypeRef{Kind: ast.KindResult, TypeArgs: []*ast.TypeRef{{Kind: ast.KindPrimitive, Name: "s32"}}}, want: "std::optional<int32_t>"},
+		{name: "result of void", typeRef: &ast.TypeRef{Kind: ast.KindResult, TypeArgs: []*ast.TypeRef{{Kind: ast.KindPrimitive, Name: "unit"}}}, want: "bool"},
+		{name: "empty result", typeRef: &ast.TypeRef{Kind: ast.KindResult}, want: "bool"},
+		{name: "tuple of s32 and string", typeRef: &ast.TypeRef{Kind: ast.KindTuple, TypeArgs: []*ast.TypeRef{{Kind: ast.KindPrimitive, Name: "s32"}, {Kind: ast.KindPrimitive, Name: "string"}}}, want: "std::tuple<int32_t, std::string>"},
+		{name: "named type", typeRef: &ast.TypeRef{Kind: ast.KindNamed, Name: "my-point"}, want: "MyPoint"},
+		{name: "unknown primitive", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "unknown-type"}, want: "UnknownType"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := gen.MapWitType(tc.typeRef)
+			if got != tc.want {
+				t.Errorf("name: %s, want: %q, got: %q", tc.name, tc.want, got)
+			}
+		})
+	}
 }
 
-interface records-and-enums {
-    record point {
-        x: f64,
-        y: f64,
-    }
+func TestCppGenerator_CreateNamespace(t *testing.T) {
+	gen := &CppGenerator{}
 
-    enum color {
-        red,
-        green,
-        blue,
-    }
-}
-`
-	witFile := filepath.Join(tmpDir, "structures.wit")
-	if err := os.WriteFile(witFile, []byte(witContent), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	cppOut := filepath.Join(tmpDir, "cpp_out")
-	_ = os.MkdirAll(cppOut, 0755)
-
-	opts := Options{
-		Lang: "cpp",
-		Out:  cppOut,
-		Srcs: []string{witFile},
-	}
-	if err := Run(opts); err != nil {
-		t.Fatalf("Run(cpp) failed: %v", err)
-	}
-
-	cppHFile := filepath.Join(cppOut, "structures.h")
-	cppHBytes, err := os.ReadFile(cppHFile)
-	if err != nil {
-		t.Fatalf("failed to read %s: %v", cppHFile, err)
-	}
-	cppHCode := string(cppHBytes)
-
-	// Verify pragma once and namespace
-	if !strings.Contains(cppHCode, "#pragma once") {
-		t.Errorf("expected #pragma once, got: %s", cppHCode)
-	}
-	if !strings.Contains(cppHCode, "namespace test_structures {") {
-		t.Errorf("expected namespace test_structures, got: %s", cppHCode)
+	tests := []struct {
+		name          string
+		targetPackage string
+		pkg           *ast.Package
+		want          string
+	}{
+		{
+			name:          "explicit target package",
+			targetPackage: "my::custom-pkg",
+			pkg:           &ast.Package{},
+			want:          "my__custom_pkg",
+		},
+		{
+			name:          "package namespace and name",
+			targetPackage: "",
+			pkg:           &ast.Package{Namespace: "test", Name: "structures"},
+			want:          "test_structures",
+		},
+		{
+			name:          "package name only",
+			targetPackage: "",
+			pkg:           &ast.Package{Name: "structures"},
+			want:          "structures",
+		},
+		{
+			name:          "fallback default wit",
+			targetPackage: "",
+			pkg:           &ast.Package{},
+			want:          "wit",
+		},
 	}
 
-	// Verify class TwoSum
-	if !strings.Contains(cppHCode, "class TwoSum {") {
-		t.Errorf("expected class TwoSum, got: %s", cppHCode)
-	}
-	if !strings.Contains(cppHCode, "virtual ~TwoSum() = default;") {
-		t.Errorf("expected virtual destructor, got: %s", cppHCode)
-	}
-	if !strings.Contains(cppHCode, "virtual std::vector<int32_t> solve(const std::vector<int32_t>& nums, int32_t target) = 0;") {
-		t.Errorf("expected virtual solve signature, got: %s", cppHCode)
-	}
-	if !strings.Contains(cppHCode, "virtual void reset() = 0;") {
-		t.Errorf("expected virtual reset signature, got: %s", cppHCode)
-	}
-
-	// Verify struct Point
-	if !strings.Contains(cppHCode, "struct Point {") {
-		t.Errorf("expected struct Point, got: %s", cppHCode)
-	}
-
-	// Verify enum class Color
-	if !strings.Contains(cppHCode, "enum class Color {") {
-		t.Errorf("expected enum class Color, got: %s", cppHCode)
-	}
-
-	// Verify companion .cpp file is generated
-	cppSrcFile := filepath.Join(cppOut, "structures.cpp")
-	cppSrcBytes, err := os.ReadFile(cppSrcFile)
-	if err != nil {
-		t.Fatalf("failed to read %s: %v", cppSrcFile, err)
-	}
-	if !strings.Contains(string(cppSrcBytes), `#include "structures.h"`) {
-		t.Errorf("expected include in cpp source, got: %s", string(cppSrcBytes))
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := gen.createNamespace(tc.targetPackage, tc.pkg)
+			if got != tc.want {
+				t.Errorf("name: %s, want: %q, got: %q", tc.name, tc.want, got)
+			}
+		})
 	}
 }
 
 func TestCppGeneratorDirect(t *testing.T) {
-	pkg := &ast.Package{
-		Namespace: "demo",
-		Name:      "api",
-		Interfaces: []ast.Interface{
-			{
-				Name: "greeter",
-				Functions: []ast.Function{
+	gen := &CppGenerator{}
+
+	t.Run("generator name", func(t *testing.T) {
+		want := "cpp"
+		got := gen.Name()
+		if got != want {
+			t.Errorf("name: generator name, want: %q, got: %q", want, got)
+		}
+	})
+
+	tests := []struct {
+		name       string
+		pkg        *ast.Package
+		opts       Options
+		baseName   string
+		wantHeader string
+		wantSource string
+	}{
+		{
+			name: "basic interface with params and return",
+			pkg: &ast.Package{
+				Namespace: "demo",
+				Name:      "api",
+				Interfaces: []ast.Interface{
 					{
-						Name: "say-hello",
-						Params: []ast.Param{
-							{Name: "name", Type: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "string"}},
+						Name: "greeter",
+						Functions: []ast.Function{
+							{
+								Name: "say-hello",
+								Params: []ast.Param{
+									{Name: "name", Type: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "string"}},
+								},
+								Results: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "string"},
+							},
 						},
-						Results: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "string"},
 					},
 				},
 			},
+			opts:     Options{},
+			baseName: "api",
+			wantHeader: `// Auto-generated by please_wit from WIT AST. DO NOT EDIT.
+#pragma once
+
+#include <cstdint>
+#include <string>
+#include <vector>
+#include <optional>
+#include <tuple>
+
+namespace demo_api {
+
+class Greeter {
+public:
+    virtual ~Greeter() = default;
+    virtual std::string sayHello(const std::string& name) = 0;
+};
+
+} // namespace demo_api
+`,
+			wantSource: `// Auto-generated by please_wit from WIT AST. DO NOT EDIT.
+#include "api.h"
+`,
+		},
+		{
+			name: "records, enums, and type aliases",
+			pkg: &ast.Package{
+				Name: "types",
+				Interfaces: []ast.Interface{
+					{
+						Name: "data-service",
+						Records: []ast.Record{
+							{
+								Name: "user",
+								Fields: []ast.Field{
+									{Name: "id", Type: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "s64"}},
+									{Name: "name", Type: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "string"}},
+								},
+							},
+						},
+						Enums: []ast.Enum{
+							{
+								Name:  "status",
+								Cases: []ast.EnumCase{{Name: "active"}, {Name: "inactive"}},
+							},
+						},
+						TypeDefs: []ast.TypeDef{
+							{Name: "user-id", Type: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "s64"}},
+						},
+					},
+				},
+			},
+			opts:     Options{},
+			baseName: "types",
+			wantHeader: `// Auto-generated by please_wit from WIT AST. DO NOT EDIT.
+#pragma once
+
+#include <cstdint>
+#include <string>
+#include <vector>
+#include <optional>
+#include <tuple>
+
+namespace types {
+
+struct User {
+    int64_t id;
+    std::string name;
+};
+
+enum class Status {
+    Active,
+    Inactive,
+};
+
+using UserId = int64_t;
+
+class DataService {
+public:
+    virtual ~DataService() = default;
+};
+
+} // namespace types
+`,
+			wantSource: `// Auto-generated by please_wit from WIT AST. DO NOT EDIT.
+#include "types.h"
+`,
 		},
 	}
 
-	gen := &CppGenerator{}
-	if gen.Name() != "cpp" {
-		t.Errorf("expected name 'cpp', got %q", gen.Name())
-	}
-
-	files, err := gen.Generate(pkg, Options{}, "api")
-	if err != nil {
-		t.Fatalf("Generate failed: %v", err)
-	}
-	if len(files) != 2 {
-		t.Fatalf("expected 2 files (h and cpp), got %d", len(files))
-	}
-	if files[0].Name != "api.h" {
-		t.Errorf("expected api.h, got %q", files[0].Name)
-	}
-	if files[1].Name != "api.cpp" {
-		t.Errorf("expected api.cpp, got %q", files[1].Name)
-	}
-	if !strings.Contains(files[0].Content, "class Greeter {") {
-		t.Errorf("expected class Greeter, got: %s", files[0].Content)
-	}
-	if !strings.Contains(files[1].Content, `#include "api.h"`) {
-		t.Errorf("expected include in cpp companion, got: %s", files[1].Content)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			files, err := gen.Generate(tc.pkg, tc.opts, tc.baseName)
+			if err != nil {
+				t.Fatalf("Generate failed: %v", err)
+			}
+			if len(files) != 2 {
+				t.Fatalf("expected 2 files (header and source), got %d", len(files))
+			}
+			got := files[0].Content
+			if got != tc.wantHeader {
+				t.Errorf("name: %s (header), want: %q, got: %q", tc.name, tc.wantHeader, got)
+			}
+			got = files[1].Content
+			if got != tc.wantSource {
+				t.Errorf("name: %s (source), want: %q, got: %q", tc.name, tc.wantSource, got)
+			}
+		})
 	}
 }

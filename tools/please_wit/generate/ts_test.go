@@ -1,121 +1,169 @@
 package generate
 
 import (
-	"os"
-	"path/filepath"
-	"strings"
 	"testing"
 	"tools/please_wit/ast"
 )
 
-func TestGenerateTypeScript(t *testing.T) {
-	tmpDir := t.TempDir()
-	witContent := `
-package test:structures;
+func TestTypeScriptGenerator_MapWitType(t *testing.T) {
+	gen := &TypeScriptGenerator{}
 
-interface two-sum {
-    solve: func(nums: list<s32>, target: s32) -> list<s32>;
-    reset: func();
-}
-
-interface records-and-enums {
-    record point {
-        x: f64,
-        y: f64,
-    }
-
-    enum color {
-        red,
-        green,
-        blue,
-    }
-}
-`
-	witFile := filepath.Join(tmpDir, "structures.wit")
-	if err := os.WriteFile(witFile, []byte(witContent), 0644); err != nil {
-		t.Fatal(err)
+	tests := []struct {
+		name    string
+		typeRef *ast.TypeRef
+		want    string
+	}{
+		{name: "nil", typeRef: nil, want: "void"},
+		{name: "s8", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "s8"}, want: "number"},
+		{name: "s16", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "s16"}, want: "number"},
+		{name: "s32", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "s32"}, want: "number"},
+		{name: "s64", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "s64"}, want: "bigint"},
+		{name: "u8", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "u8"}, want: "number"},
+		{name: "u16", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "u16"}, want: "number"},
+		{name: "u32", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "u32"}, want: "number"},
+		{name: "u64", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "u64"}, want: "bigint"},
+		{name: "f32", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "f32"}, want: "number"},
+		{name: "f64", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "f64"}, want: "number"},
+		{name: "bool", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "bool"}, want: "boolean"},
+		{name: "string", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "string"}, want: "string"},
+		{name: "char", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "char"}, want: "string"},
+		{name: "unit", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "unit"}, want: "void"},
+		{name: "underscore", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "_"}, want: "void"},
+		{name: "list of s32", typeRef: &ast.TypeRef{Kind: ast.KindList, TypeArgs: []*ast.TypeRef{{Kind: ast.KindPrimitive, Name: "s32"}}}, want: "number[]"},
+		{name: "empty list", typeRef: &ast.TypeRef{Kind: ast.KindList}, want: "unknown[]"},
+		{name: "option of string", typeRef: &ast.TypeRef{Kind: ast.KindOption, TypeArgs: []*ast.TypeRef{{Kind: ast.KindPrimitive, Name: "string"}}}, want: "string | null"},
+		{name: "empty option", typeRef: &ast.TypeRef{Kind: ast.KindOption}, want: "unknown | null"},
+		{name: "result of s32", typeRef: &ast.TypeRef{Kind: ast.KindResult, TypeArgs: []*ast.TypeRef{{Kind: ast.KindPrimitive, Name: "s32"}}}, want: "number | null"},
+		{name: "result of void", typeRef: &ast.TypeRef{Kind: ast.KindResult, TypeArgs: []*ast.TypeRef{{Kind: ast.KindPrimitive, Name: "unit"}}}, want: "void"},
+		{name: "empty result", typeRef: &ast.TypeRef{Kind: ast.KindResult}, want: "void"},
+		{name: "tuple of s32 and string", typeRef: &ast.TypeRef{Kind: ast.KindTuple, TypeArgs: []*ast.TypeRef{{Kind: ast.KindPrimitive, Name: "s32"}, {Kind: ast.KindPrimitive, Name: "string"}}}, want: "[number, string]"},
+		{name: "named type", typeRef: &ast.TypeRef{Kind: ast.KindNamed, Name: "my-point"}, want: "MyPoint"},
 	}
 
-	tsOut := filepath.Join(tmpDir, "ts_out")
-	_ = os.MkdirAll(tsOut, 0755)
-
-	opts := Options{
-		Lang: "ts",
-		Out:  tsOut,
-		Srcs: []string{witFile},
-	}
-	if err := Run(opts); err != nil {
-		t.Fatalf("Run(ts) failed: %v", err)
-	}
-
-	tsFile := filepath.Join(tsOut, "structures.d.ts")
-	tsBytes, err := os.ReadFile(tsFile)
-	if err != nil {
-		t.Fatalf("failed to read %s: %v", tsFile, err)
-	}
-	tsCode := string(tsBytes)
-
-	// Verify interface TwoSum
-	if !strings.Contains(tsCode, "export interface TwoSum {") {
-		t.Errorf("expected export interface TwoSum, got: %s", tsCode)
-	}
-	if !strings.Contains(tsCode, "solve(nums: number[], target: number): number[];") {
-		t.Errorf("expected solve signature, got: %s", tsCode)
-	}
-	if !strings.Contains(tsCode, "reset(): void;") {
-		t.Errorf("expected reset signature, got: %s", tsCode)
-	}
-
-	// Verify interface Point
-	if !strings.Contains(tsCode, "export interface Point {") {
-		t.Errorf("expected export interface Point, got: %s", tsCode)
-	}
-
-	// Verify enum Color
-	if !strings.Contains(tsCode, "export enum Color {") {
-		t.Errorf("expected export enum Color, got: %s", tsCode)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := gen.MapWitType(tc.typeRef)
+			if got != tc.want {
+				t.Errorf("name: %s, want: %q, got: %q", tc.name, tc.want, got)
+			}
+		})
 	}
 }
 
 func TestTypeScriptGeneratorDirect(t *testing.T) {
-	pkg := &ast.Package{
-		Namespace: "demo",
-		Name:      "api",
-		Interfaces: []ast.Interface{
-			{
-				Name: "greeter",
-				Functions: []ast.Function{
+	gen := &TypeScriptGenerator{}
+
+	t.Run("generator name", func(t *testing.T) {
+		want := "typescript"
+		got := gen.Name()
+		if got != want {
+			t.Errorf("name: generator name, want: %q, got: %q", want, got)
+		}
+	})
+
+	tests := []struct {
+		name        string
+		pkg         *ast.Package
+		opts        Options
+		baseName    string
+		wantContent string
+	}{
+		{
+			name: "basic interface with params and return",
+			pkg: &ast.Package{
+				Namespace: "demo",
+				Name:      "api",
+				Interfaces: []ast.Interface{
 					{
-						Name: "say-hello",
-						Params: []ast.Param{
-							{Name: "name", Type: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "string"}},
+						Name: "greeter",
+						Functions: []ast.Function{
+							{
+								Name: "say-hello",
+								Params: []ast.Param{
+									{Name: "name", Type: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "string"}},
+								},
+								Results: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "string"},
+							},
 						},
-						Results: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "string"},
 					},
 				},
 			},
+			opts:     Options{},
+			baseName: "api",
+			wantContent: `// Auto-generated by please_wit from WIT AST. DO NOT EDIT.
+
+export interface Greeter {
+  sayHello(name: string): string;
+}
+
+`,
+		},
+		{
+			name: "records, enums, and type aliases",
+			pkg: &ast.Package{
+				Name: "types",
+				Interfaces: []ast.Interface{
+					{
+						Name: "data-service",
+						Records: []ast.Record{
+							{
+								Name: "user",
+								Fields: []ast.Field{
+									{Name: "id", Type: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "s64"}},
+									{Name: "name", Type: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "string"}},
+								},
+							},
+						},
+						Enums: []ast.Enum{
+							{
+								Name:  "status",
+								Cases: []ast.EnumCase{{Name: "active"}, {Name: "inactive"}},
+							},
+						},
+						TypeDefs: []ast.TypeDef{
+							{Name: "user-id", Type: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "s64"}},
+						},
+					},
+				},
+			},
+			opts:     Options{},
+			baseName: "types",
+			wantContent: `// Auto-generated by please_wit from WIT AST. DO NOT EDIT.
+
+export interface User {
+  id: bigint;
+  name: string;
+}
+
+export enum Status {
+  Active = "active",
+  Inactive = "inactive",
+}
+
+export type UserId = bigint;
+
+export interface DataService {
+}
+
+`,
 		},
 	}
 
-	gen := &TypeScriptGenerator{}
-	if gen.Name() != "typescript" {
-		t.Errorf("expected name 'typescript', got %q", gen.Name())
-	}
-
-	files, err := gen.Generate(pkg, Options{}, "api")
-	if err != nil {
-		t.Fatalf("Generate failed: %v", err)
-	}
-	if len(files) != 2 {
-		t.Fatalf("expected 2 files (api.d.ts and index.d.ts), got %d", len(files))
-	}
-	if files[0].Name != "api.d.ts" {
-		t.Errorf("expected filename 'api.d.ts', got %q", files[0].Name)
-	}
-	if files[1].Name != "index.d.ts" {
-		t.Errorf("expected index.d.ts, got %q", files[1].Name)
-	}
-	if !strings.Contains(files[0].Content, "export interface Greeter") {
-		t.Errorf("expected export interface Greeter, got: %s", files[0].Content)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			files, err := gen.Generate(tc.pkg, tc.opts, tc.baseName)
+			if err != nil {
+				t.Fatalf("Generate failed: %v", err)
+			}
+			if len(files) != 2 {
+				t.Fatalf("expected 2 files (api.d.ts and index.d.ts), got %d", len(files))
+			}
+			if got := files[0].Content; got != tc.wantContent {
+				t.Errorf("name: %s (api.d.ts), want: %q, got: %q", tc.name, tc.wantContent, got)
+			}
+			if got := files[1].Content; got != tc.wantContent {
+				t.Errorf("name: %s (index.d.ts), want: %q, got: %q", tc.name, tc.wantContent, got)
+			}
+		})
 	}
 }

@@ -1,132 +1,177 @@
 package generate
 
 import (
-	"os"
-	"path/filepath"
-	"strings"
 	"testing"
 	"tools/please_wit/ast"
 )
 
-func TestGeneratePython(t *testing.T) {
-	tmpDir := t.TempDir()
-	witContent := `
-package test:structures;
+func TestPythonGenerator_MapWitType(t *testing.T) {
+	gen := &PythonGenerator{}
 
-interface two-sum {
-    solve: func(nums: list<s32>, target: s32) -> list<s32>;
-    reset: func();
-}
-
-interface records-and-enums {
-    record point {
-        x: f64,
-        y: f64,
-    }
-
-    enum color {
-        red,
-        green,
-        blue,
-    }
-}
-`
-	witFile := filepath.Join(tmpDir, "structures.wit")
-	if err := os.WriteFile(witFile, []byte(witContent), 0644); err != nil {
-		t.Fatal(err)
+	tests := []struct {
+		name    string
+		typeRef *ast.TypeRef
+		want    string
+	}{
+		{name: "nil", typeRef: nil, want: "None"},
+		{name: "s8", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "s8"}, want: "int"},
+		{name: "s16", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "s16"}, want: "int"},
+		{name: "s32", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "s32"}, want: "int"},
+		{name: "s64", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "s64"}, want: "int"},
+		{name: "u8", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "u8"}, want: "int"},
+		{name: "u16", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "u16"}, want: "int"},
+		{name: "u32", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "u32"}, want: "int"},
+		{name: "u64", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "u64"}, want: "int"},
+		{name: "f32", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "f32"}, want: "float"},
+		{name: "f64", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "f64"}, want: "float"},
+		{name: "bool", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "bool"}, want: "bool"},
+		{name: "string", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "string"}, want: "str"},
+		{name: "char", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "char"}, want: "str"},
+		{name: "unit", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "unit"}, want: "None"},
+		{name: "underscore", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "_"}, want: "None"},
+		{name: "list of s32", typeRef: &ast.TypeRef{Kind: ast.KindList, TypeArgs: []*ast.TypeRef{{Kind: ast.KindPrimitive, Name: "s32"}}}, want: "List[int]"},
+		{name: "empty list", typeRef: &ast.TypeRef{Kind: ast.KindList}, want: "List[Any]"},
+		{name: "option of string", typeRef: &ast.TypeRef{Kind: ast.KindOption, TypeArgs: []*ast.TypeRef{{Kind: ast.KindPrimitive, Name: "string"}}}, want: "Optional[str]"},
+		{name: "empty option", typeRef: &ast.TypeRef{Kind: ast.KindOption}, want: "Optional[Any]"},
+		{name: "result of s32", typeRef: &ast.TypeRef{Kind: ast.KindResult, TypeArgs: []*ast.TypeRef{{Kind: ast.KindPrimitive, Name: "s32"}}}, want: "Optional[int]"},
+		{name: "result of unit", typeRef: &ast.TypeRef{Kind: ast.KindResult, TypeArgs: []*ast.TypeRef{{Kind: ast.KindPrimitive, Name: "unit"}}}, want: "None"},
+		{name: "empty result", typeRef: &ast.TypeRef{Kind: ast.KindResult}, want: "None"},
+		{name: "tuple of s32 and string", typeRef: &ast.TypeRef{Kind: ast.KindTuple, TypeArgs: []*ast.TypeRef{{Kind: ast.KindPrimitive, Name: "s32"}, {Kind: ast.KindPrimitive, Name: "string"}}}, want: "Tuple[int, str]"},
+		{name: "named type", typeRef: &ast.TypeRef{Kind: ast.KindNamed, Name: "my-point"}, want: "MyPoint"},
 	}
 
-	pyOut := filepath.Join(tmpDir, "py_out")
-	_ = os.MkdirAll(pyOut, 0755)
-
-	opts := Options{
-		Lang: "python",
-		Out:  pyOut,
-		Srcs: []string{witFile},
-	}
-	if err := Run(opts); err != nil {
-		t.Fatalf("Run(python) failed: %v", err)
-	}
-
-	pyFile := filepath.Join(pyOut, "__init__.py")
-	pyBytes, err := os.ReadFile(pyFile)
-	if err != nil {
-		t.Fatalf("failed to read %s: %v", pyFile, err)
-	}
-	pyCode := string(pyBytes)
-
-	// Verify typing imports
-	if !strings.Contains(pyCode, "from typing import") || !strings.Contains(pyCode, "Protocol") {
-		t.Errorf("expected typing import with Protocol, got: %s", pyCode)
-	}
-
-	// Verify class TwoSum(Protocol)
-	if !strings.Contains(pyCode, "class TwoSum(Protocol):") {
-		t.Errorf("expected class TwoSum(Protocol), got: %s", pyCode)
-	}
-	if !strings.Contains(pyCode, "def solve(self, nums: List[int], target: int) -> List[int]:") {
-		t.Errorf("expected def solve, got: %s", pyCode)
-	}
-	if !strings.Contains(pyCode, "def reset(self) -> None:") {
-		t.Errorf("expected def reset, got: %s", pyCode)
-	}
-
-	// Verify Point dataclass
-	if !strings.Contains(pyCode, "class Point:") {
-		t.Errorf("expected class Point, got: %s", pyCode)
-	}
-
-	// Verify Color enum
-	if !strings.Contains(pyCode, "class Color(Enum):") {
-		t.Errorf("expected class Color(Enum), got: %s", pyCode)
-	}
-
-	// Verify pyi stub file also exists
-	pyiFile := filepath.Join(pyOut, "__init__.pyi")
-	if _, err := os.Stat(pyiFile); err != nil {
-		t.Errorf("expected __init__.pyi to exist: %v", err)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := gen.MapWitType(tc.typeRef)
+			if got != tc.want {
+				t.Errorf("name: %s, want: %q, got: %q", tc.name, tc.want, got)
+			}
+		})
 	}
 }
 
 func TestPythonGeneratorDirect(t *testing.T) {
-	pkg := &ast.Package{
-		Namespace: "demo",
-		Name:      "api",
-		Interfaces: []ast.Interface{
-			{
-				Name: "greeter",
-				Functions: []ast.Function{
+	gen := &PythonGenerator{}
+
+	t.Run("generator name", func(t *testing.T) {
+		want := "python"
+		got := gen.Name()
+		if got != want {
+			t.Errorf("name: generator name, want: %q, got: %q", want, got)
+		}
+	})
+
+	tests := []struct {
+		name        string
+		pkg         *ast.Package
+		opts        Options
+		baseName    string
+		wantContent string
+	}{
+		{
+			name: "basic interface with params and return",
+			pkg: &ast.Package{
+				Namespace: "demo",
+				Name:      "api",
+				Interfaces: []ast.Interface{
 					{
-						Name: "say-hello",
-						Params: []ast.Param{
-							{Name: "name", Type: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "string"}},
+						Name: "greeter",
+						Functions: []ast.Function{
+							{
+								Name: "say-hello",
+								Params: []ast.Param{
+									{Name: "name", Type: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "string"}},
+								},
+								Results: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "string"},
+							},
 						},
-						Results: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "string"},
 					},
 				},
 			},
+			opts:     Options{},
+			baseName: "api",
+			wantContent: `# Auto-generated by please_wit from WIT AST. DO NOT EDIT.
+from typing import Any, List, Optional, Protocol, Tuple
+from dataclasses import dataclass
+from enum import Enum
+
+class Greeter(Protocol):
+    def say_hello(self, name: str) -> str:
+        ...
+
+__all__ = ["Greeter"]
+`,
+		},
+		{
+			name: "records, enums, and type aliases",
+			pkg: &ast.Package{
+				Name: "types",
+				Interfaces: []ast.Interface{
+					{
+						Name: "data-service",
+						Records: []ast.Record{
+							{
+								Name: "user",
+								Fields: []ast.Field{
+									{Name: "id", Type: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "s64"}},
+									{Name: "name", Type: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "string"}},
+								},
+							},
+						},
+						Enums: []ast.Enum{
+							{
+								Name:  "status",
+								Cases: []ast.EnumCase{{Name: "active"}, {Name: "inactive"}},
+							},
+						},
+					},
+				},
+			},
+			opts:     Options{},
+			baseName: "types",
+			wantContent: `# Auto-generated by please_wit from WIT AST. DO NOT EDIT.
+from typing import Any, List, Optional, Protocol, Tuple
+from dataclasses import dataclass
+from enum import Enum
+
+@dataclass
+class User:
+    id: int
+    name: str
+
+class Status(Enum):
+    ACTIVE = "active"
+    INACTIVE = "inactive"
+
+class DataService(Protocol):
+    pass
+
+__all__ = ["DataService", "User", "Status"]
+`,
 		},
 	}
 
-	gen := &PythonGenerator{}
-	if gen.Name() != "python" {
-		t.Errorf("expected name 'python', got %q", gen.Name())
-	}
-
-	files, err := gen.Generate(pkg, Options{}, "api")
-	if err != nil {
-		t.Fatalf("Generate failed: %v", err)
-	}
-	if len(files) != 2 {
-		t.Fatalf("expected 2 files (__init__.py and __init__.pyi), got %d", len(files))
-	}
-	if files[0].Name != "__init__.py" {
-		t.Errorf("expected __init__.py, got %q", files[0].Name)
-	}
-	if files[1].Name != "__init__.pyi" {
-		t.Errorf("expected __init__.pyi, got %q", files[1].Name)
-	}
-	if !strings.Contains(files[0].Content, "class Greeter(Protocol):") {
-		t.Errorf("expected class Greeter(Protocol), got: %s", files[0].Content)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			files, err := gen.Generate(tc.pkg, tc.opts, tc.baseName)
+			if err != nil {
+				t.Fatalf("Generate failed: %v", err)
+			}
+			if len(files) != 2 {
+				t.Fatalf("expected 2 files (__init__.py and __init__.pyi), got %d", len(files))
+			}
+			if files[0].Name != "__init__.py" {
+				t.Errorf("name: %s, want filename __init__.py, got %s", tc.name, files[0].Name)
+			}
+			if files[1].Name != "__init__.pyi" {
+				t.Errorf("name: %s, want filename __init__.pyi, got %s", tc.name, files[1].Name)
+			}
+			if files[0].Content != tc.wantContent {
+				t.Errorf("name: %s (__init__.py), want: %q, got: %q", tc.name, tc.wantContent, files[0].Content)
+			}
+			if files[1].Content != tc.wantContent {
+				t.Errorf("name: %s (__init__.pyi), want: %q, got: %q", tc.name, tc.wantContent, files[1].Content)
+			}
+		})
 	}
 }

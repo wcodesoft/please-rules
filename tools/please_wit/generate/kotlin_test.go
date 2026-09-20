@@ -1,131 +1,169 @@
 package generate
 
 import (
-	"os"
-	"path/filepath"
-	"strings"
 	"testing"
 	"tools/please_wit/ast"
 )
 
-func TestGenerateKotlin(t *testing.T) {
-	tmpDir := t.TempDir()
-	witContent := `
-package test:structures;
+func TestKotlinGenerator_MapWitType(t *testing.T) {
+	gen := &KotlinGenerator{}
 
-interface two-sum {
-    solve: func(nums: list<s32>, target: s32) -> list<s32>;
-    reset: func();
-}
-
-interface records-and-enums {
-    record point {
-        x: f64,
-        y: f64,
-    }
-
-    enum color {
-        red,
-        green,
-        blue,
-    }
-
-    get-point: func() -> point;
-}
-`
-	witFile := filepath.Join(tmpDir, "structures.wit")
-	if err := os.WriteFile(witFile, []byte(witContent), 0644); err != nil {
-		t.Fatal(err)
+	tests := []struct {
+		name    string
+		typeRef *ast.TypeRef
+		want    string
+	}{
+		{name: "nil", typeRef: nil, want: "Unit"},
+		{name: "s8", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "s8"}, want: "Byte"},
+		{name: "s16", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "s16"}, want: "Short"},
+		{name: "s32", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "s32"}, want: "Int"},
+		{name: "u8", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "u8"}, want: "Int"},
+		{name: "u16", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "u16"}, want: "Int"},
+		{name: "u32", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "u32"}, want: "Int"},
+		{name: "s64", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "s64"}, want: "Long"},
+		{name: "u64", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "u64"}, want: "Long"},
+		{name: "f32", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "f32"}, want: "Float"},
+		{name: "f64", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "f64"}, want: "Double"},
+		{name: "bool", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "bool"}, want: "Boolean"},
+		{name: "string", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "string"}, want: "String"},
+		{name: "char", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "char"}, want: "Char"},
+		{name: "unit", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "unit"}, want: "Unit"},
+		{name: "underscore", typeRef: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "_"}, want: "Unit"},
+		{name: "list of s32", typeRef: &ast.TypeRef{Kind: ast.KindList, TypeArgs: []*ast.TypeRef{{Kind: ast.KindPrimitive, Name: "s32"}}}, want: "List<Int>"},
+		{name: "empty list", typeRef: &ast.TypeRef{Kind: ast.KindList}, want: "List<Any>"},
+		{name: "option of string", typeRef: &ast.TypeRef{Kind: ast.KindOption, TypeArgs: []*ast.TypeRef{{Kind: ast.KindPrimitive, Name: "string"}}}, want: "String?"},
+		{name: "empty option", typeRef: &ast.TypeRef{Kind: ast.KindOption}, want: "Any?"},
+		{name: "result of s32", typeRef: &ast.TypeRef{Kind: ast.KindResult, TypeArgs: []*ast.TypeRef{{Kind: ast.KindPrimitive, Name: "s32"}}}, want: "Int?"},
+		{name: "result of unit", typeRef: &ast.TypeRef{Kind: ast.KindResult, TypeArgs: []*ast.TypeRef{{Kind: ast.KindPrimitive, Name: "unit"}}}, want: "Unit"},
+		{name: "empty result", typeRef: &ast.TypeRef{Kind: ast.KindResult}, want: "Unit"},
+		{name: "tuple of s32 and string", typeRef: &ast.TypeRef{Kind: ast.KindTuple, TypeArgs: []*ast.TypeRef{{Kind: ast.KindPrimitive, Name: "s32"}, {Kind: ast.KindPrimitive, Name: "string"}}}, want: "Pair<Int, String>"},
+		{name: "named type", typeRef: &ast.TypeRef{Kind: ast.KindNamed, Name: "my-point"}, want: "MyPoint"},
 	}
 
-	ktOut := filepath.Join(tmpDir, "kt_out")
-	_ = os.MkdirAll(ktOut, 0755)
-
-	opts := Options{
-		Lang: "kotlin",
-		Out:  ktOut,
-		Srcs: []string{witFile},
-	}
-	if err := Run(opts); err != nil {
-		t.Fatalf("Run(kotlin) failed: %v", err)
-	}
-
-	ktFile := filepath.Join(ktOut, "Structures.kt")
-	ktBytes, err := os.ReadFile(ktFile)
-	if err != nil {
-		t.Fatalf("failed to read %s: %v", ktFile, err)
-	}
-	ktCode := string(ktBytes)
-
-	// Verify package declaration
-	if !strings.Contains(ktCode, "package test.structures") {
-		t.Errorf("expected package test.structures, got: %s", ktCode)
-	}
-
-	// Verify interface TwoSum
-	if !strings.Contains(ktCode, "public interface TwoSum {") {
-		t.Errorf("expected public interface TwoSum, got: %s", ktCode)
-	}
-	if !strings.Contains(ktCode, "fun solve(nums: List<Int>, target: Int): List<Int>") {
-		t.Errorf("expected fun solve signature, got: %s", ktCode)
-	}
-	if !strings.Contains(ktCode, "fun reset()") {
-		t.Errorf("expected fun reset signature, got: %s", ktCode)
-	}
-
-	// Verify record Point
-	if !strings.Contains(ktCode, "public data class Point(") {
-		t.Errorf("expected data class Point, got: %s", ktCode)
-	}
-	if !strings.Contains(ktCode, "val x: Double,") || !strings.Contains(ktCode, "val y: Double") {
-		t.Errorf("expected fields x, y in Point, got: %s", ktCode)
-	}
-
-	// Verify enum Color
-	if !strings.Contains(ktCode, "public enum class Color {") {
-		t.Errorf("expected enum class Color, got: %s", ktCode)
-	}
-	if !strings.Contains(ktCode, "RED,") || !strings.Contains(ktCode, "GREEN,") || !strings.Contains(ktCode, "BLUE;") {
-		t.Errorf("expected enum cases, got: %s", ktCode)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := gen.MapWitType(tc.typeRef)
+			if got != tc.want {
+				t.Errorf("name: %s, want: %q, got: %q", tc.name, tc.want, got)
+			}
+		})
 	}
 }
 
 func TestKotlinGeneratorDirect(t *testing.T) {
-	pkg := &ast.Package{
-		Namespace: "demo",
-		Name:      "api",
-		Interfaces: []ast.Interface{
-			{
-				Name: "greeter",
-				Functions: []ast.Function{
+	gen := &KotlinGenerator{}
+
+	t.Run("generator name", func(t *testing.T) {
+		want := "kotlin"
+		got := gen.Name()
+		if got != want {
+			t.Errorf("name: generator name, want: %q, got: %q", want, got)
+		}
+	})
+
+	tests := []struct {
+		name        string
+		baseName    string
+		pkg         *ast.Package
+		opts        Options
+		wantContent string
+	}{
+		{
+			name:     "basic interface with params and return",
+			baseName: "api",
+			pkg: &ast.Package{
+				Namespace: "demo",
+				Name:      "api",
+				Interfaces: []ast.Interface{
 					{
-						Name: "say-hello",
-						Params: []ast.Param{
-							{Name: "name", Type: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "string"}},
+						Name: "greeter",
+						Functions: []ast.Function{
+							{
+								Name: "say-hello",
+								Params: []ast.Param{
+									{Name: "name", Type: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "string"}},
+								},
+								Results: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "string"},
+							},
 						},
-						Results: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "string"},
 					},
 				},
 			},
+			opts: Options{},
+			wantContent: `// Auto-generated by please_wit from WIT AST. DO NOT EDIT.
+package demo.api
+
+public interface Greeter {
+    fun sayHello(name: String): String
+}
+
+`,
+		},
+		{
+			name:     "records, enums, and type aliases",
+			baseName: "types",
+			pkg: &ast.Package{
+				Name: "types",
+				Interfaces: []ast.Interface{
+					{
+						Name: "data-service",
+						Records: []ast.Record{
+							{
+								Name: "user",
+								Fields: []ast.Field{
+									{Name: "id", Type: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "s64"}},
+									{Name: "name", Type: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "string"}},
+								},
+							},
+						},
+						Enums: []ast.Enum{
+							{
+								Name:  "status",
+								Cases: []ast.EnumCase{{Name: "active"}, {Name: "inactive"}},
+							},
+						},
+						TypeDefs: []ast.TypeDef{
+							{Name: "user-id", Type: &ast.TypeRef{Kind: ast.KindPrimitive, Name: "s64"}},
+						},
+					},
+				},
+			},
+			opts: Options{},
+			wantContent: `// Auto-generated by please_wit from WIT AST. DO NOT EDIT.
+package types
+
+public data class User(
+    val id: Long,
+    val name: String
+)
+
+public enum class Status {
+    ACTIVE,
+    INACTIVE;
+}
+
+public typealias UserId = Long
+
+public interface DataService {
+}
+
+`,
 		},
 	}
 
-	gen := &KotlinGenerator{}
-	if gen.Name() != "kotlin" {
-		t.Errorf("expected name 'kotlin', got %q", gen.Name())
-	}
-
-	files, err := gen.Generate(pkg, Options{}, "api")
-	if err != nil {
-		t.Fatalf("Generate failed: %v", err)
-	}
-	if len(files) != 1 {
-		t.Fatalf("expected 1 file, got %d", len(files))
-	}
-	if files[0].Name != "Api.kt" {
-		t.Errorf("expected filename 'Api.kt', got %q", files[0].Name)
-	}
-	if !strings.Contains(files[0].Content, "public interface Greeter") {
-		t.Errorf("expected public interface Greeter, got: %s", files[0].Content)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			files, err := gen.Generate(tc.pkg, tc.opts, tc.baseName)
+			if err != nil {
+				t.Fatalf("Generate failed: %v", err)
+			}
+			if len(files) != 1 {
+				t.Fatalf("expected 1 file, got %d", len(files))
+			}
+			got := files[0].Content
+			if got != tc.wantContent {
+				t.Errorf("name: %s, want: %q, got: %q", tc.name, tc.wantContent, got)
+			}
+		})
 	}
 }
