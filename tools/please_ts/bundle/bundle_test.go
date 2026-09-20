@@ -72,4 +72,3 @@ func TestBuildEsbuildArgsWithImportMap(t *testing.T) {
 		t.Errorf("expected preact/hooks alias in args: %s", argsStr)
 	}
 }
-

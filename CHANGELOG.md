@@ -19,7 +19,8 @@ and this project adheres to
 ### Removed
 
 - Removed naive regex-based `minifyJS` and sequential file concatenation in
-  `please_ts bundle` that corrupted code containing URLs and regular expressions.
+  `please_ts bundle` that corrupted code containing URLs and regular
+  expressions.
 
 ## [0.2.0] - 2026-09-20
 
