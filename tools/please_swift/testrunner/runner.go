@@ -33,9 +33,9 @@ type TestMetadata struct {
 }
 
 type EventPayload struct {
-	Kind     string `json:"kind"`
-	TestID   string `json:"testID"`
-	Instant  struct {
+	Kind    string `json:"kind"`
+	TestID  string `json:"testID"`
+	Instant struct {
 		Absolute float64 `json:"absolute"`
 	} `json:"instant"`
 	Comments []string `json:"_comments"`
