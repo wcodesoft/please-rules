@@ -2,13 +2,14 @@
 Constants and target mappings for Kotlin build definitions.
 """
 
-DEFAULT_KOTLIN_VERSION = "2.1.10"
+DEFAULT_KOTLIN_VERSION = "2.4.10"
 DEFAULT_JDK_VERSION = "21"
 DEFAULT_JACOCO_VERSION = "0.8.12"
 
 KOTLINC_URL_TEMPLATE = "https://github.com/JetBrains/kotlin/releases/download/v{version}/kotlin-compiler-{version}.zip"
 KOTLINC_HASHES = {
     "2.1.10": "c6e9e2636889828e19c8811d5ab890862538c89dc2a3101956dfee3c2a8ba6b1",
+    "2.4.10": "473dd66c7a3ef4b182065b3da670466c1bf2773a9dbb0ed8b33a39fe9d4f876d",
 }
 
 JACOCO_URL_TEMPLATE = "https://repo1.maven.org/maven2/org/jacoco/jacoco/{version}/jacoco-{version}.zip"
