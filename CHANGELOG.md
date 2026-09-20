@@ -7,6 +7,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-09-20
+
+### Added
+
+- Support WebAssembly compilation via `kt_wasm_binary` (and
+  `kotlin_wasm_binary`) build rules targeting `wasm-wasi` and `wasm-js`.
+- Dedicated `please_kotlin_wasm` compiler orchestrator handling multi-phase
+  compilation, Wasm klib linking, and artifact generation.
+- Automated WIT bridge generation in `please_kotlin_wasm` producing
+  `@WasmExport` trampolines and typed interfaces from WIT definitions.
+- Integration tests and comprehensive guides for Kotlin WebAssembly architecture
+  and multi-language interop.
+
 ## [0.2.0] - 2026-09-19
 
 ### Added
