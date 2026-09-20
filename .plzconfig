@@ -14,9 +14,9 @@ Stdlib = //third_party/go:std
 
 [Plugin "swift"]
 Target = //plugins:swift
-SwiftcTool = swiftc
-LlvmProfdataTool = llvm-profdata
-LlvmCovTool = llvm-cov
+SwiftcTool = //tools/swift_toolchain:toolchain|swiftc
+LlvmProfdataTool = //tools/swift_toolchain:toolchain|llvm-profdata
+LlvmCovTool = //tools/swift_toolchain:toolchain|llvm-cov
 PleaseSwiftTool = //tools/please_swift:please_swift
 
 [PluginDefinition]
@@ -30,19 +30,19 @@ Inherit = true
 
 [PluginConfig "swiftc_tool"]
 ConfigKey = SwiftcTool
-DefaultValue = swiftc
+DefaultValue = //tools/swift_toolchain:toolchain|swiftc
 Help = Path to the swiftc binary or toolchain target to use
 Inherit = true
 
 [PluginConfig "llvm_profdata_tool"]
 ConfigKey = LlvmProfdataTool
-DefaultValue = llvm-profdata
+DefaultValue = //tools/swift_toolchain:toolchain|llvm-profdata
 Help = Path to llvm-profdata binary or toolchain target to use
 Inherit = true
 
 [PluginConfig "llvm_cov_tool"]
 ConfigKey = LlvmCovTool
-DefaultValue = llvm-cov
+DefaultValue = //tools/swift_toolchain:toolchain|llvm-cov
 Help = Path to llvm-cov binary or toolchain target to use
 Inherit = true
 

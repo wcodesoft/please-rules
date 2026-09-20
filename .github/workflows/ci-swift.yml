@@ -42,6 +42,7 @@ jobs:
   test:
     name: Please Build & Test (Swift)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -50,6 +51,15 @@ jobs:
         uses: swift-actions/setup-swift@v2
         with:
           swift-version: "6.0"
+
+      - name: Cache Please & Toolchains
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/please
+          key: please-swift-6.0.3-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('build_defs/swift/**', 'tools/swift_toolchain/**') }}
+          restore-keys: |
+            please-swift-6.0.3-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Build all targets
         run: ./pleasew --plain_output build //tools/please_swift/... //tools/swift_toolchain/... //test/swift/...

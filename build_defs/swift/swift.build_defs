@@ -64,9 +64,11 @@ def swift_toolchain(
 
     # Extract tarball and export entrypoint binaries
     extract_cmd = f"""
-mkdir -p "$OUT/bin" "$OUT/lib"
+mkdir -p "$OUT"
 tar -xzf "$SRCS" -C "$OUT" {strip_comp}
 chmod +x "$OUT/bin/swiftc" "$OUT/bin/swift" 2>/dev/null || true
+if [ -f "$OUT/bin/llvm-profdata" ]; then chmod +x "$OUT/bin/llvm-profdata"; fi
+if [ -f "$OUT/bin/llvm-cov" ]; then chmod +x "$OUT/bin/llvm-cov"; fi
 """
 
     return build_rule(
@@ -81,7 +83,7 @@ chmod +x "$OUT/bin/swiftc" "$OUT/bin/swift" 2>/dev/null || true
             "llvm-cov": f"{name}/bin/llvm-cov",
         },
         binary = True,
-        labels = labels or ["swift", "toolchain", "manual"],
+        labels = labels or ["swift", "toolchain"],
         visibility = visibility or ["PUBLIC"],
         building_description = f"Assembling hermetic Swift toolchain {version}...",
     )
