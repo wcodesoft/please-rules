@@ -1,55 +1,75 @@
 package bundle
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
+
+	"tools/please_ts/importmap"
 )
 
-func TestBuiltinBundler(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "bundle_test_*")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(tmpDir)
-
-	libFile := filepath.Join(tmpDir, "math.ts")
-	if err := os.WriteFile(libFile, []byte("export const add = (a: number, b: number) => a + b;"), 0644); err != nil {
-		t.Fatal(err)
+func TestOptionsValidation(t *testing.T) {
+	err := Run(Options{})
+	if err == nil {
+		t.Errorf("expected error when Main is empty")
 	}
 
-	mainFile := filepath.Join(tmpDir, "index.ts")
-	mainContent := `import { add } from "./math.ts";
-console.log(add(1, 2));
-`
-	if err := os.WriteFile(mainFile, []byte(mainContent), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	outFile := filepath.Join(tmpDir, "bundle.js")
-	opts := Options{
-		Main:   mainFile,
-		Out:    outFile,
-		Srcs:   []string{mainFile, libFile},
-		Format: "iife",
-		Minify: false,
-	}
-
-	if err := Run(opts); err != nil {
-		t.Fatalf("bundle.Run failed: %v", err)
-	}
-
-	outBytes, err := os.ReadFile(outFile)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	content := string(outBytes)
-	if !strings.Contains(content, "(function()") {
-		t.Errorf("expected IIFE wrapper in output: %s", content)
-	}
-	if !strings.Contains(content, "export const add") {
-		t.Errorf("expected bundled math module in output: %s", content)
+	err = Run(Options{Main: "main.ts"})
+	if err == nil {
+		t.Errorf("expected error when Out is empty")
 	}
 }
+
+func TestBuildEsbuildArgs(t *testing.T) {
+	opts := Options{
+		Main:      "src/index.ts",
+		Out:       "dist/bundle.js",
+		Format:    "esm",
+		Minify:    true,
+		Sourcemap: true,
+		Flags:     []string{"--target=esnext"},
+	}
+
+	args := buildEsbuildArgs(opts, nil)
+	argsStr := strings.Join(args, " ")
+
+	if !strings.Contains(argsStr, "src/index.ts") {
+		t.Errorf("expected entry point in args: %s", argsStr)
+	}
+	if !strings.Contains(argsStr, "--outfile=dist/bundle.js") {
+		t.Errorf("expected outfile in args: %s", argsStr)
+	}
+	if !strings.Contains(argsStr, "--format=esm") {
+		t.Errorf("expected format in args: %s", argsStr)
+	}
+	if !strings.Contains(argsStr, "--minify") {
+		t.Errorf("expected minify in args: %s", argsStr)
+	}
+	if !strings.Contains(argsStr, "--sourcemap") {
+		t.Errorf("expected sourcemap in args: %s", argsStr)
+	}
+	if !strings.Contains(argsStr, "--target=esnext") {
+		t.Errorf("expected extra flags in args: %s", argsStr)
+	}
+}
+
+func TestBuildEsbuildArgsWithImportMap(t *testing.T) {
+	im := &importmap.ImportMap{
+		Imports: map[string]string{
+			"preact":       "./third_party/npm/preact/index.js",
+			"preact/hooks": "./third_party/npm/preact/hooks/index.js",
+		},
+	}
+	opts := Options{
+		Main: "src/index.ts",
+		Out:  "dist/bundle.js",
+	}
+	args := buildEsbuildArgs(opts, im)
+	argsStr := strings.Join(args, " ")
+	if !strings.Contains(argsStr, "--alias:preact=./third_party/npm/preact/index.js") {
+		t.Errorf("expected preact alias in args: %s", argsStr)
+	}
+	if !strings.Contains(argsStr, "--alias:preact/hooks=./third_party/npm/preact/hooks/index.js") {
+		t.Errorf("expected preact/hooks alias in args: %s", argsStr)
+	}
+}
+
