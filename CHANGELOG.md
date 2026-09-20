@@ -7,6 +7,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-09-20
+
+### Added
+
+- Support for package-level module mapping in `ts_library` and
+  `ts_metadata.json`, allowing individual file imports without barrel index
+  files.
+- Support for automatic module name derivation in `ts_library`, `ts_binary`,
+  `ts_bundle`, `ts_test`, and `ts_browser_test` using configurable
+  `ModulePrefix` (`[PluginConfig "module_prefix"]`).
+
 ## [0.1.2] - 2026-09-18
 
 ### Fixed

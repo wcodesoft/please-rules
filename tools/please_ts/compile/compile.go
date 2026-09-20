@@ -89,12 +89,14 @@ func emitOutput(opts Options, im *importmap.ImportMap) error {
 		return err
 	}
 
+	var files []string
 	// Copy source files into outDir preserving structure
 	for _, src := range opts.Srcs {
 		destPath := filepath.Join(outDir, filepath.Base(src))
 		if err := copyFile(src, destPath); err != nil {
 			return fmt.Errorf("failed copying source %s to %s: %w", src, destPath, err)
 		}
+		files = append(files, filepath.Base(src))
 	}
 
 	// Determine entry point
@@ -125,6 +127,7 @@ func emitOutput(opts Options, im *importmap.ImportMap) error {
 		Name:    opts.ModuleName,
 		Entry:   entryFile,
 		Imports: imports,
+		Files:   files,
 	}
 
 	metaData, err := json.MarshalIndent(meta, "", "  ")

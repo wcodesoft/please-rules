@@ -34,3 +34,10 @@ DefaultValue = true
 Help = Whether to collect coverage during test execution
 Inherit = true
 
+[PluginConfig "module_prefix"]
+ConfigKey = ModulePrefix
+DefaultValue = ""
+Help = Default module prefix used to automatically derive module_name for TypeScript targets (e.g. @repo or @veritas)
+Inherit = true
+
+
