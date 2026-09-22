@@ -11,7 +11,7 @@ Stdlib = //third_party/go:std
 [Plugin "kotlin"]
 Target = //plugins:kotlin
 PleaseKotlinTool = //tools/please_kotlin:please_kotlin
-PleaseKotlinWasmTool = //tools:please_kotlin_wasm
+PleaseKotlinWasmTool = //tools/please_kotlin_wasm:please_kotlin_wasm
 KotlincTool = //tools/kotlin_toolchain:toolchain|kotlinc
 KotlincWasmTool = //tools/kotlin_toolchain:toolchain|kotlinc-wasm
 JavaTool = //tools/kotlin_toolchain:toolchain|java

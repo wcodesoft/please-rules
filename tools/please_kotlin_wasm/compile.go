@@ -109,9 +109,6 @@ func FindWasmStdlib(kotlincWasm string, target string) string {
 			filepath.Join(dir, "..", "lib", "kotlin-stdlib-wasm-js.klib"),
 		)
 	}
-	candidates = append(candidates,
-		"/home/linuxbrew/.linuxbrew/Cellar/kotlin/2.4.10/libexec/lib/kotlin-stdlib-wasm-js.klib",
-	)
 
 	for _, c := range candidates {
 		clean := filepath.Clean(c)
@@ -326,28 +323,50 @@ func DetectPackage(srcs []string) string {
 	return ""
 }
 
+func hasClassInSources(sources []string, className string) bool {
+	classRegex := regexp.MustCompile(`(?m)\bclass\s+` + regexp.QuoteMeta(className) + `\b`)
+	for _, src := range sources {
+		data, err := os.ReadFile(src)
+		if err == nil {
+			if classRegex.Match(data) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // GenerateWitArtifacts generates the Kotlin interface and @WasmExport bridge from WIT.
-func GenerateWitArtifacts(interfaces []WitInterface, implClass, targetPkg, outDir string) ([]string, error) {
+func GenerateWitArtifacts(interfaces []WitInterface, implClass, targetPkg, outDir string, sources ...string) ([]string, error) {
 	var generated []string
 
 	for _, iface := range interfaces {
 		pascalName := ToPascalCase(iface.Name)
 		resolvedImpl := implClass
 		if resolvedImpl == "" {
-			resolvedImpl = pascalName + "Impl"
+			if hasClassInSources(sources, pascalName) {
+				resolvedImpl = pascalName
+			} else {
+				resolvedImpl = pascalName + "Impl"
+			}
 		}
 
-		pkg := targetPkg
-		if pkg == "" {
-			pkg = iface.Package
+		ifacePkg := iface.Package
+		if ifacePkg == "" {
+			ifacePkg = targetPkg
 		}
-		if pkg == "" {
-			pkg = "wit.generated"
+		if ifacePkg == "" {
+			ifacePkg = "wit.generated"
+		}
+
+		bridgePkg := targetPkg
+		if bridgePkg == "" {
+			bridgePkg = ifacePkg
 		}
 
 		// 1. Generate Interface (<Interface>.kt)
 		var ifaceSb strings.Builder
-		ifaceSb.WriteString(fmt.Sprintf("// Auto-generated interface from WIT. DO NOT EDIT.\npackage %s\n\n", pkg))
+		ifaceSb.WriteString(fmt.Sprintf("// Auto-generated interface from WIT. DO NOT EDIT.\npackage %s\n\n", ifacePkg))
 		ifaceSb.WriteString(fmt.Sprintf("public interface %s {\n", pascalName))
 
 		for _, fn := range iface.Functions {
@@ -372,8 +391,12 @@ func GenerateWitArtifacts(interfaces []WitInterface, implClass, targetPkg, outDi
 
 		// 2. Generate Export Bridge (<Interface>Bridge.kt)
 		var bridgeSb strings.Builder
-		bridgeSb.WriteString(fmt.Sprintf("// Auto-generated WebAssembly export bridge from WIT. DO NOT EDIT.\npackage %s\n\n", pkg))
-		bridgeSb.WriteString("import kotlin.wasm.WasmExport\n\n")
+		bridgeSb.WriteString(fmt.Sprintf("// Auto-generated WebAssembly export bridge from WIT. DO NOT EDIT.\npackage %s\n\n", bridgePkg))
+		bridgeSb.WriteString("import kotlin.wasm.WasmExport\n")
+		if bridgePkg != ifacePkg && ifacePkg != "" {
+			bridgeSb.WriteString(fmt.Sprintf("import %s.*\n", ifacePkg))
+		}
+		bridgeSb.WriteString("\n")
 		bridgeSb.WriteString(fmt.Sprintf("private val instance by lazy { %s() }\n\n", resolvedImpl))
 
 		for _, fn := range iface.Functions {
@@ -562,7 +585,7 @@ func CompileWasm(opts WasmOptions) error {
 		}
 		if len(witInterfaces) > 0 {
 			targetPkg := DetectPackage(allSources)
-			generatedFiles, err := GenerateWitArtifacts(witInterfaces, opts.Impl, targetPkg, tmpDir)
+			generatedFiles, err := GenerateWitArtifacts(witInterfaces, opts.Impl, targetPkg, tmpDir, allSources...)
 			if err != nil {
 				return fmt.Errorf("failed to generate WIT artifacts: %w", err)
 			}

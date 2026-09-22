@@ -7,6 +7,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2] - 2026-09-22
+
+### Changed
+
+- Separate package generation: WIT interface is emitted into its declared WIT package (`iface.Package`), and bridge is emitted into `targetPkg` importing `iface.Package.*`.
+- Auto-detect class implementation: automatically discovers class in sources matching WIT interface name when `impl` option is not explicitly specified.
+- Enforce strict hermeticity: removed non-hermetic Homebrew fallback candidate path from Wasm stdlib resolution.
+
 ## [0.3.1] - 2026-09-20
 
 ### Added

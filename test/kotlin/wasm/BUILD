@@ -37,5 +37,21 @@ gentest(
     no_test_output = True,
 )
 
+kt_wasm_binary(
+    name = "disjoint_set_wasm",
+    srcs = ["DisjointSet.kt"],
+    wit = "structures.wit",
+    target = "wasm-js",
+    main = "noCall",
+    visibility = ["PUBLIC"],
+)
 
-
+gentest(
+    name = "disjoint_set_wasm_test",
+    data = [
+        ":disjoint_set_wasm",
+        "verify_wit_wasm.sh",
+    ],
+    test_cmd = "$(location verify_wit_wasm.sh) $(location :disjoint_set_wasm)",
+    no_test_output = True,
+)

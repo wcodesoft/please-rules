@@ -171,7 +171,7 @@ interface disjoint-set {
 		t.Fatalf("failed to read interface file: %v", err)
 	}
 	ifaceSrc := string(ifaceBytes)
-	if !strings.Contains(ifaceSrc, "package org.test") {
+	if !strings.Contains(ifaceSrc, "package example.structures") {
 		t.Errorf("interface missing package: %s", ifaceSrc)
 	}
 	if !strings.Contains(ifaceSrc, "public interface DisjointSet {") {
@@ -194,6 +194,9 @@ interface disjoint-set {
 	if !strings.Contains(bridgeSrc, "package org.test") {
 		t.Errorf("bridge missing package: %s", bridgeSrc)
 	}
+	if !strings.Contains(bridgeSrc, "import example.structures.*") {
+		t.Errorf("bridge missing interface package import: %s", bridgeSrc)
+	}
 	if !strings.Contains(bridgeSrc, "import kotlin.wasm.WasmExport") {
 		t.Errorf("bridge missing WasmExport import: %s", bridgeSrc)
 	}
@@ -205,5 +208,50 @@ interface disjoint-set {
 	}
 	if !strings.Contains(bridgeSrc, "@WasmExport\nfun reset() {\n    instance.reset()\n}") {
 		t.Errorf("bridge missing @WasmExport reset: %s", bridgeSrc)
+	}
+}
+
+func TestGenerateWitArtifactsAutoDetectImpl(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "wit-autodetect-test-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	srcFile := filepath.Join(tmpDir, "DisjointSet.kt")
+	srcContent := "package structures\n\nclass DisjointSet {\n}\n"
+	if err := os.WriteFile(srcFile, []byte(srcContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	ifaces := []WitInterface{
+		{
+			Name:    "disjoint-set",
+			Package: "babel.structures",
+			Functions: []WitFunc{
+				{Name: "reset", ReturnType: "Unit"},
+			},
+		},
+	}
+
+	outDir := filepath.Join(tmpDir, "gen")
+	_ = os.MkdirAll(outDir, 0755)
+
+	artifacts, err := GenerateWitArtifacts(ifaces, "", "structures", outDir, srcFile)
+	if err != nil {
+		t.Fatalf("GenerateWitArtifacts failed: %v", err)
+	}
+	if len(artifacts) != 2 {
+		t.Fatalf("expected 2 artifacts, got %d", len(artifacts))
+	}
+
+	bridgePath := filepath.Join(outDir, "DisjointSetBridge.kt")
+	bridgeBytes, err := os.ReadFile(bridgePath)
+	if err != nil {
+		t.Fatalf("failed to read bridge file: %v", err)
+	}
+	bridgeSrc := string(bridgeBytes)
+	if !strings.Contains(bridgeSrc, "private val instance by lazy { DisjointSet() }") {
+		t.Errorf("expected auto-detected DisjointSet(), got %s", bridgeSrc)
 	}
 }

@@ -1,13 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-WASM_FILE="test/kotlin/wasm/wit_wasm.wasm"
+TARGET_NAME="${1:-wit_wasm.wasm}"
+WASM_FILE="$TARGET_NAME"
 if [ ! -f "$WASM_FILE" ]; then
-    WASM_FILE=$(find . -name "wit_wasm.wasm" | head -n 1)
+    WASM_FILE=$(find . -name "$TARGET_NAME" | head -n 1)
+fi
+if [ -z "$WASM_FILE" ] || [ ! -f "$WASM_FILE" ]; then
+    WASM_FILE=$(find . -name "*.wasm" | head -n 1)
 fi
 
-if [ ! -f "$WASM_FILE" ]; then
-    echo "ERROR: wit_wasm.wasm not found!"
+if [ -z "$WASM_FILE" ] || [ ! -f "$WASM_FILE" ]; then
+    echo "ERROR: WebAssembly file not found!"
     exit 1
 fi
 
