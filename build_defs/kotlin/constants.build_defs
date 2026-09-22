@@ -12,6 +12,11 @@ KOTLINC_HASHES = {
     "2.4.10": "473dd66c7a3ef4b182065b3da670466c1bf2773a9dbb0ed8b33a39fe9d4f876d",
 }
 
+KOTLIN_WASM_WASI_STDLIB_URL_TEMPLATE = "https://repo1.maven.org/maven2/org/jetbrains/kotlin/kotlin-stdlib-wasm-wasi/{version}/kotlin-stdlib-wasm-wasi-{version}.klib"
+KOTLIN_WASM_WASI_STDLIB_HASHES = {
+    "2.4.10": "cc25c4695b466f65cd5520750b8eb9255e3e04efe67216d9983d99ab68419f93",
+}
+
 JACOCO_URL_TEMPLATE = "https://repo1.maven.org/maven2/org/jacoco/jacoco/{version}/jacoco-{version}.zip"
 JACOCO_HASHES = {
     "0.8.12": "35cf2a2b8937659ecbc8d0d3902dfa7f55b7ed2250e82424036a3e1d12462cd7",

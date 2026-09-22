@@ -543,11 +543,23 @@ def kotlin_toolchain(
         hashes = [resolved_jacoco_hash] if resolved_jacoco_hash else [],
     )
 
+    dl_wasi_stdlib_url = KOTLIN_WASM_WASI_STDLIB_URL_TEMPLATE.format(version=version) if version in KOTLIN_WASM_WASI_STDLIB_HASHES else ""
+    dl_wasi_stdlib_hash = KOTLIN_WASM_WASI_STDLIB_HASHES.get(version, "")
+
     srcs = {
         "KOTLINC": [f":{dl_kotlinc_target}"],
         "JDK": [f":{dl_jdk_target}"],
         "JACOCO": [f":{dl_jacoco_target}"],
     }
+
+    if dl_wasi_stdlib_url:
+        dl_wasi_target = f"_{name}_wasm_wasi_stdlib_dl"
+        remote_file(
+            name = dl_wasi_target,
+            url = dl_wasi_stdlib_url,
+            hashes = [dl_wasi_stdlib_hash] if dl_wasi_stdlib_hash else [],
+        )
+        srcs["WASI_STDLIB"] = [f":{dl_wasi_target}"]
 
     entry_points = {
         "kotlinc": f"{name}/bin/kotlinc",
@@ -565,6 +577,7 @@ def kotlin_toolchain(
         _toolchain_unpack_jdk_cmd(),
         _toolchain_unpack_kotlinc_cmd(),
         _toolchain_unpack_jacoco_cmd(),
+        'if [ -n "${SRCS_WASI_STDLIB:-}" ]; then cp "$SRCS_WASI_STDLIB" "$OUT/kotlinc/lib/kotlin-stdlib-wasm-wasi.klib"; fi',
         'rm -rf "$TMP_DIR"',
         _toolchain_launchers_cmd(),
     ])

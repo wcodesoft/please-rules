@@ -610,8 +610,21 @@ func CompileWasm(opts WasmOptions) error {
 			break
 		}
 	}
+	depKlibs := DiscoverKlibs(opts.Deps)
 	if stdlib == "" {
 		stdlib = FindWasmStdlib(kotlincWasm, opts.Target)
+	}
+	if stdlib == "" {
+		stdlibName := "kotlin-stdlib-wasm-js.klib"
+		if opts.Target == "wasm-wasi" {
+			stdlibName = "kotlin-stdlib-wasm-wasi.klib"
+		}
+		for _, dep := range depKlibs {
+			if strings.Contains(filepath.Base(dep), stdlibName) {
+				stdlib = dep
+				break
+			}
+		}
 	}
 	if stdlib == "" {
 		return fmt.Errorf("failed to locate kotlin-stdlib-wasm klib. Specify --libraries or set KOTLIN_WASM_STDLIB")
@@ -619,7 +632,6 @@ func CompileWasm(opts WasmOptions) error {
 
 	// Collect all klibs (stdlib + dependencies)
 	klibList := []string{stdlib}
-	depKlibs := DiscoverKlibs(opts.Deps)
 	for _, klib := range depKlibs {
 		if klib != stdlib {
 			klibList = append(klibList, klib)
