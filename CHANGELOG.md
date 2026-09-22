@@ -7,6 +7,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.4] - 2026-09-22
+
+### Fixed
+
+- Support whitespace-separated and comma-separated sources and dependencies in
+  `please_kotlin_wasm`, allowing targets with multiple source files to compile
+  correctly.
+- Hardened bash parameter expansion in `build_defs/kotlin/kotlin.build_defs`
+  against `set -u` unbound variable checks when expanding optional `SRCS` and
+  `DEPS` environment variables.
+
 ## [0.3.3] - 2026-09-22
 
 ### Added
