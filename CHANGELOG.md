@@ -7,6 +7,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.3] - 2026-09-22
+
+### Added
+
+- Native `wasm-wasi` WebAssembly target support for `kt_wasm_binary` and
+  `kotlin_wasm_binary`, enabling standalone execution under standard WASI
+  runtimes (such as Wasmtime) without Node.js or JavaScript shims.
+- Hermetic bundling of `kotlin-stdlib-wasm-wasi.klib` (v2.1.10) in
+  `kotlin_toolchain` with automatic fallback resolution in the
+  `please_kotlin_wasm` orchestrator.
+- End-to-end integration test `//test/kotlin/wasm:disjoint_set_wasi` validating
+  WASI module compilation and execution.
+
 ## [0.3.2] - 2026-09-22
 
 ### Changed
