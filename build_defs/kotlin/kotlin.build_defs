@@ -305,8 +305,8 @@ def kotlin_wasm_binary(
 
     compile_args = [
         '--out "$OUT"',
-        '--srcs "${SRCS_SRCS:-${SRCS:-}}"',
-        '--deps "${DEPS:-}"',
+        '--srcs "${SRCS_SRCS:+"${SRCS_SRCS// /,}"}"' if wit else '--srcs "${SRCS:+"${SRCS// /,}"}"',
+        '--deps "${DEPS:+"${DEPS// /,}"}"',
         f'--target "{target}"',
         f'--main "{main}"',
         f'--module-name "{name}"',

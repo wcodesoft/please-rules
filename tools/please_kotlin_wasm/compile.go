@@ -510,11 +510,12 @@ func DiscoverKlibs(deps []string) []string {
 	return klibs
 }
 
-// ExpandCommaSeparated splits comma-separated strings into individual elements.
+// ExpandCommaSeparated splits comma- or whitespace-separated strings into individual elements.
 func ExpandCommaSeparated(items []string) []string {
 	var result []string
 	for _, item := range items {
-		for _, part := range strings.Split(item, ",") {
+		normalized := strings.ReplaceAll(item, ",", " ")
+		for _, part := range strings.Fields(normalized) {
 			trimmed := strings.TrimSpace(part)
 			if trimmed != "" && trimmed != "\\" {
 				result = append(result, trimmed)

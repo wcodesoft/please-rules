@@ -8,8 +8,8 @@ import (
 )
 
 func TestExpandCommaSeparated(t *testing.T) {
-	input := []string{"a,b,c", "d", " e , f "}
-	expected := []string{"a", "b", "c", "d", "e", "f"}
+	input := []string{"a,b,c", "d", " e , f ", "g h  i"}
+	expected := []string{"a", "b", "c", "d", "e", "f", "g", "h", "i"}
 	result := ExpandCommaSeparated(input)
 
 	if len(result) != len(expected) {
