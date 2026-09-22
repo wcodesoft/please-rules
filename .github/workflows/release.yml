@@ -183,18 +183,13 @@ jobs:
         run: |
           TOOL="${{ steps.meta.outputs.tool }}"
           LANG="${{ steps.meta.outputs.language }}"
-          mkdir -p /tmp/smoke-bin
 
-          cd tools
-          if [ ! -f go.mod ]; then
-            printf "module tools\n\ngo 1.23\n" > go.mod
-          fi
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /tmp/smoke-bin/${TOOL} ./${TOOL}
-          cd ..
-          chmod +x /tmp/smoke-bin/${TOOL}
+          echo "Building ${TOOL} via Please..."
+          ./pleasew --plain_output build //tools/${TOOL}:${TOOL}
+          TOOL_BIN="plz-out/bin/tools/${TOOL}/${TOOL}"
 
           echo "Executing ${TOOL} --help sanity check..."
-          HELP_OUTPUT=$(/tmp/smoke-bin/${TOOL} --help 2>&1 || true)
+          HELP_OUTPUT=$("${TOOL_BIN}" --help 2>&1 || true)
           echo "$HELP_OUTPUT"
           if ! echo "$HELP_OUTPUT" | grep -iqE '(usage:|commands:|options:)'; then
             echo "::error::Smoke test failed: '${TOOL} --help' did not output usage information."
@@ -203,19 +198,21 @@ jobs:
 
           echo "Validating core subcommand execution..."
           if [ "${LANG}" = "rust" ]; then
-            /tmp/smoke-bin/${TOOL} compile --help 2>&1 | grep -iq "crate-name" || { echo "::error::please_rust compile --help failed"; exit 1; }
+            "${TOOL_BIN}" compile --help 2>&1 | grep -iq "crate-name" || { echo "::error::please_rust compile --help failed"; exit 1; }
           elif [ "${LANG}" = "kotlin" ]; then
-            /tmp/smoke-bin/${TOOL} testrunner --help 2>&1 | grep -iq "test-class" || { echo "::error::please_kotlin testrunner --help failed"; exit 1; }
-            CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /tmp/smoke-bin/please_kotlin_wasm ./please_kotlin_wasm
-            chmod +x /tmp/smoke-bin/please_kotlin_wasm
-            /tmp/smoke-bin/please_kotlin_wasm --help 2>&1 | grep -iq "kotlinc-wasm" || { echo "::error::please_kotlin_wasm --help failed"; exit 1; }
+            "${TOOL_BIN}" testrunner --help 2>&1 | grep -iq "test-class" || { echo "::error::please_kotlin testrunner --help failed"; exit 1; }
+            ./pleasew --plain_output build //tools/please_kotlin_wasm:please_kotlin_wasm
+            WASM_BIN="plz-out/bin/tools/please_kotlin_wasm/please_kotlin_wasm"
+            "${WASM_BIN}" --help 2>&1 | grep -iq "kotlinc-wasm" || { echo "::error::please_kotlin_wasm --help failed"; exit 1; }
           elif [ "${LANG}" = "swift" ]; then
-            /tmp/smoke-bin/${TOOL} compile --help 2>&1 | grep -iq "sources" || { echo "::error::please_swift compile --help failed"; exit 1; }
+            "${TOOL_BIN}" compile --help 2>&1 | grep -iq "sources" || { echo "::error::please_swift compile --help failed"; exit 1; }
           elif [ "${LANG}" = "ts" ]; then
-            /tmp/smoke-bin/${TOOL} compile --help 2>&1 | grep -iq "sources" || { echo "::error::please_ts compile --help failed"; exit 1; }
+            "${TOOL_BIN}" compile --help 2>&1 | grep -iq "sources" || { echo "::error::please_ts compile --help failed"; exit 1; }
           elif [ "${LANG}" = "wit" ]; then
-            /tmp/smoke-bin/${TOOL} generate --help 2>&1 | grep -iq "lang" || { echo "::error::please_wit generate --help failed"; exit 1; }
+            "${TOOL_BIN}" generate --help 2>&1 | grep -iq "lang" || { echo "::error::please_wit generate --help failed"; exit 1; }
           fi
+        env:
+          VERITAS_NO_HOOK: "1"
 
       - name: End-to-end compile validation
         if: steps.meta.outputs.skip != 'true'
