@@ -11,15 +11,20 @@ and this project adheres to
 
 ### Changed
 
-- Separate package generation: WIT interface is emitted into its declared WIT package (`iface.Package`), and bridge is emitted into `targetPkg` importing `iface.Package.*`.
-- Auto-detect class implementation: automatically discovers class in sources matching WIT interface name when `impl` option is not explicitly specified.
-- Enforce strict hermeticity: removed non-hermetic Homebrew fallback candidate path from Wasm stdlib resolution.
+- Separate package generation: WIT interface is emitted into its declared WIT
+  package (`iface.Package`), and bridge is emitted into `targetPkg` importing
+  `iface.Package.*`.
+- Auto-detect class implementation: automatically discovers class in sources
+  matching WIT interface name when `impl` option is not explicitly specified.
+- Enforce strict hermeticity: removed non-hermetic Homebrew fallback candidate
+  path from Wasm stdlib resolution.
 
 ## [0.3.1] - 2026-09-20
 
 ### Added
 
-- Precompiled release binaries for `please_kotlin_wasm` distributed via `remote_file` in `tools/BUILD`.
+- Precompiled release binaries for `please_kotlin_wasm` distributed via
+  `remote_file` in `tools/BUILD`.
 - Hermetic Wasm toolchain execution without requiring host Go or `go-rules`.
 
 ## [0.3.0] - 2026-09-20
