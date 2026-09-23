@@ -474,15 +474,30 @@ func DiscoverWasmSources(srcs []string) []string {
 	return files
 }
 
-// DiscoverKlibs collects all .klib dependency files from explicit dependencies.
-func DiscoverKlibs(deps []string) []string {
+// DiscoverKlibs collects all .klib dependency files from explicit dependencies
+// and from the current working directory (transitively staged by Please via needs_transitive_deps = True).
+func DiscoverKlibs(deps []string, outKlib ...string) []string {
+	var targetOut string
+	if len(outKlib) > 0 {
+		targetOut = outKlib[0]
+	}
 	var klibs []string
 	seen := make(map[string]bool)
 
 	addKlib := func(p string) {
 		clean := filepath.Clean(p)
-		if !seen[clean] && strings.HasSuffix(clean, ".klib") && fileExists(clean) {
-			seen[clean] = true
+		if clean == "" || clean == "." {
+			return
+		}
+		if targetOut != "" && (clean == filepath.Clean(targetOut) || filepath.Base(clean) == filepath.Base(targetOut)) {
+			return
+		}
+		abs, err := filepath.Abs(clean)
+		if err != nil {
+			abs = clean
+		}
+		if !seen[abs] && strings.HasSuffix(clean, ".klib") && fileExists(clean) {
+			seen[abs] = true
 			klibs = append(klibs, clean)
 		}
 	}
@@ -507,6 +522,14 @@ func DiscoverKlibs(deps []string) []string {
 			addKlib(dep)
 		}
 	}
+
+	_ = filepath.Walk(".", func(path string, info os.FileInfo, err error) error {
+		if err == nil && info != nil && !info.IsDir() && strings.HasSuffix(path, ".klib") {
+			addKlib(path)
+		}
+		return nil
+	})
+
 	return klibs
 }
 
@@ -611,7 +634,7 @@ func CompileWasm(opts WasmOptions) error {
 			break
 		}
 	}
-	depKlibs := DiscoverKlibs(opts.Deps)
+	depKlibs := DiscoverKlibs(opts.Deps, opts.Out)
 	if stdlib == "" {
 		stdlib = FindWasmStdlib(kotlincWasm, opts.Target)
 	}
@@ -649,6 +672,40 @@ func CompileWasm(opts WasmOptions) error {
 	if moduleName == "" {
 		base := filepath.Base(opts.Out)
 		moduleName = strings.TrimSuffix(base, filepath.Ext(base))
+	}
+
+	// Library mode: if output is a .klib, compile directly to output and return
+	if strings.HasSuffix(opts.Out, ".klib") {
+		libArgs := []string{
+			"-libraries", librariesArg,
+			"-ir-output-dir", opts.Out,
+			"-ir-output-name", moduleName,
+		}
+		if opts.Target != "" {
+			libArgs = append(libArgs, "-Xwasm-target="+opts.Target)
+		}
+		libArgs = append(libArgs, opts.Flags...)
+		libArgs = append(libArgs, allSources...)
+
+		cmdLib := exec.Command(kotlincWasm, libArgs...)
+		cmdLib.Stdout = os.Stdout
+		cmdLib.Stderr = os.Stderr
+		if err := cmdLib.Run(); err != nil {
+			return fmt.Errorf("kotlinc-wasm library compilation failed: %w", err)
+		}
+
+		if fi, err := os.Stat(opts.Out); err == nil && fi.IsDir() {
+			innerKlib := filepath.Join(opts.Out, moduleName+".klib")
+			if fileExists(innerKlib) {
+				tmpKlib := filepath.Join(tmpDir, moduleName+"_lib.klib")
+				if err := copyFile(innerKlib, tmpKlib); err != nil {
+					return err
+				}
+				_ = os.RemoveAll(opts.Out)
+				return copyFile(tmpKlib, opts.Out)
+			}
+		}
+		return nil
 	}
 
 	intermediateKlib := filepath.Join(tmpDir, moduleName+".klib")

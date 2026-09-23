@@ -255,3 +255,14 @@ func TestGenerateWitArtifactsAutoDetectImpl(t *testing.T) {
 		t.Errorf("expected auto-detected DisjointSet(), got %s", bridgeSrc)
 	}
 }
+
+func TestCompileWasmLibraryModeValidation(t *testing.T) {
+	opts := WasmOptions{
+		Out:  "lib.klib",
+		Srcs: []string{},
+	}
+	err := CompileWasm(opts)
+	if err == nil {
+		t.Errorf("expected error for empty sources in library mode, got nil")
+	}
+}

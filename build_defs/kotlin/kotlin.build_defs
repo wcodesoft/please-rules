@@ -332,6 +332,51 @@ def kotlin_wasm_binary(
 
 kt_wasm_binary = kotlin_wasm_binary
 
+def kotlin_wasm_library(
+        name:str,
+        srcs:list=None,
+        deps:list=None,
+        target:str="wasm-js",
+        flags:list=None,
+        visibility:list=None,
+        labels:list=None):
+    """Compiles Kotlin source files into a WebAssembly library (.klib)."""
+    actual_srcs = srcs or []
+    deps = deps or []
+    flags = flags or []
+    out_klib = f"{name}.klib"
+
+    tools = {"TOOL": [_kotlin_wasm_tool()]}
+    kotlinc_wasm_arg = _kotlinc_wasm_tool_arg(tools)
+
+    flags_str = f"--flags '{' '.join(flags)}'" if flags else ""
+
+    compile_args = [
+        '--out "$OUT"',
+        '--srcs "${SRCS:+"${SRCS// /,}"}"',
+        '--deps "${DEPS:+"${DEPS// /,}"}"',
+        f'--target "{target}"',
+        f'--module-name "{name}"',
+        kotlinc_wasm_arg,
+        flags_str,
+    ]
+    cmd = _join_cmd("$TOOLS_TOOL compile", compile_args)
+
+    return build_rule(
+        name = name,
+        srcs = actual_srcs,
+        deps = deps,
+        outs = [out_klib],
+        cmd = cmd,
+        needs_transitive_deps = True,
+        tools = tools,
+        visibility = visibility,
+        labels = labels or ["kotlin", "wasm", "lib"],
+        building_description = f"Compiling Kotlin WebAssembly library {name}...",
+    )
+
+kt_wasm_library = kotlin_wasm_library
+
 def kt_test_suite(
         name:str,
         srcs:list,

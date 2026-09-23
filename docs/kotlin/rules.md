@@ -140,6 +140,36 @@ argument:
 
 ---
 
+## `kt_wasm_library` (alias `kotlin_wasm_library`)
+
+Compiles Kotlin source files into a reusable WebAssembly library (`.klib`)
+package. Downstream `kt_wasm_binary` or `kt_wasm_library` targets can depend on
+it via `deps`. Please automatically discovers and links all transitive `.klib`
+dependencies.
+
+```starlark
+kt_wasm_library(
+    name = "math_lib",
+    srcs = ["Math.kt"],
+    target = "wasm-wasi",   # or "wasm-js"
+    visibility = ["PUBLIC"],
+)
+```
+
+### Arguments
+
+| Name         | Type   | Default     | Description                                                                        |
+| :----------- | :----- | :---------- | :--------------------------------------------------------------------------------- |
+| `name`       | `str`  | Required    | Name of the target; outputs `<name>.klib`.                                         |
+| `srcs`       | `list` | `[]`        | Kotlin source files (`.kt`) or directories containing `.kt` files.                 |
+| `deps`       | `list` | `[]`        | Upstream `kt_wasm_library` targets or directories containing `.klib` dependencies. |
+| `target`     | `str`  | `"wasm-js"` | WebAssembly compilation target: `"wasm-js"` or `"wasm-wasi"`.                      |
+| `flags`      | `list` | `[]`        | Additional flags passed directly to `kotlinc-wasm`.                                |
+| `visibility` | `list` | `None`      | Target visibility.                                                                 |
+| `labels`     | `list` | `None`      | Rule labels (defaults to `["kotlin", "wasm", "lib"]`).                             |
+
+---
+
 ## `kotlin_test`
 
 Runs a Kotlin test suite using JUnit 5 Platform ConsoleLauncher, generating

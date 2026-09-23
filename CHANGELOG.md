@@ -7,6 +7,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.5] - 2026-09-23
+
+### Added
+
+- `kt_wasm_library` and `kotlin_wasm_library` build rules producing reusable
+  WebAssembly `.klib` libraries.
+- Modular library compilation mode in `please_kotlin_wasm` emitting `.klib`
+  artifacts directly without intermediate Wasm linking.
+- Automatic discovery of transitive `.klib` dependencies staged in the build
+  sandbox by Please via `needs_transitive_deps = True`.
+- Integration test suite and verification scripts for Wasm library consumers.
+
 ## [0.3.4] - 2026-09-22
 
 ### Fixed
