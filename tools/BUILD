@@ -1,13 +1,13 @@
-_VERSION = "0.3.4"
+_VERSION = "0.3.5"
 
 remote_file(
     name = "please_kotlin",
     url = f"https://github.com/wcodesoft/please-rules/releases/download/kotlin-v{_VERSION}/please_kotlin-{_VERSION}-{CONFIG.OS}_{CONFIG.ARCH}",
     hashes = [
-    "87d77b32c269fb8115071c534c06b4f66a9afb382abda85abe7ab38c2fd1f1f5",  # linux_amd64
-    "88131843e90a467e1346aaf62acf91b9fc949070723e73a9562ad972f18cdf08",  # linux_arm64
-    "d321dd6967d0d70ced3b308ac6e0f44b630ae0d614eecc3abbf73fd85074479f",  # darwin_amd64
-    "9309014dd4b64686dda1edfc51e752f1f7114e48eb66c92414fef4f85ec217be",  # darwin_arm64
+    "73543bb6c7281f10e80d3ecf9d23ae205c0bd676a5552aef531f0ca909b203b7",  # linux_amd64
+    "0cc1f4ee777329217397d61bfe2b54b4e9a46bbe105ea9337de7fff48386c099",  # linux_arm64
+    "f2344fb3853a0388bc36efcd2e964f21b60809e71fdc884bc7b40fe404b1324e",  # darwin_amd64
+    "070b72ac26e67d967614e680ccff28aa9d3c67099da8d4bcb912f128bf4b1b38",  # darwin_arm64
           ],
     binary = True,
     visibility = ["PUBLIC"],
@@ -17,10 +17,10 @@ remote_file(
     name = "please_kotlin_wasm",
     url = f"https://github.com/wcodesoft/please-rules/releases/download/kotlin-v{_VERSION}/please_kotlin_wasm-{_VERSION}-{CONFIG.OS}_{CONFIG.ARCH}",
     hashes = [
-    "6c0a099c4e6129370cf8e3449e1eb2384b3d69f7575a9c4cf4e45c730f1124b9",  # linux_amd64
-    "51efda58b17495c83fba9d09c3ea9e4636265277ffa94cd2149d375d48dc37b8",  # linux_arm64
-    "d9a534b092e11e9bae39b6a3d9da4d7b4928e6dc24503bb4214b7452986a36b8",  # darwin_amd64
-    "860863988484da25fea208a4654a1293946df50cd983b5675eb1a69198248db7",  # darwin_arm64
+    "59db999a1be7f7c0f725cdce7e778b7bd9a046f9e7eb14a4a660cb3353d17d8c",  # linux_amd64
+    "a14f016b3f82c705e1b28aa117eeb42adb12c3564c59ded126cec75d261e6e9c",  # linux_arm64
+    "8b72ab7d5c77dc49fc7c2d1f41adfea8aa10fc327b4e4075d6e5307e35ce0b0d",  # darwin_amd64
+    "8e4b249d160423ef4d8404fc5169122f0ff3a6ae348807201a48af20b484d759",  # darwin_arm64
           ],
     binary = True,
     visibility = ["PUBLIC"],
