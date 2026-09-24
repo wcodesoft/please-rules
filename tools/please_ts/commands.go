@@ -181,17 +181,28 @@ func handleTestRunner(args []string) error {
 func handleUnpack(args []string) error {
 	cmd := flag.NewFlagSet("unpack", flag.ContinueOnError)
 	tarball := cmd.String("tarball", "", "Path to npm tarball")
+	archive := cmd.String("archive", "", "Path to tarball or zip archive")
 	out := cmd.String("out", "", "Destination output directory")
 	name := cmd.String("name", "", "Module/package name")
+	binary := cmd.String("binary", "", "Binary executable to extract in toolchain mode")
+	symlink := cmd.String("symlink", "", "Optional symlink name for extracted binary")
 
 	if err := cmd.Parse(args); err != nil {
 		return err
 	}
 
+	archivePath := *archive
+	if archivePath == "" {
+		archivePath = *tarball
+	}
+
 	opts := unpack.Options{
+		Archive: archivePath,
 		Tarball: *tarball,
 		Out:     *out,
 		Name:    *name,
+		Binary:  *binary,
+		Symlink: *symlink,
 	}
 	return unpack.Run(opts)
 }

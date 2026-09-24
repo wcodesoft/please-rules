@@ -15,6 +15,15 @@ def _deno_tool_arg(tools):
         return f"--deno '{tool}'"
     return ""
 
+def _browser_tool_arg(tools, browser_binary = ""):
+    tool = browser_binary or CONFIG.TS.BROWSER_TOOL
+    if tool and (tool.startswith("//") or tool.startswith("///") or tool.startswith(":")):
+        tools["BROWSER"] = [tool]
+        return '--browser-binary "$TOOLS_BROWSER"'
+    elif tool:
+        return f"--browser-binary '{tool}'"
+    return ""
+
 def _join_cmd(tool_cmd, args):
     valid_args = [a for a in args if a]
     return f"{tool_cmd} \\\n  " + " \\\n  ".join(valid_args) + "\n"
@@ -82,6 +91,47 @@ rm -rf "$TMP_DIR"
         visibility = visibility or ["PUBLIC"],
         labels = labels or ["ts", "toolchain"],
         building_description = f"Assembling hermetic Deno toolchain {version}...",
+    )
+
+def browser_toolchain(
+        name: str = "toolchain",
+        version: str = DEFAULT_CHROMIUM_VERSION,
+        chromium_url: str = "",
+        chromium_hash: str = "",
+        target_platform: str = "",
+        labels: list = None,
+        visibility: list = None):
+    """Assembles a 100% hermetic Chrome for Testing headless browser sysroot."""
+    plat = target_platform or f"{CONFIG.OS}_{CONFIG.ARCH}"
+    chrome_info = CHROMIUM_PLATFORM_MAP.get(plat, CHROMIUM_PLATFORM_MAP["linux_amd64"])
+
+    dl_url = chromium_url or chrome_info["url"]
+    resolved_hash = chromium_hash or chrome_info["hash"]
+
+    dl_target = f"_{name}_chromium_dl"
+    remote_file(
+        name = dl_target,
+        url = dl_url,
+        hashes = [resolved_hash] if resolved_hash else [],
+    )
+
+    tools = {"TOOL": [_ts_tool()]}
+    cmd = f'$TOOLS_TOOL unpack --archive "$SRCS" --out "$OUT/bin" --binary "chrome-headless-shell" --symlink "chromium"'
+
+    return build_rule(
+        name = name,
+        srcs = [f":{dl_target}"],
+        outs = [name],
+        cmd = cmd,
+        entry_points = {
+            "chromium": f"{name}/bin/chromium",
+            "chrome-headless-shell": f"{name}/bin/chrome-headless-shell",
+        },
+        binary = True,
+        tools = tools,
+        visibility = visibility or ["PUBLIC"],
+        labels = labels or ["ts", "toolchain", "browser"],
+        building_description = f"Assembling hermetic headless Chromium toolchain {version}...",
     )
 
 def ts_module(
@@ -353,6 +403,7 @@ def ts_browser_test(
         srcs: list,
         browser: str = "chromium",
         browser_binary: str = "",
+        runner: str = "browser",
         deps: list = None,
         data: list = None,
         module_name: str = "",
@@ -366,6 +417,7 @@ def ts_browser_test(
 
     tools = {"TOOL": [_ts_tool()]}
     deno_arg = _deno_tool_arg(tools)
+    browser_arg = _browser_tool_arg(tools, browser_binary)
 
     flags_joined = " ".join(flags) if flags else ""
     flags_str = f"--flags '{flags_joined}'" if flags else ""
@@ -381,11 +433,13 @@ def ts_browser_test(
     ]
     compile_cmd = _join_cmd("$TOOLS_TOOL compile", compile_args)
 
-    srcs_list = ",".join(srcs)
+    pkg = package_name()
+    full_srcs = [f"{pkg}/{s}" if not s.startswith(pkg) else s for s in srcs]
+    srcs_list = ",".join(full_srcs)
     testrunner_args = [
-        '--runner "vitest"',
+        f'--runner "{runner}"',
         f'--browser "{browser}"',
-        f'--browser-binary "{browser_binary}"' if browser_binary else "",
+        browser_arg,
         f'--srcs "{srcs_list}"',
         '--deps "${DEPS:-}"',
         f'--module-name "{resolved_module}"' if resolved_module else "",

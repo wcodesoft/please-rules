@@ -22,3 +22,24 @@ DENO_PLATFORM_MAP = {
         "hash": "f013effa3a9e948093f451664119d5e392573a66d1c85c6ff454c2c029eaef43",
     },
 }
+
+DEFAULT_CHROMIUM_VERSION = "154.0.8037.57"
+
+CHROMIUM_PLATFORM_MAP = {
+    "linux_amd64": {
+        "url": "https://storage.googleapis.com/chrome-for-testing-public/154.0.8037.57/linux64/chrome-headless-shell-linux64.zip",
+        "hash": "5a6979d0ab7cf952ea575d35164e7bdce4872b2ced8f8a215c8f8e8eda00ee09",
+    },
+    "linux_arm64": {
+        "url": "https://storage.googleapis.com/chrome-for-testing-public/154.0.8037.57/linux-arm64/chrome-headless-shell-linux-arm64.zip",
+        "hash": "2213770a541c7ea17c900c631bdb6a3cda97ecf5194a34a575f32e54a8f5ab70",
+    },
+    "darwin_amd64": {
+        "url": "https://storage.googleapis.com/chrome-for-testing-public/154.0.8037.57/mac-x64/chrome-headless-shell-mac-x64.zip",
+        "hash": "b3f9551d90c9ff0f4c7c231a4dbf226b3c64faba8ced1ab61a5ef9d430d0e996",
+    },
+    "darwin_arm64": {
+        "url": "https://storage.googleapis.com/chrome-for-testing-public/154.0.8037.57/mac-arm64/chrome-headless-shell-mac-arm64.zip",
+        "hash": "9ba4d8a9732bd7e431ce9009d1bbe1ccf7f8c5de2a9781054f500a9fe898124d",
+    },
+}

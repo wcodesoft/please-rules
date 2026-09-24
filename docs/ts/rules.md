@@ -172,16 +172,55 @@ ts_test(
 
 ---
 
+## `browser_toolchain`
+
+Assembles a 100% hermetic headless browser (`chrome-headless-shell`) binary sysroot.
+
+```starlark
+browser_toolchain(
+    name = "toolchain",
+    version = "154.0.8037.57",
+    visibility = ["PUBLIC"],
+)
+```
+
+### Arguments
+
+| Argument          | Type  | Default             | Description                                                                                         |
+| :---------------- | :---- | :------------------ | :-------------------------------------------------------------------------------------------------- |
+| `name`            | `str` | `"toolchain"`       | Name of the toolchain target.                                                                       |
+| `version`         | `str` | `"154.0.8037.57"`   | Chromium / chrome-headless-shell release version.                                                   |
+| `browser_url`     | `str` | `""`                | Optional custom download URL for the browser zip archive.                                           |
+| `browser_hash`    | `str` | `""`                | Optional SHA-256 integrity hash for the archive.                                                    |
+| `target_platform` | `str` | `""`                | Optional target platform override (`linux_amd64`, `linux_arm64`, `darwin_amd64`, `darwin_arm64`). |
+
+---
+
 ## `ts_browser_test`
 
-Runs hermetic in-browser tests with headless browser binaries.
+Runs hermetic in-browser unit and integration tests with headless browser binaries via the Chrome DevTools Protocol (CDP) WebSocket interface or Vitest.
 
 ```starlark
 ts_browser_test(
     name = "counter_browser_test",
-    srcs = ["counter.browser.test.tsx"],
+    srcs = ["counter_browser_test.ts"],
     browser = "chromium",
-    deps = [":counter"],
-    data = ["//tools/playwright:chromium"],
+    runner = "browser",
+    deps = [":counter_component"],
 )
 ```
+
+### Arguments
+
+| Argument         | Type   | Default      | Description                                                                                 |
+| :--------------- | :----- | :----------- | :------------------------------------------------------------------------------------------ |
+| `name`           | `str`  | (required)   | Target name.                                                                                |
+| `srcs`           | `list` | (required)   | Test source files.                                                                          |
+| `browser`        | `str`  | `"chromium"` | Browser type (`"chromium"`).                                                                |
+| `browser_binary` | `str`  | `""`         | Path or build label for the browser executable (defaults to `BrowserTool` in `.plzconfig`). |
+| `runner`         | `str`  | `"browser"`  | Browser test runner (`"browser"` for hermetic CDP runner, or `"vitest"`).                   |
+| `deps`           | `list` | `[]`         | Dependent libraries.                                                                        |
+| `data`           | `list` | `[]`         | Runtime test data.                                                                          |
+| `module_name`    | `str`  | `""`         | Optional module name override.                                                              |
+| `flags`          | `list` | `[]`         | Additional flags.                                                                           |
+
