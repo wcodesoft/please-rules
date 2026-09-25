@@ -12,6 +12,7 @@ Stdlib = //third_party/go:std
 Target = //plugins:ts
 PleaseTsTool = //tools/please_ts:please_ts
 DenoTool = //tools/ts_toolchain:toolchain|deno
+BrowserTool = //tools/browser_toolchain:toolchain|chromium
 
 [PluginDefinition]
 Name = ts
@@ -26,6 +27,12 @@ Inherit = true
 ConfigKey = DenoTool
 DefaultValue = deno
 Help = Path to the deno binary or toolchain target to use
+Inherit = true
+
+[PluginConfig "browser_tool"]
+ConfigKey = BrowserTool
+DefaultValue = //tools/browser_toolchain:toolchain|chromium
+Help = Path to the hermetic browser binary or toolchain target to use
 Inherit = true
 
 [PluginConfig "coverage"]
