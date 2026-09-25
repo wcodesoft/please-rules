@@ -3,6 +3,7 @@ Constants and target mappings for TypeScript and Deno build definitions.
 """
 
 DEFAULT_DENO_VERSION = "2.9.7"
+DEFAULT_VITEST_VERSION = "5.0.1"
 
 DENO_PLATFORM_MAP = {
     "linux_amd64": {

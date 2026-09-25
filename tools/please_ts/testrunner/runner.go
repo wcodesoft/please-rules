@@ -31,6 +31,7 @@ type RunOptions struct {
 	CoverageFile  string
 	Browser       string
 	BrowserBinary string
+	VitestDir     string
 	ExtraArgs     []string
 }
 
@@ -169,6 +170,9 @@ func runVitest(opts RunOptions, resultsFile string) error {
 			if strings.HasSuffix(k, "/") {
 				continue
 			}
+			if k == "vitest" || strings.HasPrefix(k, "vitest/") || k == "chai" || strings.HasPrefix(k, "chai/") {
+				continue
+			}
 			tClean := strings.TrimSuffix(target, "/")
 			if tClean != "" {
 				absTarget, err := filepath.Abs(tClean)
@@ -252,17 +256,26 @@ func runVitest(opts RunOptions, resultsFile string) error {
 	args = append(args, opts.ExtraArgs...)
 	args = append(args, resolvedSrcs...)
 
-	var cmd *exec.Cmd
-	if vitestPath, err := exec.LookPath("vitest"); err == nil {
-		cmd = exec.Command(vitestPath, args...)
-	} else if opts.Deno != "" {
-		denoArgs := append([]string{"run", "-A", "npm:vitest"}, args...)
-		cmd = exec.Command(opts.Deno, denoArgs...)
-	} else {
-		cmd = exec.Command("vitest", args...)
+	denoBin := opts.Deno
+	if denoBin == "" {
+		denoBin = "deno"
 	}
+	denoArgs := []string{"run"}
+	if opts.VitestDir != "" {
+		denoArgs = append(denoArgs, "--no-remote")
+	}
+	denoArgs = append(denoArgs, "-A", "npm:vitest")
+	denoArgs = append(denoArgs, args...)
+	cmd := exec.Command(denoBin, denoArgs...)
 
 	env := os.Environ()
+	if opts.VitestDir != "" {
+		if absV, err := filepath.Abs(opts.VitestDir); err == nil {
+			env = append(env, "DENO_DIR="+absV)
+		} else {
+			env = append(env, "DENO_DIR="+opts.VitestDir)
+		}
+	}
 	if opts.BrowserBinary != "" {
 		env = append(env, "PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="+opts.BrowserBinary)
 	}
@@ -408,6 +421,27 @@ func runBrowserTest(opts RunOptions, resultsFile string) error {
 	_, _ = client.Send("Runtime.enable", nil)
 	_, _ = client.Send("Page.enable", nil)
 
+	// Ensure DOM is fully loaded and document.body exists
+	readyJS := `(async () => {
+		for (let i = 0; i < 200; i++) {
+			if (document.body) {
+				return true;
+			}
+			await new Promise(r => setTimeout(r, 25));
+		}
+		if (!document.body) {
+			if (!document.documentElement) {
+				document.appendChild(document.createElement('html'));
+			}
+			document.documentElement.appendChild(document.createElement('body'));
+		}
+		return !!document.body;
+	})()`
+	if _, err := client.Evaluate(readyJS); err != nil {
+		_ = writeFallbackJUnit(resultsFile, opts.Srcs, err)
+		return fmt.Errorf("failed preparing browser DOM: %w", err)
+	}
+
 	// 3. Inject test harness into browser
 	harnessJS := `(() => {
 		window.__TESTS__ = [];
@@ -452,6 +486,12 @@ func runBrowserTest(opts RunOptions, resultsFile string) error {
 
 	// 5. Run registered tests and collect results
 	runnerJS := `(async () => {
+		for (let i = 0; i < 200 && !document.body; i++) {
+			await new Promise(r => setTimeout(r, 25));
+		}
+		if (!document.body && document.documentElement) {
+			document.documentElement.appendChild(document.createElement('body'));
+		}
 		const results = [];
 		for (const t of window.__TESTS__) {
 			const start = performance.now();

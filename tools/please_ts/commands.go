@@ -26,6 +26,7 @@ func handleCompile(args []string) error {
 	deno := cmd.String("deno", "deno", "Path to deno binary")
 	moduleName := cmd.String("module-name", "", "Module name or package specifier alias")
 	flags := cmd.String("flags", "", "Additional deno check flags")
+	vitestDir := cmd.String("vitest-dir", "", "Path to hermetic Vitest cache directory")
 
 	if err := cmd.Parse(args); err != nil {
 		return err
@@ -48,6 +49,7 @@ func handleCompile(args []string) error {
 		Deps:       deps,
 		ModuleName: *moduleName,
 		Flags:      extraFlags,
+		VitestDir:  *vitestDir,
 	}
 	return compile.Run(opts)
 }
@@ -154,6 +156,7 @@ func handleTestRunner(args []string) error {
 	coverageFile := cmd.String("coverage-file", "", "Path to write coverage output file")
 	browser := cmd.String("browser", "", "Browser engine for browser tests (chromium, firefox, webkit)")
 	browserBinary := cmd.String("browser-binary", "", "Path to hermetic browser executable")
+	vitestDir := cmd.String("vitest-dir", "", "Path to hermetic Vitest cache directory")
 
 	if err := cmd.Parse(args); err != nil {
 		return err
@@ -174,6 +177,7 @@ func handleTestRunner(args []string) error {
 		CoverageFile:  *coverageFile,
 		Browser:       *browser,
 		BrowserBinary: *browserBinary,
+		VitestDir:     *vitestDir,
 	}
 	return testrunner.Run(opts)
 }

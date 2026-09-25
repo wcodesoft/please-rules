@@ -153,10 +153,19 @@ ts_bundle(
 Runs hermetic unit or simulated DOM tests using Deno test runner or Vitest.
 
 ```starlark
+# Standard Deno test runner
 ts_test(
     name = "calculator_test",
     srcs = ["calculator_test.ts"],
     deps = [":calculator"],
+)
+
+# Vitest runner with hermetic toolchain cache
+ts_test(
+    name = "calculator_vitest_test",
+    srcs = ["calculator_vitest_test.ts"],
+    deps = [":calculator"],
+    runner = "vitest",
 )
 ```
 
@@ -169,6 +178,26 @@ ts_test(
 | `deps`   | `list` | `[]`       | Dependent libraries.                  |
 | `data`   | `list` | `[]`       | Runtime test data.                    |
 | `runner` | `str`  | `"deno"`   | Test runner (`"deno"` or `"vitest"`). |
+
+---
+
+## `vitest_toolchain`
+
+Assembles a hermetic Vitest toolchain using Deno cache.
+
+```starlark
+vitest_toolchain(
+    name = "toolchain",
+    version = "5.0.1",
+)
+```
+
+### Arguments
+
+| Argument  | Type  | Default       | Description                                            |
+| :-------- | :---- | :------------ | :----------------------------------------------------- |
+| `name`    | `str` | `"toolchain"` | Target name.                                           |
+| `version` | `str` | `"5.0.1"`     | Vitest version to cache and bundle for test execution. |
 
 ---
 

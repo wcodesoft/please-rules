@@ -20,6 +20,7 @@ type Options struct {
 	Deps       []string
 	ModuleName string
 	Flags      []string
+	VitestDir  string
 }
 
 // Run executes the type-checking and packages the library output.
@@ -40,8 +41,16 @@ func Run(opts Options) error {
 	defer os.RemoveAll(tmpDir)
 
 	denoCacheDir := filepath.Join(tmpDir, ".deno_cache")
-	if err := os.MkdirAll(denoCacheDir, 0755); err != nil {
-		return fmt.Errorf("failed to create DENO_DIR: %w", err)
+	if opts.VitestDir != "" {
+		if absV, err := filepath.Abs(opts.VitestDir); err == nil {
+			denoCacheDir = absV
+		} else {
+			denoCacheDir = opts.VitestDir
+		}
+	} else {
+		if err := os.MkdirAll(denoCacheDir, 0755); err != nil {
+			return fmt.Errorf("failed to create DENO_DIR: %w", err)
+		}
 	}
 
 	// 1. Synthesize target-local import map
@@ -49,6 +58,9 @@ func Run(opts Options) error {
 	im, err := importmap.Synthesize(opts.ModuleName, opts.Srcs, opts.Deps, ".")
 	if err != nil {
 		return fmt.Errorf("failed synthesizing import map: %w", err)
+	}
+	if opts.VitestDir != "" && im.Imports["vitest"] == "" {
+		im.Imports["vitest"] = "npm:vitest"
 	}
 	if err := im.WriteToFile(importMapPath); err != nil {
 		return fmt.Errorf("failed writing import map: %w", err)
