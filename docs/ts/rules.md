@@ -174,7 +174,8 @@ ts_test(
 
 ## `browser_toolchain`
 
-Assembles a 100% hermetic headless browser (`chrome-headless-shell`) binary sysroot.
+Assembles a 100% hermetic headless browser (`chrome-headless-shell`) binary
+sysroot.
 
 ```starlark
 browser_toolchain(
@@ -186,19 +187,20 @@ browser_toolchain(
 
 ### Arguments
 
-| Argument          | Type  | Default             | Description                                                                                         |
-| :---------------- | :---- | :------------------ | :-------------------------------------------------------------------------------------------------- |
-| `name`            | `str` | `"toolchain"`       | Name of the toolchain target.                                                                       |
-| `version`         | `str` | `"154.0.8037.57"`   | Chromium / chrome-headless-shell release version.                                                   |
-| `browser_url`     | `str` | `""`                | Optional custom download URL for the browser zip archive.                                           |
-| `browser_hash`    | `str` | `""`                | Optional SHA-256 integrity hash for the archive.                                                    |
-| `target_platform` | `str` | `""`                | Optional target platform override (`linux_amd64`, `linux_arm64`, `darwin_amd64`, `darwin_arm64`). |
+| Argument          | Type  | Default           | Description                                                                                       |
+| :---------------- | :---- | :---------------- | :------------------------------------------------------------------------------------------------ |
+| `name`            | `str` | `"toolchain"`     | Name of the toolchain target.                                                                     |
+| `version`         | `str` | `"154.0.8037.57"` | Chromium / chrome-headless-shell release version.                                                 |
+| `browser_url`     | `str` | `""`              | Optional custom download URL for the browser zip archive.                                         |
+| `browser_hash`    | `str` | `""`              | Optional SHA-256 integrity hash for the archive.                                                  |
+| `target_platform` | `str` | `""`              | Optional target platform override (`linux_amd64`, `linux_arm64`, `darwin_amd64`, `darwin_arm64`). |
 
 ---
 
 ## `ts_browser_test`
 
-Runs hermetic in-browser unit and integration tests with headless browser binaries via the Chrome DevTools Protocol (CDP) WebSocket interface or Vitest.
+Runs hermetic in-browser unit and integration tests with headless browser
+binaries via the Chrome DevTools Protocol (CDP) WebSocket interface or Vitest.
 
 ```starlark
 ts_browser_test(
@@ -223,4 +225,3 @@ ts_browser_test(
 | `data`           | `list` | `[]`         | Runtime test data.                                                                          |
 | `module_name`    | `str`  | `""`         | Optional module name override.                                                              |
 | `flags`          | `list` | `[]`         | Additional flags.                                                                           |
-

@@ -7,6 +7,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-09-25
+
+### Added
+
+- Added `browser_toolchain` rule providing hermetic headless Chromium
+  (`chrome-headless-shell` v154.0.8037.57) for `linux_amd64`, `linux_arm64`,
+  `darwin_amd64`, and `darwin_arm64`.
+- Added native standard-library CDP (Chrome DevTools Protocol) WebSocket client
+  in Go (`tools/please_ts/testrunner/cdp.go`) to execute in-browser tests
+  hermetically without host browser or external runner dependencies.
+- Added `runner = "browser"` default for `ts_browser_test` and configured
+  `BrowserTool` in `.plzconfig`.
+- Extended `please_ts unpack` with `--archive`, `--binary`, and `--symlink` to
+  extract `.zip` toolchains and stage binaries without hardcoded shell scripts.
+- Added automatic `vitest.config.mjs` synthesis in `runVitest` mapping Please
+  import maps into Vite's `resolve.alias` for workspace package resolution.
+
+### Changed
+
+- Upgraded default hermetic Deno toolchain (`DEFAULT_DENO_VERSION`) to `2.9.7`
+  across all supported platforms, enabling `node:util.parseEnv` and modern Node
+  compatibility for Vitest.
+
 ## [0.2.1] - 2026-09-20
 
 ### Changed
