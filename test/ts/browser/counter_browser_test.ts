@@ -13,7 +13,8 @@ declare const expect: (actual: any) => {
 
 Deno.test("CounterComponent initializes with default value", () => {
   const container = document.createElement("div");
-  document.body.appendChild(container);
+  const body = document.body || document.documentElement;
+  body.appendChild(container);
 
   const counter = new CounterComponent(container);
   expect(counter.getValue()).toBe(0);
@@ -21,12 +22,13 @@ Deno.test("CounterComponent initializes with default value", () => {
   const valueEl = container.querySelector(".counter-value");
   expect(valueEl?.textContent).toBe("0");
 
-  document.body.removeChild(container);
+  body.removeChild(container);
 });
 
 Deno.test("CounterComponent increments, decrements, and resets", () => {
   const container = document.createElement("div");
-  document.body.appendChild(container);
+  const body = document.body || document.documentElement;
+  body.appendChild(container);
 
   const counter = new CounterComponent(container, { initial: 10, step: 2 });
   expect(counter.getValue()).toBe(10);
@@ -48,7 +50,7 @@ Deno.test("CounterComponent increments, decrements, and resets", () => {
   expect(counter.getValue()).toBe(0);
   expect(valueEl.textContent).toBe("0");
 
-  document.body.removeChild(container);
+  body.removeChild(container);
 });
 
 Deno.test("Browser Web APIs localStorage and userAgent work hermetically", () => {

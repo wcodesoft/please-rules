@@ -421,6 +421,27 @@ func runBrowserTest(opts RunOptions, resultsFile string) error {
 	_, _ = client.Send("Runtime.enable", nil)
 	_, _ = client.Send("Page.enable", nil)
 
+	// Ensure DOM is fully loaded and document.body exists
+	readyJS := `(async () => {
+		for (let i = 0; i < 200; i++) {
+			if (document.body) {
+				return true;
+			}
+			await new Promise(r => setTimeout(r, 25));
+		}
+		if (!document.body) {
+			if (!document.documentElement) {
+				document.appendChild(document.createElement('html'));
+			}
+			document.documentElement.appendChild(document.createElement('body'));
+		}
+		return !!document.body;
+	})()`
+	if _, err := client.Evaluate(readyJS); err != nil {
+		_ = writeFallbackJUnit(resultsFile, opts.Srcs, err)
+		return fmt.Errorf("failed preparing browser DOM: %w", err)
+	}
+
 	// 3. Inject test harness into browser
 	harnessJS := `(() => {
 		window.__TESTS__ = [];
@@ -465,6 +486,12 @@ func runBrowserTest(opts RunOptions, resultsFile string) error {
 
 	// 5. Run registered tests and collect results
 	runnerJS := `(async () => {
+		for (let i = 0; i < 200 && !document.body; i++) {
+			await new Promise(r => setTimeout(r, 25));
+		}
+		if (!document.body && document.documentElement) {
+			document.documentElement.appendChild(document.createElement('body'));
+		}
 		const results = [];
 		for (const t of window.__TESTS__) {
 			const start = performance.now();
