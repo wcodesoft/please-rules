@@ -1,13 +1,13 @@
-_VERSION = "0.2.1"
+_VERSION = "0.3.0"
 
 remote_file(
     name = "please_ts",
     binary = True,
     hashes = [
-    "68273ac8c16b9e59d12843337503851acbebab90984d553299f9112edf5f926f",  # linux_amd64
-    "b4319d4c970fd2b803bb054e82d946c44e9f61d2de40e900f70334316853c1fe",  # linux_arm64
-    "b05bd880be322266105979a3c186850de7eef75e1499f2468fd8566f5dfe590f",  # darwin_amd64
-    "96679892f62bc2c0d1d28cf21a99678906b9ed891729068545d6a065eea17cf8",  # darwin_arm64
+    "3b86bbc51f6f1a843464dbddb33ab6cf0d7141e7d76e1afb8e39a143148a6a6f",  # linux_amd64
+    "13b8113e8b4f59bdade0a9827dab32f608ad4014f47a03d3eefad075c739d536",  # linux_arm64
+    "f5e2599c732d96a2366ffaa169c58394fbfdcc770d39f8e96a63d35a03245ccd",  # darwin_amd64
+    "93dd134f565246cd3c2e84e37183cdc1c4282aeb7ea5beee5d20c2d812815eed",  # darwin_arm64
 ],
     url = f"https://github.com/wcodesoft/please-rules/releases/download/ts-v{_VERSION}/please_ts-{_VERSION}-{CONFIG.OS}_{CONFIG.ARCH}",
     visibility = ["PUBLIC"],
