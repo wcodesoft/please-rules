@@ -150,22 +150,107 @@ func runDeno(opts RunOptions, resultsFile string) error {
 }
 
 func runVitest(opts RunOptions, resultsFile string) error {
+	tmpDir, err := os.MkdirTemp("", "please_ts_vitest_*")
+	if err != nil {
+		return fmt.Errorf("failed creating temp dir for vitest: %w", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// 1. Synthesize target-local import map for alias resolution
+	im, err := importmap.Synthesize(opts.ModuleName, opts.Srcs, opts.Deps, ".")
+	if err != nil {
+		_ = writeFallbackJUnit(resultsFile, opts.Srcs, err)
+		return fmt.Errorf("failed synthesizing import map: %w", err)
+	}
+
+	aliasMap := make(map[string]string)
+	if im != nil {
+		for k, target := range im.Imports {
+			if strings.HasSuffix(k, "/") {
+				continue
+			}
+			tClean := strings.TrimSuffix(target, "/")
+			if tClean != "" {
+				absTarget, err := filepath.Abs(tClean)
+				if err == nil {
+					aliasMap[k] = absTarget
+				} else {
+					aliasMap[k] = tClean
+				}
+			}
+		}
+	}
+
+	// Resolve sources relative to current working directory
+	var resolvedSrcs []string
+	for _, s := range opts.Srcs {
+		found := false
+		_ = filepath.Walk(".", func(path string, info os.FileInfo, err error) error {
+			if !found && !info.IsDir() && (path == s || filepath.Base(path) == s || strings.HasSuffix(path, "/"+s)) {
+				absPath, err := filepath.Abs(path)
+				if err == nil {
+					resolvedSrcs = append(resolvedSrcs, absPath)
+				} else {
+					resolvedSrcs = append(resolvedSrcs, path)
+				}
+				found = true
+			}
+			return nil
+		})
+		if !found {
+			absPath, err := filepath.Abs(s)
+			if err == nil {
+				resolvedSrcs = append(resolvedSrcs, absPath)
+			} else {
+				resolvedSrcs = append(resolvedSrcs, s)
+			}
+		}
+	}
+
+	aliasBytes, _ := json.MarshalIndent(aliasMap, "    ", "  ")
+	srcsBytes, _ := json.Marshal(resolvedSrcs)
+
+	configPath := filepath.Join(tmpDir, "vitest.config.mjs")
+	configContent := fmt.Sprintf(`export default {
+  test: {
+    globals: true,
+    include: %s,
+    watch: false,
+  },
+  resolve: {
+    alias: %s,
+  },
+};
+`, string(srcsBytes), string(aliasBytes))
+
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		_ = writeFallbackJUnit(resultsFile, opts.Srcs, err)
+		return fmt.Errorf("failed writing vitest config: %w", err)
+	}
+
+	absResults, err := filepath.Abs(resultsFile)
+	if err != nil {
+		absResults = resultsFile
+	}
+
 	args := []string{
 		"run",
+		"--config", configPath,
 		"--reporter=junit",
-		"--outputFile=" + resultsFile,
+		"--outputFile=" + absResults,
 	}
 
 	if opts.Browser != "" {
 		args = append(args, "--browser.name="+opts.Browser, "--browser.headless")
 	}
 
-	if opts.Coverage && opts.CoverageFile != "" {
-		args = append(args, "--coverage.enabled", "--coverage.reporter=lcov", "--coverage.reportsDirectory="+filepath.Dir(opts.CoverageFile))
+	coverageActive, coverageFile := resolveCoverage(opts)
+	if coverageActive && coverageFile != "" {
+		args = append(args, "--coverage.enabled", "--coverage.reporter=lcov", "--coverage.reportsDirectory="+filepath.Dir(coverageFile))
 	}
 
 	args = append(args, opts.ExtraArgs...)
-	args = append(args, opts.Srcs...)
+	args = append(args, resolvedSrcs...)
 
 	var cmd *exec.Cmd
 	if vitestPath, err := exec.LookPath("vitest"); err == nil {

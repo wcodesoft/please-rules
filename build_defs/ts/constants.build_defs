@@ -2,24 +2,24 @@
 Constants and target mappings for TypeScript and Deno build definitions.
 """
 
-DEFAULT_DENO_VERSION = "2.2.3"
+DEFAULT_DENO_VERSION = "2.9.7"
 
 DENO_PLATFORM_MAP = {
     "linux_amd64": {
-        "url": "https://github.com/denoland/deno/releases/download/v2.2.3/deno-x86_64-unknown-linux-gnu.zip",
-        "hash": "9b2928c032fd9fa058245b0105ca6382007d8f047ae8c1f4b40ea22106f591ed",
+        "url": "https://github.com/denoland/deno/releases/download/v2.9.7/deno-x86_64-unknown-linux-gnu.zip",
+        "hash": "c6527f24f4b16031d3ae4fa9f658d5f11534c8d84ce7dc8502420280919c3490",
     },
     "linux_arm64": {
-        "url": "https://github.com/denoland/deno/releases/download/v2.2.3/deno-aarch64-unknown-linux-gnu.zip",
-        "hash": "a63a5a70d44d7a20d1f6f2894dcd14204f6bb350635d038f7c31989730b43b3a",
+        "url": "https://github.com/denoland/deno/releases/download/v2.9.7/deno-aarch64-unknown-linux-gnu.zip",
+        "hash": "c832298b1ad4422481334855f6003e0f54145762c5a134f20a489511d2f65bbf",
     },
     "darwin_arm64": {
-        "url": "https://github.com/denoland/deno/releases/download/v2.2.3/deno-aarch64-apple-darwin.zip",
-        "hash": "3d0eaa5ee8ddc37c1d5b6e5f69d10dfd0394a022d2b7a01299c11dffa744a764",
+        "url": "https://github.com/denoland/deno/releases/download/v2.9.7/deno-aarch64-apple-darwin.zip",
+        "hash": "5cd46d6268f6f78f5d88bdc7159d20bd44cdaa4b3303474839f87ec6fe7ae25c",
     },
     "darwin_amd64": {
-        "url": "https://github.com/denoland/deno/releases/download/v2.2.3/deno-x86_64-apple-darwin.zip",
-        "hash": "f013effa3a9e948093f451664119d5e392573a66d1c85c6ff454c2c029eaef43",
+        "url": "https://github.com/denoland/deno/releases/download/v2.9.7/deno-x86_64-apple-darwin.zip",
+        "hash": "95daaff11c116a52ad54785e7914c8e9c9cdcaba793c5ed929c74ca2d8e6259a",
     },
 }
 
