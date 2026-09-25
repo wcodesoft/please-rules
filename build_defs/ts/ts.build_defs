@@ -24,6 +24,17 @@ def _browser_tool_arg(tools, browser_binary = ""):
         return f"--browser-binary '{tool}'"
     return ""
 
+def _vitest_tool_arg(tools, vitest_dir = ""):
+    tool = vitest_dir or CONFIG.TS.VITEST_TOOL
+    if not tool:
+        tool = "//tools/vitest_toolchain:toolchain"
+    if tool and (tool.startswith("//") or tool.startswith("///") or tool.startswith(":")):
+        tools["VITEST"] = [tool]
+        return '--vitest-dir "$TOOLS_VITEST"'
+    elif tool:
+        return f"--vitest-dir '{tool}'"
+    return ""
+
 def _join_cmd(tool_cmd, args):
     valid_args = [a for a in args if a]
     return f"{tool_cmd} \\\n  " + " \\\n  ".join(valid_args) + "\n"
@@ -132,6 +143,32 @@ def browser_toolchain(
         visibility = visibility or ["PUBLIC"],
         labels = labels or ["ts", "toolchain", "browser"],
         building_description = f"Assembling hermetic headless Chromium toolchain {version}...",
+    )
+
+def vitest_toolchain(
+        name: str = "toolchain",
+        version: str = DEFAULT_VITEST_VERSION,
+        labels: list = None,
+        visibility: list = None):
+    """Assembles a hermetic Vitest cache using Deno cache."""
+    tools = {}
+    _deno_tool_arg(tools)
+    deno_cmd = "$TOOLS_DENO" if "DENO" in tools else "deno"
+
+    cmd = f"""
+mkdir -p "$OUT"
+export DENO_DIR="$OUT"
+{deno_cmd} cache npm:vitest@{version}
+"""
+    return build_rule(
+        name = name,
+        outs = [name],
+        cmd = cmd,
+        sandbox = False,
+        tools = tools,
+        visibility = visibility or ["PUBLIC"],
+        labels = labels or ["ts", "toolchain", "vitest"],
+        building_description = f"Assembling Vitest toolchain {version}...",
     )
 
 def ts_module(
@@ -348,6 +385,7 @@ def ts_test(
 
     tools = {"TOOL": [_ts_tool()]}
     deno_arg = _deno_tool_arg(tools)
+    vitest_arg = _vitest_tool_arg(tools) if runner == "vitest" else ""
 
     flags_joined = " ".join(flags) if flags else ""
     flags_str = f"--flags '{flags_joined}'" if flags else ""
@@ -359,6 +397,7 @@ def ts_test(
         '--deps "${DEPS:-}"',
         f'--module-name "{resolved_module}"' if resolved_module else "",
         deno_arg,
+        vitest_arg,
         flags_str,
     ]
     compile_cmd = _join_cmd("$TOOLS_TOOL compile", compile_args)
@@ -375,6 +414,7 @@ def ts_test(
         '--coverage-file "${COVERAGE_FILE:-test.coverage}"',
         '--coverage="${COVERAGE:-false}"',
         deno_arg,
+        vitest_arg,
         '--',
         '"$@"',
     ]

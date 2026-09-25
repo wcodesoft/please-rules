@@ -13,6 +13,7 @@ Target = //plugins:ts
 PleaseTsTool = //tools/please_ts:please_ts
 DenoTool = //tools/ts_toolchain:toolchain|deno
 BrowserTool = //tools/browser_toolchain:toolchain|chromium
+VitestTool = //tools/vitest_toolchain:toolchain
 
 [PluginDefinition]
 Name = ts
@@ -33,6 +34,12 @@ Inherit = true
 ConfigKey = BrowserTool
 DefaultValue = //tools/browser_toolchain:toolchain|chromium
 Help = Path to the hermetic browser binary or toolchain target to use
+Inherit = true
+
+[PluginConfig "vitest_tool"]
+ConfigKey = VitestTool
+DefaultValue = //tools/vitest_toolchain:toolchain
+Help = Path to the hermetic Vitest cache or toolchain target to use
 Inherit = true
 
 [PluginConfig "coverage"]

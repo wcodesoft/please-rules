@@ -31,6 +31,7 @@ type RunOptions struct {
 	CoverageFile  string
 	Browser       string
 	BrowserBinary string
+	VitestDir     string
 	ExtraArgs     []string
 }
 
@@ -169,6 +170,9 @@ func runVitest(opts RunOptions, resultsFile string) error {
 			if strings.HasSuffix(k, "/") {
 				continue
 			}
+			if k == "vitest" || strings.HasPrefix(k, "vitest/") || k == "chai" || strings.HasPrefix(k, "chai/") {
+				continue
+			}
 			tClean := strings.TrimSuffix(target, "/")
 			if tClean != "" {
 				absTarget, err := filepath.Abs(tClean)
@@ -252,17 +256,26 @@ func runVitest(opts RunOptions, resultsFile string) error {
 	args = append(args, opts.ExtraArgs...)
 	args = append(args, resolvedSrcs...)
 
-	var cmd *exec.Cmd
-	if vitestPath, err := exec.LookPath("vitest"); err == nil {
-		cmd = exec.Command(vitestPath, args...)
-	} else if opts.Deno != "" {
-		denoArgs := append([]string{"run", "-A", "npm:vitest"}, args...)
-		cmd = exec.Command(opts.Deno, denoArgs...)
-	} else {
-		cmd = exec.Command("vitest", args...)
+	denoBin := opts.Deno
+	if denoBin == "" {
+		denoBin = "deno"
 	}
+	denoArgs := []string{"run"}
+	if opts.VitestDir != "" {
+		denoArgs = append(denoArgs, "--no-remote")
+	}
+	denoArgs = append(denoArgs, "-A", "npm:vitest")
+	denoArgs = append(denoArgs, args...)
+	cmd := exec.Command(denoBin, denoArgs...)
 
 	env := os.Environ()
+	if opts.VitestDir != "" {
+		if absV, err := filepath.Abs(opts.VitestDir); err == nil {
+			env = append(env, "DENO_DIR="+absV)
+		} else {
+			env = append(env, "DENO_DIR="+opts.VitestDir)
+		}
+	}
 	if opts.BrowserBinary != "" {
 		env = append(env, "PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="+opts.BrowserBinary)
 	}

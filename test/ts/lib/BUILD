@@ -12,3 +12,11 @@ ts_test(
     srcs = ["calculator_test.ts"],
     deps = [":calculator"],
 )
+
+ts_test(
+    name = "calculator_vitest_test",
+    srcs = ["calculator_vitest_test.ts"],
+    deps = [":calculator"],
+    runner = "vitest",
+)
+
