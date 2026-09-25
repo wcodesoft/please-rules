@@ -7,6 +7,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-09-25
+
+### Added
+
+- Added `vitest_toolchain` rule to assemble a hermetic Vitest cache using
+  `deno cache npm:vitest@{version}`.
+- Added `VitestTool` plugin configuration in `.plzconfig` defaulting to
+  `//tools/vitest_toolchain:toolchain`.
+- Added support for running `ts_test(..., runner = "vitest")` hermetically
+  offline using `--no-remote` and the pre-cached `vitest_toolchain` directory
+  (`DENO_DIR`).
+- Automatically synthesized `im.Imports["vitest"] = "npm:vitest"` in
+  `please_ts compile` when `--vitest-dir` is provided, enabling
+  `import { ... } from "vitest"` without manual third-party package definitions.
+- Added integration test `//test/ts/lib:calculator_vitest_test` validating
+  hermetic Vitest test execution against workspace libraries.
+
+### Changed
+
+- Removed host `$PATH` lookup (`exec.LookPath("vitest")`) in
+  `please_ts testrunner`, ensuring all Vitest test runs execute hermetically via
+  `deno run --no-remote -A npm:vitest`.
+- Filtered out `vitest` and `chai` from Vite's `resolve.alias` synthesis so
+  Vitest resolves its own built-in runner modules without collisions, while
+  aliasing workspace packages (e.g. `@domain/calculator`).
+
 ## [0.3.0] - 2026-09-25
 
 ### Added
