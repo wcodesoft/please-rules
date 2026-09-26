@@ -1,6 +1,6 @@
 {
   "project": "please-rules",
-  "server": "http://localhost:8080",
+  "server": "https://veritas.walterjp.uk",
   "test_results_path": "plz-out/log/test_results.xml",
   "thresholds": {
     "cognitive_complexity": 15,

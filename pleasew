@@ -163,9 +163,9 @@ run_please_and_hook() {
             fi
 
             if [ -n "${veritas_bin}" ]; then
-                # Determine Veritas server URL from config or default
-                veritas_server="http://localhost:8080"
-                if [ -f ".veritas/config.json" ]; then
+                # Determine Veritas server URL from environment, config, or default
+                veritas_server="${VERITAS_SERVER:-https://veritas.walterjp.uk}"
+                if [ -z "${VERITAS_SERVER:-}" ] && [ -f ".veritas/config.json" ]; then
                     cfg_server="$(sed -n 's/.*"server"[ \t]*:[ \t]*"\([^"]*\)".*/\1/p' .veritas/config.json 2>/dev/null | head -n 1)"
                     if [ -n "${cfg_server}" ]; then
                         veritas_server="${cfg_server}"
@@ -175,7 +175,7 @@ run_please_and_hook() {
                 # Fast reachability check (1s timeout). If the server is offline or unreachable, do nothing.
                 if command -v curl > /dev/null 2>&1; then
                     if curl -s --connect-timeout 1 --max-time 1 -o /dev/null "${veritas_server}" 2>/dev/null; then
-                        "${veritas_bin}" report-tests plz-out/log/test_results.xml > /dev/null 2>&1 || true
+                        "${veritas_bin}" report-tests plz-out/log/test_results.xml --server "${veritas_server}" > /dev/null 2>&1 || true
                     fi
                 fi
             fi
