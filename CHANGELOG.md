@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-09-27
+
+### Added
+
+- Support for minimal Swift toolchain distributions hosted on GitHub Releases,
+  stripping non-compiler assets (LLDB, SPM, DocC, SourceKit-LSP, and Python) to
+  reduce download size from ~1GB to ~150–180MB.
+- `scripts/strip_swift_toolchain.py` automated stripping utility for official
+  Swift release archives.
+- Automated `.github/workflows/build-swift-minimal.yml` matrix workflow to build
+  and distribute minimal toolchains.
+- Updated `SWIFT_PLATFORM_MAP` in `build_defs/swift/constants.build_defs` to
+  default to minimal toolchain releases for Swift 6.3.3.
+
 ## [0.1.3] - 2026-09-20
 
 ### Added

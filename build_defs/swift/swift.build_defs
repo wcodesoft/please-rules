@@ -60,7 +60,12 @@ def swift_toolchain(
     )
 
     strip_prefix = swift_info.get("strip_prefix", "")
-    strip_comp = "--strip-components=2" if "ubuntu" in dl_url else ""
+    if "ubuntu" in dl_url:
+        strip_comp = "--strip-components=2"
+    elif strip_prefix:
+        strip_comp = f"--strip-components={strip_prefix.count('/') + 1}"
+    else:
+        strip_comp = ""
 
     # Extract tarball and export entrypoint binaries
     extract_cmd = f"""

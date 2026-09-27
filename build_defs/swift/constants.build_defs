@@ -2,27 +2,47 @@
 Default constants and platform configurations for Swift toolchains.
 """
 
-DEFAULT_SWIFT_VERSION = "6.0.3"
+DEFAULT_SWIFT_VERSION = "6.3.3"
+DEFAULT_SWIFT_TOOLCHAIN_RELEASE_VERSION = "6.3.3"
 
-SWIFT_PLATFORM_MAP = {
+# Minimal Swift toolchain release distributions hosted on GitHub Releases.
+# These stripped bundles (~150-180MB) exclude LLDB, SPM, DocC, and SourceKit-LSP.
+SWIFT_MINIMAL_PLATFORM_MAP = {
     "linux_amd64": {
-        "url": "https://download.swift.org/swift-6.0.3-release/ubuntu2204/swift-6.0.3-RELEASE/swift-6.0.3-RELEASE-ubuntu22.04.tar.gz",
-        "hash": "09d0a53fbddf2878673dd12c1504e7143c788f195caec9f2329740946eba525c",
-        "strip_prefix": "swift-6.0.3-RELEASE-ubuntu22.04/usr",
+        "url": f"https://github.com/wcodesoft/please-rules/releases/download/swift-toolchain-v{DEFAULT_SWIFT_TOOLCHAIN_RELEASE_VERSION}/swift-{DEFAULT_SWIFT_TOOLCHAIN_RELEASE_VERSION}-minimal-linux_amd64.tar.gz",
+        "hash": "5d886b4b389f94b8e3fdb2fe0c5b233528df888628ce1c53745649dd6ee7d0df",
+        "strip_prefix": "",
     },
     "linux_arm64": {
-        "url": "https://download.swift.org/swift-6.0.3-release/ubuntu2204-aarch64/swift-6.0.3-RELEASE/swift-6.0.3-RELEASE-ubuntu22.04-aarch64.tar.gz",
+        "url": f"https://github.com/wcodesoft/please-rules/releases/download/swift-toolchain-v{DEFAULT_SWIFT_TOOLCHAIN_RELEASE_VERSION}/swift-{DEFAULT_SWIFT_TOOLCHAIN_RELEASE_VERSION}-minimal-linux_arm64.tar.gz",
         "hash": "",
-        "strip_prefix": "swift-6.0.3-RELEASE-ubuntu22.04-aarch64/usr",
+        "strip_prefix": "",
+    },
+}
+
+# Official upstream monolithic toolchains as fallback
+SWIFT_OFFICIAL_PLATFORM_MAP = {
+    "linux_amd64": {
+        "url": f"https://download.swift.org/swift-{DEFAULT_SWIFT_VERSION}-release/ubuntu2204/swift-{DEFAULT_SWIFT_VERSION}-RELEASE/swift-{DEFAULT_SWIFT_VERSION}-RELEASE-ubuntu22.04.tar.gz",
+        "hash": "",
+        "strip_prefix": f"swift-{DEFAULT_SWIFT_VERSION}-RELEASE-ubuntu22.04/usr",
+    },
+    "linux_arm64": {
+        "url": f"https://download.swift.org/swift-{DEFAULT_SWIFT_VERSION}-release/ubuntu2204-aarch64/swift-{DEFAULT_SWIFT_VERSION}-RELEASE/swift-{DEFAULT_SWIFT_VERSION}-RELEASE-ubuntu22.04-aarch64.tar.gz",
+        "hash": "",
+        "strip_prefix": f"swift-{DEFAULT_SWIFT_VERSION}-RELEASE-ubuntu22.04-aarch64/usr",
     },
     "darwin_amd64": {
-        "url": "https://download.swift.org/swift-6.0.3-release/xcode/swift-6.0.3-RELEASE/swift-6.0.3-RELEASE-osx.pkg",
+        "url": f"https://download.swift.org/swift-{DEFAULT_SWIFT_VERSION}-release/xcode/swift-{DEFAULT_SWIFT_VERSION}-RELEASE/swift-{DEFAULT_SWIFT_VERSION}-RELEASE-osx.pkg",
         "hash": "",
         "strip_prefix": "usr",
     },
     "darwin_arm64": {
-        "url": "https://download.swift.org/swift-6.0.3-release/xcode/swift-6.0.3-RELEASE/swift-6.0.3-RELEASE-osx.pkg",
+        "url": f"https://download.swift.org/swift-{DEFAULT_SWIFT_VERSION}-release/xcode/swift-{DEFAULT_SWIFT_VERSION}-RELEASE/swift-{DEFAULT_SWIFT_VERSION}-RELEASE-osx.pkg",
         "hash": "",
         "strip_prefix": "usr",
     },
 }
+
+# Active default platform map defaults to minimal bundles when available, falling back to official upstream
+SWIFT_PLATFORM_MAP = SWIFT_MINIMAL_PLATFORM_MAP
