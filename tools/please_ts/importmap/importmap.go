@@ -47,53 +47,69 @@ type loadedModule struct {
 func Synthesize(moduleName string, srcs []string, deps []string, workingDir string) (*ImportMap, error) {
 	im := New()
 
-	// 1. Map target's own module_name if specified
-	if moduleName != "" && len(srcs) > 0 {
-		entry := findTargetEntry(moduleName, srcs)
-		relEntry, err := relativeTo(workingDir, entry)
-		if err == nil {
-			im.Imports[moduleName] = relEntry
-			if !strings.HasSuffix(moduleName, "/") {
-				dir := filepath.Dir(relEntry)
-				if !strings.HasPrefix(dir, ".") && !strings.HasPrefix(dir, "/") {
-					dir = "./" + dir
-				}
-				if !strings.HasSuffix(dir, "/") {
-					dir += "/"
-				}
-				im.Imports[moduleName+"/"] = dir
-			}
+	if err := mapTargetSources(im, moduleName, srcs, workingDir); err != nil {
+		return nil, err
+	}
+
+	depPaths := discoverDepPaths(deps, workingDir)
+	loadedModules, err := loadDependencies(im, depPaths, workingDir)
+	if err != nil {
+		return nil, err
+	}
+
+	rootModules := registerRootModules(im, loadedModules, workingDir)
+	hoistPeerDependencies(im, loadedModules, rootModules)
+	populateModuleScopes(im, loadedModules, workingDir)
+
+	return im, nil
+}
+
+// mapTargetSources maps the target's own module_name and source file subpaths to im.Imports.
+func mapTargetSources(im *ImportMap, moduleName string, srcs []string, workingDir string) error {
+	if moduleName == "" || len(srcs) == 0 {
+		return nil
+	}
+
+	entry := findTargetEntry(moduleName, srcs)
+	relEntry, err := relativeTo(workingDir, entry)
+	if err == nil {
+		im.Imports[moduleName] = relEntry
+		if !strings.HasSuffix(moduleName, "/") {
+			im.Imports[moduleName+"/"] = dirFromPath(relEntry)
 		}
+	}
 
-		for _, src := range srcs {
-			relPath, err := relativeTo(workingDir, src)
-			if err != nil {
-				continue
-			}
-			base := filepath.Base(src)
-			ext := filepath.Ext(base)
-			nameWithoutExt := strings.TrimSuffix(base, ext)
+	for _, src := range srcs {
+		relPath, err := relativeTo(workingDir, src)
+		if err != nil {
+			continue
+		}
+		base := filepath.Base(src)
+		ext := filepath.Ext(base)
+		nameWithoutExt := strings.TrimSuffix(base, ext)
 
-			im.Imports[moduleName+"/"+base] = relPath
-			im.Imports[moduleName+"/"+nameWithoutExt] = relPath
+		im.Imports[moduleName+"/"+base] = relPath
+		im.Imports[moduleName+"/"+nameWithoutExt] = relPath
 
-			// Also map relative subpath if source is in a subfolder relative to target entry
-			entryDir := filepath.Dir(entry)
-			if relToEntry, err := filepath.Rel(entryDir, src); err == nil && !strings.HasPrefix(relToEntry, "..") {
-				subClean := strings.TrimSuffix(relToEntry, filepath.Ext(relToEntry))
-				if subClean != base && subClean != nameWithoutExt {
-					im.Imports[moduleName+"/"+relToEntry] = relPath
-					im.Imports[moduleName+"/"+subClean] = relPath
-				}
+		// Map relative subpath if source is in a subfolder relative to target entry
+		entryDir := filepath.Dir(entry)
+		if relToEntry, err := filepath.Rel(entryDir, src); err == nil && !strings.HasPrefix(relToEntry, "..") {
+			subClean := strings.TrimSuffix(relToEntry, filepath.Ext(relToEntry))
+			if subClean != base && subClean != nameWithoutExt {
+				im.Imports[moduleName+"/"+relToEntry] = relPath
+				im.Imports[moduleName+"/"+subClean] = relPath
 			}
 		}
 	}
 
-	// 2. Discover all dependencies
+	return nil
+}
+
+// discoverDepPaths collects explicit dependencies and auto-discovers module metadata files in workingDir.
+func discoverDepPaths(deps []string, workingDir string) []string {
 	allDeps := make([]string, 0, len(deps))
 	allDeps = append(allDeps, deps...)
 
-	// Auto-discover dependency metadata in the sandbox
 	_ = filepath.Walk(workingDir, func(path string, info os.FileInfo, err error) error {
 		if err == nil && !info.IsDir() {
 			if info.Name() == "ts_metadata.json" || info.Name() == "ts_module.json" {
@@ -103,100 +119,110 @@ func Synthesize(moduleName string, srcs []string, deps []string, workingDir stri
 		return nil
 	})
 
+	return allDeps
+}
+
+// loadDependencies processes all discovered dependency paths and returns loaded modules.
+func loadDependencies(im *ImportMap, depPaths []string, workingDir string) ([]*loadedModule, error) {
 	var loadedModules []*loadedModule
 	seenDeps := make(map[string]bool)
 
-	for _, dep := range allDeps {
+	for _, dep := range depPaths {
 		dep = strings.TrimSpace(dep)
 		if dep == "" || seenDeps[dep] {
 			continue
 		}
 		seenDeps[dep] = true
 
-		// Check if dep points to a module metadata JSON file
-		if strings.HasSuffix(dep, "ts_module.json") || strings.HasSuffix(dep, "ts_metadata.json") {
-			mod, err := loadMetadataFile(dep, workingDir)
-			if err != nil {
-				return nil, fmt.Errorf("failed loading metadata from %s: %w", dep, err)
-			}
-			if mod != nil {
-				loadedModules = append(loadedModules, mod)
-			}
-			continue
+		mod, err := loadDepItem(im, dep, workingDir)
+		if err != nil {
+			return nil, err
 		}
-
-		// Check if dep is a directory containing ts_module.json or ts_metadata.json
-		info, err := os.Stat(dep)
-		if err == nil && info.IsDir() {
-			metaPath := filepath.Join(dep, "ts_module.json")
-			if _, err := os.Stat(metaPath); err == nil {
-				mod, err := loadMetadataFile(metaPath, workingDir)
-				if err != nil {
-					return nil, fmt.Errorf("failed loading %s: %w", metaPath, err)
-				}
-				if mod != nil {
-					loadedModules = append(loadedModules, mod)
-				}
-				continue
-			}
-
-			metaLibPath := filepath.Join(dep, "ts_metadata.json")
-			if _, err := os.Stat(metaLibPath); err == nil {
-				mod, err := loadMetadataFile(metaLibPath, workingDir)
-				if err != nil {
-					return nil, fmt.Errorf("failed loading %s: %w", metaLibPath, err)
-				}
-				if mod != nil {
-					loadedModules = append(loadedModules, mod)
-				}
-				continue
-			}
-
-			// Directory with source files: find potential entry or map all .ts files
-			mapDirectory(im, dep, workingDir)
-			continue
-		}
-
-		// If dep is a direct source file (.ts, .tsx, .js, .mjs)
-		if isSourceFile(dep) {
-			relPath, err := relativeTo(workingDir, dep)
-			if err == nil {
-				base := filepath.Base(dep)
-				ext := filepath.Ext(base)
-				nameWithoutExt := strings.TrimSuffix(base, ext)
-				im.Imports[nameWithoutExt] = relPath
-				im.Imports[base] = relPath
-				im.Imports[dep] = relPath
-			}
+		if mod != nil {
+			loadedModules = append(loadedModules, mod)
 		}
 	}
 
-	// 3. Collect root modules and register top-level imports
+	return loadedModules, nil
+}
+
+// loadDepItem handles a single dependency path: metadata file, directory, or source file.
+func loadDepItem(im *ImportMap, dep string, workingDir string) (*loadedModule, error) {
+	if isMetadataFile(dep) {
+		mod, err := loadMetadataFile(dep, workingDir)
+		if err != nil {
+			return nil, fmt.Errorf("failed loading metadata from %s: %w", dep, err)
+		}
+		return mod, nil
+	}
+
+	info, err := os.Stat(dep)
+	if err == nil && info.IsDir() {
+		return loadDirectoryDep(im, dep, workingDir)
+	}
+
+	if isSourceFile(dep) {
+		mapDirectSourceFile(im, dep, workingDir)
+	}
+
+	return nil, nil
+}
+
+func isMetadataFile(path string) bool {
+	return strings.HasSuffix(path, "ts_module.json") || strings.HasSuffix(path, "ts_metadata.json")
+}
+
+func loadDirectoryDep(im *ImportMap, dir, workingDir string) (*loadedModule, error) {
+	metaPath := filepath.Join(dir, "ts_module.json")
+	if _, err := os.Stat(metaPath); err == nil {
+		return loadMetadataFile(metaPath, workingDir)
+	}
+
+	metaLibPath := filepath.Join(dir, "ts_metadata.json")
+	if _, err := os.Stat(metaLibPath); err == nil {
+		return loadMetadataFile(metaLibPath, workingDir)
+	}
+
+	mapDirectory(im, dir, workingDir)
+	return nil, nil
+}
+
+func mapDirectSourceFile(im *ImportMap, filePath, workingDir string) {
+	relPath, err := relativeTo(workingDir, filePath)
+	if err != nil {
+		return
+	}
+	base := filepath.Base(filePath)
+	ext := filepath.Ext(base)
+	nameWithoutExt := strings.TrimSuffix(base, ext)
+	im.Imports[nameWithoutExt] = relPath
+	im.Imports[base] = relPath
+	im.Imports[filePath] = relPath
+}
+
+// registerRootModules registers top-level imports for all loaded root modules.
+func registerRootModules(im *ImportMap, loadedModules []*loadedModule, workingDir string) map[string]*loadedModule {
 	rootModules := make(map[string]*loadedModule)
 	for _, mod := range loadedModules {
-		if mod.meta.Name != "" {
-			rootModules[mod.meta.Name] = mod
-			if mod.relEntry != "" {
-				im.Imports[mod.meta.Name] = mod.relEntry
-				im.Imports[mod.meta.Entry] = mod.relEntry
-				im.Imports["./"+mod.meta.Entry] = mod.relEntry
-				if !strings.HasSuffix(mod.meta.Name, "/") {
-					dir := filepath.Dir(mod.relEntry)
-					if !strings.HasPrefix(dir, ".") && !strings.HasPrefix(dir, "/") {
-						dir = "./" + dir
-					}
-					if !strings.HasSuffix(dir, "/") {
-						dir += "/"
-					}
-					im.Imports[mod.meta.Name+"/"] = dir
-				}
-			}
-			mapModuleFiles(im, mod, workingDir)
+		if mod.meta.Name == "" {
+			continue
 		}
+		rootModules[mod.meta.Name] = mod
+		if mod.relEntry != "" {
+			im.Imports[mod.meta.Name] = mod.relEntry
+			im.Imports[mod.meta.Entry] = mod.relEntry
+			im.Imports["./"+mod.meta.Entry] = mod.relEntry
+			if !strings.HasSuffix(mod.meta.Name, "/") {
+				im.Imports[mod.meta.Name+"/"] = dirFromPath(mod.relEntry)
+			}
+		}
+		mapModuleFiles(im, mod, workingDir)
 	}
+	return rootModules
+}
 
-	// 4. Detect shared singletons / peer dependencies across modules to hoist to root imports
-	depCounts := make(map[string]int)
+// hoistPeerDependencies hoists undeclared peer dependencies across modules to the root imports map.
+func hoistPeerDependencies(im *ImportMap, loadedModules []*loadedModule, rootModules map[string]*loadedModule) {
 	depCanonical := make(map[string]string)
 	isPeer := make(map[string]bool)
 
@@ -205,7 +231,6 @@ func Synthesize(moduleName string, srcs []string, deps []string, workingDir stri
 			isPeer[peer] = true
 		}
 		for depName, depRel := range mod.internalDeps {
-			depCounts[depName]++
 			if _, ok := depCanonical[depName]; !ok {
 				depCanonical[depName] = depRel
 			}
@@ -219,88 +244,72 @@ func Synthesize(moduleName string, srcs []string, deps []string, workingDir stri
 		if _, inImports := im.Imports[depName]; inImports {
 			continue
 		}
-		// Only hoist if explicitly marked as a peer dependency
 		if isPeer[depName] {
 			im.Imports[depName] = canonicalRel
-			dir := filepath.Dir(canonicalRel)
-			if !strings.HasPrefix(dir, ".") && !strings.HasPrefix(dir, "/") {
-				dir = "./" + dir
-			}
-			if !strings.HasSuffix(dir, "/") {
-				dir += "/"
-			}
-			im.Imports[depName+"/"] = dir
+			im.Imports[depName+"/"] = dirFromPath(canonicalRel)
 		}
 	}
+}
 
-	// 5. Populate scopes for each module
+// populateModuleScopes sets up W3C Import Map scopes for each module.
+func populateModuleScopes(im *ImportMap, loadedModules []*loadedModule, workingDir string) {
 	for _, mod := range loadedModules {
 		if mod.relBaseDir == "" {
 			continue
 		}
-		scopeKey := mod.relBaseDir
-		if !strings.HasPrefix(scopeKey, ".") && !strings.HasPrefix(scopeKey, "/") {
-			scopeKey = "./" + scopeKey
-		}
-		if !strings.HasSuffix(scopeKey, "/") {
-			scopeKey += "/"
+		populateSingleModuleScope(im, mod, workingDir)
+	}
+}
+
+// populateSingleModuleScope configures the scope block for one module.
+func populateSingleModuleScope(im *ImportMap, mod *loadedModule, workingDir string) {
+	scopeKey := ensureTrailingSlash(mod.relBaseDir)
+
+	if len(mod.internalDeps) > 0 {
+		if im.Scopes[scopeKey] == nil {
+			im.Scopes[scopeKey] = make(map[string]string)
 		}
 
-		if len(mod.internalDeps) > 0 {
-			if im.Scopes[scopeKey] == nil {
-				im.Scopes[scopeKey] = make(map[string]string)
-			}
-
-			for depName, depRel := range mod.internalDeps {
-				// Explicit Target Precedence & Canonical Hoisting Rule:
-				// If depName exists in im.Imports (explicitly declared or hoisted singleton),
-				// route internal imports of this dependency to the canonical import!
-				if rootRel, ok := im.Imports[depName]; ok {
-					im.Scopes[scopeKey][depName] = rootRel
-					if rootDir, ok := im.Imports[depName+"/"]; ok {
-						im.Scopes[scopeKey][depName+"/"] = rootDir
-					}
-				} else {
-					// Isolated private helper
-					im.Scopes[scopeKey][depName] = depRel
-					dir := filepath.Dir(depRel)
-					if !strings.HasPrefix(dir, ".") && !strings.HasPrefix(dir, "/") {
-						dir = "./" + dir
-					}
-					if !strings.HasSuffix(dir, "/") {
-						dir += "/"
-					}
-					im.Scopes[scopeKey][depName+"/"] = dir
+		for depName, depRel := range mod.internalDeps {
+			// Explicit Target Precedence & Canonical Hoisting Rule:
+			// If depName exists in im.Imports (explicitly declared or hoisted singleton),
+			// route internal imports of this dependency to the canonical import!
+			if rootRel, ok := im.Imports[depName]; ok {
+				im.Scopes[scopeKey][depName] = rootRel
+				if rootDir, ok := im.Imports[depName+"/"]; ok {
+					im.Scopes[scopeKey][depName+"/"] = rootDir
 				}
-			}
-		}
-
-		// Backward compatibility: map meta.Imports
-		for k, v := range mod.meta.Imports {
-			if mod.meta.Name != "" && (k == mod.meta.Name || strings.HasPrefix(k, mod.meta.Name+"/")) {
-				continue
-			}
-			if k == mod.meta.Entry || k == "./"+mod.meta.Entry {
-				continue
-			}
-			resolved := resolveImportPath(v, mod.baseDir, workingDir)
-			if strings.HasSuffix(k, "/") && !strings.HasSuffix(resolved, "/") {
-				resolved += "/"
-			}
-			if strings.HasPrefix(v, "./") && len(mod.internalDeps) > 0 {
-				if im.Scopes[scopeKey] == nil {
-					im.Scopes[scopeKey] = make(map[string]string)
-				}
-				im.Scopes[scopeKey][k] = resolved
 			} else {
-				if _, ok := im.Imports[k]; !ok {
-					im.Imports[k] = resolved
-				}
+				// Isolated private helper
+				im.Scopes[scopeKey][depName] = depRel
+				im.Scopes[scopeKey][depName+"/"] = dirFromPath(depRel)
 			}
 		}
 	}
 
-	return im, nil
+	// Backward compatibility: map meta.Imports
+	for k, v := range mod.meta.Imports {
+		if mod.meta.Name != "" && (k == mod.meta.Name || strings.HasPrefix(k, mod.meta.Name+"/")) {
+			continue
+		}
+		if k == mod.meta.Entry || k == "./"+mod.meta.Entry {
+			continue
+		}
+		resolved := resolveImportPath(v, mod.baseDir, workingDir)
+		if strings.HasSuffix(k, "/") && !strings.HasSuffix(resolved, "/") {
+			resolved += "/"
+		}
+		if strings.HasPrefix(v, "./") && len(mod.internalDeps) > 0 {
+			if im.Scopes[scopeKey] == nil {
+				im.Scopes[scopeKey] = make(map[string]string)
+			}
+			im.Scopes[scopeKey][k] = resolved
+		} else {
+			if _, ok := im.Imports[k]; !ok {
+				im.Imports[k] = resolved
+			}
+		}
+	}
 }
 
 // WriteToFile serializes the ImportMap to the specified path.
@@ -557,6 +566,21 @@ func isSourceFile(path string) bool {
 		strings.HasSuffix(path, ".js") ||
 		strings.HasSuffix(path, ".jsx") ||
 		strings.HasSuffix(path, ".mjs")
+}
+
+func dirFromPath(filePath string) string {
+	dir := filepath.Dir(filePath)
+	return ensureTrailingSlash(dir)
+}
+
+func ensureTrailingSlash(dir string) string {
+	if !strings.HasPrefix(dir, ".") && !strings.HasPrefix(dir, "/") {
+		dir = "./" + dir
+	}
+	if !strings.HasSuffix(dir, "/") {
+		dir += "/"
+	}
+	return dir
 }
 
 func relativeTo(base, target string) (string, error) {
