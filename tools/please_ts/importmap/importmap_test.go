@@ -164,3 +164,180 @@ func TestLoadMetadataPackageSubpaths(t *testing.T) {
 		}
 	}
 }
+
+func TestSynthesizeScopesAndPrecedence(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "importmap_scopes_*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// 1. Explicit third_party/react
+	reactDir := filepath.Join(tmpDir, "third_party", "react")
+	_ = os.MkdirAll(reactDir, 0755)
+	_ = os.WriteFile(filepath.Join(reactDir, "index.js"), []byte("module.exports = { version: '18.3.1' };"), 0644)
+	reactMeta := `{
+		"name": "react",
+		"entry": "index.js"
+	}`
+	_ = os.WriteFile(filepath.Join(reactDir, "ts_module.json"), []byte(reactMeta), 0644)
+
+	// 2. third_party/react-router with internal .deps/react
+	routerDir := filepath.Join(tmpDir, "third_party", "react-router")
+	routerInternalReact := filepath.Join(routerDir, ".deps", "react")
+	_ = os.MkdirAll(routerInternalReact, 0755)
+	_ = os.WriteFile(filepath.Join(routerDir, "index.js"), []byte("const r = require('react');"), 0644)
+	_ = os.WriteFile(filepath.Join(routerInternalReact, "index.js"), []byte("module.exports = { internal: true };"), 0644)
+	routerMeta := `{
+		"name": "react-router",
+		"entry": "index.js",
+		"deps": {
+			"react": "./.deps/react/index.js"
+		}
+	}`
+	_ = os.WriteFile(filepath.Join(routerDir, "ts_module.json"), []byte(routerMeta), 0644)
+
+	src := filepath.Join(tmpDir, "src", "app.ts")
+	_ = os.MkdirAll(filepath.Dir(src), 0755)
+	_ = os.WriteFile(src, []byte("import React from 'react'; import { Router } from 'react-router';"), 0644)
+
+	im, err := Synthesize("", []string{src}, []string{reactDir, routerDir}, tmpDir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify top-level imports
+	if got := im.Imports["react"]; got != "./third_party/react/index.js" {
+		t.Errorf("expected imports['react'] = './third_party/react/index.js', got %q", got)
+	}
+	if got := im.Imports["react-router"]; got != "./third_party/react-router/index.js" {
+		t.Errorf("expected imports['react-router'] = './third_party/react-router/index.js', got %q", got)
+	}
+
+	// Verify react-router scope redirects to the explicit root react!
+	scopeKey := "./third_party/react-router/"
+	routerScope := im.Scopes[scopeKey]
+	if routerScope == nil {
+		t.Fatalf("expected scope for %q", scopeKey)
+	}
+	if got := routerScope["react"]; got != "./third_party/react/index.js" {
+		t.Errorf("expected scope['react'] redirected to root target './third_party/react/index.js', got %q", got)
+	}
+}
+
+func TestSynthesizeSingletonHoisting(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "importmap_hoist_*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// libA and libB both need react (peer dependency), but react is NOT explicitly declared
+	libADir := filepath.Join(tmpDir, "third_party", "libA")
+	libAInternalReact := filepath.Join(libADir, ".deps", "react")
+	_ = os.MkdirAll(libAInternalReact, 0755)
+	_ = os.WriteFile(filepath.Join(libADir, "index.js"), []byte("export const a = 1;"), 0644)
+	_ = os.WriteFile(filepath.Join(libAInternalReact, "index.js"), []byte("export const React = {};"), 0644)
+	libAMeta := `{
+		"name": "libA",
+		"entry": "index.js",
+		"peer_deps": {
+			"react": "^18.0.0"
+		},
+		"deps": {
+			"react": "./.deps/react/index.js"
+		}
+	}`
+	_ = os.WriteFile(filepath.Join(libADir, "ts_module.json"), []byte(libAMeta), 0644)
+
+	libBDir := filepath.Join(tmpDir, "third_party", "libB")
+	_ = os.MkdirAll(libBDir, 0755)
+	_ = os.WriteFile(filepath.Join(libBDir, "index.js"), []byte("export const b = 2;"), 0644)
+	libBMeta := `{
+		"name": "libB",
+		"entry": "index.js",
+		"peer_deps": {
+			"react": "^18.0.0"
+		}
+	}`
+	_ = os.WriteFile(filepath.Join(libBDir, "ts_module.json"), []byte(libBMeta), 0644)
+
+	src := filepath.Join(tmpDir, "app.ts")
+	_ = os.WriteFile(src, []byte("import { a } from 'libA';"), 0644)
+
+	im, err := Synthesize("", []string{src}, []string{libADir, libBDir}, tmpDir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify react is hoisted to top-level imports!
+	if got := im.Imports["react"]; got != "./third_party/libA/.deps/react/index.js" {
+		t.Errorf("expected hoisted imports['react'] = './third_party/libA/.deps/react/index.js', got %q", got)
+	}
+
+	// Verify libA scope points to hoisted react
+	if got := im.Scopes["./third_party/libA/"]["react"]; got != "./third_party/libA/.deps/react/index.js" {
+		t.Errorf("expected libA scope['react'] = './third_party/libA/.deps/react/index.js', got %q", got)
+	}
+}
+
+func TestSynthesizeConflictingInternalScopes(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "importmap_conflict_*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// express has debug@2
+	expressDir := filepath.Join(tmpDir, "third_party", "express")
+	expressDebug := filepath.Join(expressDir, ".deps", "debug")
+	_ = os.MkdirAll(expressDebug, 0755)
+	_ = os.WriteFile(filepath.Join(expressDir, "index.js"), []byte("const debug = require('debug');"), 0644)
+	_ = os.WriteFile(filepath.Join(expressDebug, "index.js"), []byte("module.exports = 'debug-v2';"), 0644)
+	expressMeta := `{
+		"name": "express",
+		"entry": "index.js",
+		"deps": {
+			"debug": "./.deps/debug/index.js"
+		}
+	}`
+	_ = os.WriteFile(filepath.Join(expressDir, "ts_module.json"), []byte(expressMeta), 0644)
+
+	// cors has debug@4
+	corsDir := filepath.Join(tmpDir, "third_party", "cors")
+	corsDebug := filepath.Join(corsDir, ".deps", "debug")
+	_ = os.MkdirAll(corsDebug, 0755)
+	_ = os.WriteFile(filepath.Join(corsDir, "index.js"), []byte("const debug = require('debug');"), 0644)
+	_ = os.WriteFile(filepath.Join(corsDebug, "index.js"), []byte("module.exports = 'debug-v4';"), 0644)
+	corsMeta := `{
+		"name": "cors",
+		"entry": "index.js",
+		"deps": {
+			"debug": "./.deps/debug/index.js"
+		}
+	}`
+	_ = os.WriteFile(filepath.Join(corsDir, "ts_module.json"), []byte(corsMeta), 0644)
+
+	src := filepath.Join(tmpDir, "app.ts")
+	_ = os.WriteFile(src, []byte("import express from 'express'; import cors from 'cors';"), 0644)
+
+	im, err := Synthesize("", []string{src}, []string{expressDir, corsDir}, tmpDir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// debug must NOT be leaked to root imports!
+	if _, leaked := im.Imports["debug"]; leaked {
+		t.Errorf("private helper 'debug' should not be leaked to root imports")
+	}
+
+	// express scope gets its debug v2
+	if got := im.Scopes["./third_party/express/"]["debug"]; got != "./third_party/express/.deps/debug/index.js" {
+		t.Errorf("expected express debug = './third_party/express/.deps/debug/index.js', got %q", got)
+	}
+
+	// cors scope gets its debug v4
+	if got := im.Scopes["./third_party/cors/"]["debug"]; got != "./third_party/cors/.deps/debug/index.js" {
+		t.Errorf("expected cors debug = './third_party/cors/.deps/debug/index.js', got %q", got)
+	}
+}

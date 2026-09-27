@@ -25,11 +25,22 @@ func New() *ImportMap {
 // ModuleMetadata represents metadata emitted by ts_module or ts_library.
 type ModuleMetadata struct {
 	Name       string            `json:"name"`
+	Version    string            `json:"version,omitempty"`
 	Entry      string            `json:"entry"`
 	Types      string            `json:"types,omitempty"`
 	Imports    map[string]string `json:"imports,omitempty"`
 	Files      []string          `json:"files,omitempty"`
 	SourcePath string            `json:"source_path,omitempty"`
+	Deps       map[string]string `json:"deps,omitempty"`
+	PeerDeps   map[string]string `json:"peer_deps,omitempty"`
+}
+
+type loadedModule struct {
+	meta         ModuleMetadata
+	baseDir      string
+	relBaseDir   string
+	relEntry     string
+	internalDeps map[string]string
 }
 
 // Synthesize generates an ImportMap for a target given its moduleName, srcs, and deps.
@@ -78,7 +89,7 @@ func Synthesize(moduleName string, srcs []string, deps []string, workingDir stri
 		}
 	}
 
-	// 2. Map dependencies
+	// 2. Discover all dependencies
 	allDeps := make([]string, 0, len(deps))
 	allDeps = append(allDeps, deps...)
 
@@ -92,7 +103,9 @@ func Synthesize(moduleName string, srcs []string, deps []string, workingDir stri
 		return nil
 	})
 
+	var loadedModules []*loadedModule
 	seenDeps := make(map[string]bool)
+
 	for _, dep := range allDeps {
 		dep = strings.TrimSpace(dep)
 		if dep == "" || seenDeps[dep] {
@@ -102,8 +115,12 @@ func Synthesize(moduleName string, srcs []string, deps []string, workingDir stri
 
 		// Check if dep points to a module metadata JSON file
 		if strings.HasSuffix(dep, "ts_module.json") || strings.HasSuffix(dep, "ts_metadata.json") {
-			if err := loadMetadata(im, dep, workingDir); err != nil {
+			mod, err := loadMetadataFile(dep, workingDir)
+			if err != nil {
 				return nil, fmt.Errorf("failed loading metadata from %s: %w", dep, err)
+			}
+			if mod != nil {
+				loadedModules = append(loadedModules, mod)
 			}
 			continue
 		}
@@ -113,16 +130,24 @@ func Synthesize(moduleName string, srcs []string, deps []string, workingDir stri
 		if err == nil && info.IsDir() {
 			metaPath := filepath.Join(dep, "ts_module.json")
 			if _, err := os.Stat(metaPath); err == nil {
-				if err := loadMetadata(im, metaPath, workingDir); err != nil {
+				mod, err := loadMetadataFile(metaPath, workingDir)
+				if err != nil {
 					return nil, fmt.Errorf("failed loading %s: %w", metaPath, err)
+				}
+				if mod != nil {
+					loadedModules = append(loadedModules, mod)
 				}
 				continue
 			}
 
 			metaLibPath := filepath.Join(dep, "ts_metadata.json")
 			if _, err := os.Stat(metaLibPath); err == nil {
-				if err := loadMetadata(im, metaLibPath, workingDir); err != nil {
+				mod, err := loadMetadataFile(metaLibPath, workingDir)
+				if err != nil {
 					return nil, fmt.Errorf("failed loading %s: %w", metaLibPath, err)
+				}
+				if mod != nil {
+					loadedModules = append(loadedModules, mod)
 				}
 				continue
 			}
@@ -146,6 +171,135 @@ func Synthesize(moduleName string, srcs []string, deps []string, workingDir stri
 		}
 	}
 
+	// 3. Collect root modules and register top-level imports
+	rootModules := make(map[string]*loadedModule)
+	for _, mod := range loadedModules {
+		if mod.meta.Name != "" {
+			rootModules[mod.meta.Name] = mod
+			if mod.relEntry != "" {
+				im.Imports[mod.meta.Name] = mod.relEntry
+				im.Imports[mod.meta.Entry] = mod.relEntry
+				im.Imports["./"+mod.meta.Entry] = mod.relEntry
+				if !strings.HasSuffix(mod.meta.Name, "/") {
+					dir := filepath.Dir(mod.relEntry)
+					if !strings.HasPrefix(dir, ".") && !strings.HasPrefix(dir, "/") {
+						dir = "./" + dir
+					}
+					if !strings.HasSuffix(dir, "/") {
+						dir += "/"
+					}
+					im.Imports[mod.meta.Name+"/"] = dir
+				}
+			}
+			mapModuleFiles(im, mod, workingDir)
+		}
+	}
+
+	// 4. Detect shared singletons / peer dependencies across modules to hoist to root imports
+	depCounts := make(map[string]int)
+	depCanonical := make(map[string]string)
+	isPeer := make(map[string]bool)
+
+	for _, mod := range loadedModules {
+		for peer := range mod.meta.PeerDeps {
+			isPeer[peer] = true
+		}
+		for depName, depRel := range mod.internalDeps {
+			depCounts[depName]++
+			if _, ok := depCanonical[depName]; !ok {
+				depCanonical[depName] = depRel
+			}
+		}
+	}
+
+	for depName, canonicalRel := range depCanonical {
+		if _, inRoot := rootModules[depName]; inRoot {
+			continue
+		}
+		if _, inImports := im.Imports[depName]; inImports {
+			continue
+		}
+		// Only hoist if explicitly marked as a peer dependency
+		if isPeer[depName] {
+			im.Imports[depName] = canonicalRel
+			dir := filepath.Dir(canonicalRel)
+			if !strings.HasPrefix(dir, ".") && !strings.HasPrefix(dir, "/") {
+				dir = "./" + dir
+			}
+			if !strings.HasSuffix(dir, "/") {
+				dir += "/"
+			}
+			im.Imports[depName+"/"] = dir
+		}
+	}
+
+	// 5. Populate scopes for each module
+	for _, mod := range loadedModules {
+		if mod.relBaseDir == "" {
+			continue
+		}
+		scopeKey := mod.relBaseDir
+		if !strings.HasPrefix(scopeKey, ".") && !strings.HasPrefix(scopeKey, "/") {
+			scopeKey = "./" + scopeKey
+		}
+		if !strings.HasSuffix(scopeKey, "/") {
+			scopeKey += "/"
+		}
+
+		if len(mod.internalDeps) > 0 {
+			if im.Scopes[scopeKey] == nil {
+				im.Scopes[scopeKey] = make(map[string]string)
+			}
+
+			for depName, depRel := range mod.internalDeps {
+				// Explicit Target Precedence & Canonical Hoisting Rule:
+				// If depName exists in im.Imports (explicitly declared or hoisted singleton),
+				// route internal imports of this dependency to the canonical import!
+				if rootRel, ok := im.Imports[depName]; ok {
+					im.Scopes[scopeKey][depName] = rootRel
+					if rootDir, ok := im.Imports[depName+"/"]; ok {
+						im.Scopes[scopeKey][depName+"/"] = rootDir
+					}
+				} else {
+					// Isolated private helper
+					im.Scopes[scopeKey][depName] = depRel
+					dir := filepath.Dir(depRel)
+					if !strings.HasPrefix(dir, ".") && !strings.HasPrefix(dir, "/") {
+						dir = "./" + dir
+					}
+					if !strings.HasSuffix(dir, "/") {
+						dir += "/"
+					}
+					im.Scopes[scopeKey][depName+"/"] = dir
+				}
+			}
+		}
+
+		// Backward compatibility: map meta.Imports
+		for k, v := range mod.meta.Imports {
+			if mod.meta.Name != "" && (k == mod.meta.Name || strings.HasPrefix(k, mod.meta.Name+"/")) {
+				continue
+			}
+			if k == mod.meta.Entry || k == "./"+mod.meta.Entry {
+				continue
+			}
+			resolved := resolveImportPath(v, mod.baseDir, workingDir)
+			if strings.HasSuffix(k, "/") && !strings.HasSuffix(resolved, "/") {
+				resolved += "/"
+			}
+			if strings.HasPrefix(v, "./") && len(mod.internalDeps) > 0 {
+				if im.Scopes[scopeKey] == nil {
+					im.Scopes[scopeKey] = make(map[string]string)
+				}
+				im.Scopes[scopeKey][k] = resolved
+			} else {
+				if _, ok := im.Imports[k]; !ok {
+					im.Imports[k] = resolved
+				}
+			}
+		}
+	}
+
 	return im, nil
 }
 
@@ -163,13 +317,201 @@ func (im *ImportMap) WriteToFile(filePath string) error {
 	return os.WriteFile(filePath, data, 0644)
 }
 
+func loadMetadataFile(metaFile, workingDir string) (*loadedModule, error) {
+	data, err := os.ReadFile(metaFile)
+	if err != nil {
+		return nil, err
+	}
+
+	var meta ModuleMetadata
+	if err := json.Unmarshal(data, &meta); err != nil {
+		return nil, err
+	}
+
+	baseDir := filepath.Dir(metaFile)
+	relBaseDir, err := relativeTo(workingDir, baseDir)
+	if err != nil {
+		relBaseDir = baseDir
+	}
+
+	relEntry := ""
+	if meta.Entry != "" {
+		entryPath := filepath.Join(baseDir, meta.Entry)
+		if rel, err := relativeTo(workingDir, entryPath); err == nil {
+			relEntry = rel
+		}
+	}
+
+	mod := &loadedModule{
+		meta:         meta,
+		baseDir:      baseDir,
+		relBaseDir:   relBaseDir,
+		relEntry:     relEntry,
+		internalDeps: make(map[string]string),
+	}
+
+	// 1. Process meta.Deps
+	for k, v := range meta.Deps {
+		depPath := v
+		if !filepath.IsAbs(depPath) && !strings.HasPrefix(depPath, "http://") && !strings.HasPrefix(depPath, "https://") && !strings.HasPrefix(depPath, "npm:") {
+			depPath = filepath.Join(baseDir, v)
+		}
+		if rel, err := relativeTo(workingDir, depPath); err == nil {
+			mod.internalDeps[k] = rel
+		} else {
+			mod.internalDeps[k] = v
+		}
+	}
+
+	// 2. Discover .deps directory if present
+	depsDir := filepath.Join(baseDir, ".deps")
+	if info, err := os.Stat(depsDir); err == nil && info.IsDir() {
+		discoverInternalDeps(depsDir, workingDir, mod.internalDeps)
+	}
+
+	return mod, nil
+}
+
+func discoverInternalDeps(depsDir, workingDir string, result map[string]string) {
+	entries, err := os.ReadDir(depsDir)
+	if err != nil {
+		return
+	}
+
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		pkgName := e.Name()
+		pkgDir := filepath.Join(depsDir, pkgName)
+
+		if strings.HasPrefix(pkgName, "@") {
+			subEntries, err := os.ReadDir(pkgDir)
+			if err == nil {
+				for _, sub := range subEntries {
+					if sub.IsDir() {
+						scopedName := pkgName + "/" + sub.Name()
+						subDir := filepath.Join(pkgDir, sub.Name())
+						entry := findPackageEntry(subDir)
+						if entry != "" {
+							if rel, err := relativeTo(workingDir, filepath.Join(subDir, entry)); err == nil {
+								if _, exists := result[scopedName]; !exists {
+									result[scopedName] = rel
+								}
+							}
+						}
+					}
+				}
+			}
+			continue
+		}
+
+		entry := findPackageEntry(pkgDir)
+		if entry != "" {
+			if rel, err := relativeTo(workingDir, filepath.Join(pkgDir, entry)); err == nil {
+				if _, exists := result[pkgName]; !exists {
+					result[pkgName] = rel
+				}
+			}
+		}
+	}
+}
+
+func findPackageEntry(pkgDir string) string {
+	pkgJSONPath := filepath.Join(pkgDir, "package.json")
+	if data, err := os.ReadFile(pkgJSONPath); err == nil {
+		var p struct {
+			Main   string `json:"main"`
+			Module string `json:"module"`
+		}
+		if json.Unmarshal(data, &p) == nil {
+			if p.Module != "" {
+				if _, err := os.Stat(filepath.Join(pkgDir, p.Module)); err == nil {
+					return p.Module
+				}
+			}
+			if p.Main != "" {
+				if _, err := os.Stat(filepath.Join(pkgDir, p.Main)); err == nil {
+					return p.Main
+				}
+				if _, err := os.Stat(filepath.Join(pkgDir, p.Main+".js")); err == nil {
+					return p.Main + ".js"
+				}
+			}
+		}
+	}
+
+	candidates := []string{
+		"index.mjs", "index.js", "mod.ts", "index.ts",
+		"dist/index.mjs", "dist/index.js",
+	}
+	for _, c := range candidates {
+		if _, err := os.Stat(filepath.Join(pkgDir, c)); err == nil {
+			return c
+		}
+	}
+	return ""
+}
+
+func mapModuleFiles(im *ImportMap, mod *loadedModule, workingDir string) {
+	if mod.meta.Name == "" {
+		return
+	}
+
+	for _, f := range mod.meta.Files {
+		filePath := filepath.Join(mod.baseDir, f)
+		if rel, err := relativeTo(workingDir, filePath); err == nil {
+			ext := filepath.Ext(f)
+			nameWithoutExt := strings.TrimSuffix(f, ext)
+			im.Imports[mod.meta.Name+"/"+f] = rel
+			im.Imports[mod.meta.Name+"/"+nameWithoutExt] = rel
+			im.Imports["./"+f] = rel
+			im.Imports[f] = rel
+		}
+	}
+
+	if entries, err := os.ReadDir(mod.baseDir); err == nil {
+		for _, e := range entries {
+			if !e.IsDir() && isSourceFile(e.Name()) {
+				filePath := filepath.Join(mod.baseDir, e.Name())
+				if rel, err := relativeTo(workingDir, filePath); err == nil {
+					name := e.Name()
+					ext := filepath.Ext(name)
+					nameWithoutExt := strings.TrimSuffix(name, ext)
+					im.Imports[mod.meta.Name+"/"+name] = rel
+					im.Imports[mod.meta.Name+"/"+nameWithoutExt] = rel
+					im.Imports["./"+name] = rel
+					im.Imports[name] = rel
+				}
+			}
+		}
+	}
+}
+
+func resolveImportPath(v, baseDir, workingDir string) string {
+	if strings.HasPrefix(v, "http://") || strings.HasPrefix(v, "https://") || strings.HasPrefix(v, "jsr:") || strings.HasPrefix(v, "npm:") {
+		return v
+	}
+	cleanV := strings.TrimPrefix(v, "./")
+	if _, err := os.Stat(cleanV); err == nil {
+		if rel, err := relativeTo(workingDir, cleanV); err == nil {
+			return rel
+		}
+	} else {
+		fullPath := filepath.Join(baseDir, v)
+		if rel, err := relativeTo(workingDir, fullPath); err == nil {
+			return rel
+		}
+	}
+	return v
+}
+
 func findTargetEntry(moduleName string, srcs []string) string {
 	cleanName := filepath.Base(moduleName)
 	if strings.HasPrefix(cleanName, "@") {
 		cleanName = strings.TrimPrefix(cleanName, "@")
 	}
 
-	// Look for exact match name.ts, mod.ts, index.ts, or first src
 	for _, src := range srcs {
 		base := filepath.Base(src)
 		if base == cleanName+".ts" || base == cleanName+".tsx" || base == cleanName+".js" {
@@ -183,104 +525,6 @@ func findTargetEntry(moduleName string, srcs []string) string {
 		}
 	}
 	return srcs[0]
-}
-
-func loadMetadata(im *ImportMap, metaFile string, workingDir string) error {
-	data, err := os.ReadFile(metaFile)
-	if err != nil {
-		return err
-	}
-
-	var meta ModuleMetadata
-	if err := json.Unmarshal(data, &meta); err != nil {
-		return err
-	}
-
-	baseDir := filepath.Dir(metaFile)
-	if meta.Name != "" && meta.Entry != "" {
-		entryPath := filepath.Join(baseDir, meta.Entry)
-		relEntry, err := relativeTo(workingDir, entryPath)
-		if err == nil {
-			im.Imports[meta.Name] = relEntry
-			im.Imports[meta.Entry] = relEntry
-			im.Imports["./"+meta.Entry] = relEntry
-			if !strings.HasSuffix(meta.Name, "/") {
-				dir := filepath.Dir(relEntry)
-				if !strings.HasPrefix(dir, ".") && !strings.HasPrefix(dir, "/") {
-					dir = "./" + dir
-				}
-				if !strings.HasSuffix(dir, "/") {
-					dir += "/"
-				}
-				im.Imports[meta.Name+"/"] = dir
-			}
-		}
-	}
-
-	// Map any source files in baseDir and meta.Files under meta.Name and relative names
-	if meta.Name != "" {
-		for _, f := range meta.Files {
-			filePath := filepath.Join(baseDir, f)
-			if rel, err := relativeTo(workingDir, filePath); err == nil {
-				ext := filepath.Ext(f)
-				nameWithoutExt := strings.TrimSuffix(f, ext)
-				im.Imports[meta.Name+"/"+f] = rel
-				im.Imports[meta.Name+"/"+nameWithoutExt] = rel
-				im.Imports["./"+f] = rel
-				im.Imports[f] = rel
-			}
-		}
-	}
-
-	if entries, err := os.ReadDir(baseDir); err == nil {
-		for _, e := range entries {
-			if !e.IsDir() && isSourceFile(e.Name()) {
-				filePath := filepath.Join(baseDir, e.Name())
-				if rel, err := relativeTo(workingDir, filePath); err == nil {
-					name := e.Name()
-					ext := filepath.Ext(name)
-					nameWithoutExt := strings.TrimSuffix(name, ext)
-					if meta.Name != "" {
-						im.Imports[meta.Name+"/"+name] = rel
-						im.Imports[meta.Name+"/"+nameWithoutExt] = rel
-					}
-					im.Imports["./"+name] = rel
-					im.Imports[name] = rel
-				}
-			}
-		}
-	}
-
-	for k, v := range meta.Imports {
-		if meta.Name != "" && (k == meta.Name || strings.HasPrefix(k, meta.Name+"/")) {
-			continue
-		}
-		if k == meta.Entry || k == "./"+meta.Entry {
-			continue
-		}
-		resolved := v
-		if !strings.HasPrefix(v, "http://") && !strings.HasPrefix(v, "https://") && !strings.HasPrefix(v, "jsr:") && !strings.HasPrefix(v, "npm:") {
-			cleanV := strings.TrimPrefix(v, "./")
-			if _, err := os.Stat(cleanV); err == nil {
-				rel, err := relativeTo(workingDir, cleanV)
-				if err == nil {
-					resolved = rel
-				}
-			} else {
-				fullPath := filepath.Join(baseDir, v)
-				rel, err := relativeTo(workingDir, fullPath)
-				if err == nil {
-					resolved = rel
-				}
-			}
-		}
-		if strings.HasSuffix(k, "/") && !strings.HasSuffix(resolved, "/") {
-			resolved += "/"
-		}
-		im.Imports[k] = resolved
-	}
-
-	return nil
 }
 
 func mapDirectory(im *ImportMap, dir string, workingDir string) {

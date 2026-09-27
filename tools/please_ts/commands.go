@@ -190,6 +190,8 @@ func handleUnpack(args []string) error {
 	name := cmd.String("name", "", "Module/package name")
 	binary := cmd.String("binary", "", "Binary executable to extract in toolchain mode")
 	symlink := cmd.String("symlink", "", "Optional symlink name for extracted binary")
+	resolveTransitive := cmd.Bool("resolve-transitive", false, "Recursively resolve and download transitive dependencies")
+	registry := cmd.String("registry", "", "NPM registry base URL")
 
 	if err := cmd.Parse(args); err != nil {
 		return err
@@ -201,12 +203,14 @@ func handleUnpack(args []string) error {
 	}
 
 	opts := unpack.Options{
-		Archive: archivePath,
-		Tarball: *tarball,
-		Out:     *out,
-		Name:    *name,
-		Binary:  *binary,
-		Symlink: *symlink,
+		Archive:           archivePath,
+		Tarball:           *tarball,
+		Out:               *out,
+		Name:              *name,
+		Binary:            *binary,
+		Symlink:           *symlink,
+		ResolveTransitive: *resolveTransitive,
+		Registry:          *registry,
 	}
 	return unpack.Run(opts)
 }

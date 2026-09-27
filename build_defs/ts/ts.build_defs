@@ -178,9 +178,11 @@ def ts_module(
         hashes: list = None,
         url: str = "",
         deps: list = None,
+        resolve_transitive: bool = True,
+        registry: str = "",
         visibility: list = None,
         labels: list = None):
-    """Downloads an npm package tarball, extracts it, and creates metadata for downstream targets."""
+    """Downloads an npm package tarball, extracts it, resolves transitive dependencies, and creates metadata for downstream targets."""
     pkg = package or name
     ver = version
 
@@ -198,7 +200,9 @@ def ts_module(
     )
 
     tools = {"TOOL": [_ts_tool()]}
-    cmd = f'$TOOLS_TOOL unpack --tarball "$SRCS" --out "$OUT" --name "{pkg}"'
+    transitive_flag = "--resolve-transitive" if resolve_transitive else ""
+    registry_flag = f'--registry "{registry}"' if registry else ""
+    cmd = f'$TOOLS_TOOL unpack --tarball "$SRCS" --out "$OUT" --name "{pkg}" {transitive_flag} {registry_flag}'
 
     return build_rule(
         name = name,
@@ -207,6 +211,7 @@ def ts_module(
         exported_deps = deps or [],
         outs = [name],
         cmd = cmd,
+        sandbox = not resolve_transitive,
         needs_transitive_deps = True,
         tools = tools,
         visibility = visibility or ["PUBLIC"],

@@ -45,14 +45,27 @@ ts_module(
 
 ### Arguments
 
-| Argument  | Type   | Default    | Description                                                                     |
-| :-------- | :----- | :--------- | :------------------------------------------------------------------------------ |
-| `name`    | `str`  | (required) | Target name.                                                                    |
-| `package` | `str`  | `""`       | NPM package specifier (e.g. `"clsx"`, `"@preact/signals"`). Defaults to `name`. |
-| `version` | `str`  | `""`       | NPM package version.                                                            |
-| `hashes`  | `list` | `[]`       | SHA-256 integrity checksums for the downloaded tarball.                         |
-| `url`     | `str`  | `""`       | Custom URL override.                                                            |
-| `deps`    | `list` | `[]`       | Dependencies of this module.                                                    |
+| Argument             | Type   | Default    | Description                                                                                     |
+| :------------------- | :----- | :--------- | :---------------------------------------------------------------------------------------------- |
+| `name`               | `str`  | (required) | Target name.                                                                                    |
+| `package`            | `str`  | `""`       | NPM package specifier (e.g. `"clsx"`, `"@preact/signals"`). Defaults to `name`.                 |
+| `version`            | `str`  | `""`       | NPM package version.                                                                            |
+| `hashes`             | `list` | `[]`       | SHA-256 integrity checksums for the downloaded tarball.                                         |
+| `url`                | `str`  | `""`       | Custom URL override.                                                                            |
+| `deps`               | `list` | `[]`       | Explicit dependencies of this module.                                                           |
+| `resolve_transitive` | `bool` | `True`     | Automatically resolve and unpack transitive npm dependencies into an isolated scoped directory. |
+| `registry`           | `str`  | `""`       | Optional custom NPM registry URL override.                                                      |
+
+#### Automatic Transitive Resolution & Scoped Import Maps
+
+When `resolve_transitive = True` (the default), `ts_module` automatically resolves
+and unpacks all transitive dependencies into an internal `.deps/` directory.
+Downstream targets (`ts_library`, `ts_binary`, `ts_test`) synthesize an ephemeral
+W3C import map using `scopes`:
+
+- Transitive helpers remain strictly scoped to the parent module without leaking into global imports.
+- If multiple modules depend on the same singleton or peer dependency, it is automatically hoisted.
+- If an explicit `ts_module` target is provided in `deps`, it takes precedence and overrides any internal transitive version.
 
 ---
 

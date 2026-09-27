@@ -65,6 +65,7 @@ func Run(opts Options) error {
 	args := []string{
 		"compile",
 		"--no-remote",
+		"--unstable-detect-cjs",
 		"--import-map", importMapPath,
 		"-o", opts.Out,
 	}

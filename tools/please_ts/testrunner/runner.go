@@ -114,6 +114,9 @@ func runDeno(opts RunOptions, resultsFile string) error {
 	args := []string{
 		"test",
 		"--no-remote",
+		"--unstable-detect-cjs",
+		"--allow-read",
+		"--allow-env",
 		"--import-map", importMapPath,
 		"--junit-path", resultsFile,
 	}
@@ -129,6 +132,23 @@ func runDeno(opts RunOptions, resultsFile string) error {
 
 	cmd := exec.Command(denoBin, args...)
 	cmd.Env = append(os.Environ(), "DENO_DIR="+denoCacheDir)
+
+	var nodePaths []string
+	for _, dep := range opts.Deps {
+		if info, err := os.Stat(dep); err == nil && info.IsDir() {
+			if absDep, err := filepath.Abs(dep); err == nil {
+				nodePaths = append(nodePaths, absDep)
+				nodePaths = append(nodePaths, filepath.Dir(absDep))
+			}
+		}
+	}
+	if cwd, err := filepath.Abs("."); err == nil {
+		nodePaths = append(nodePaths, cwd)
+	}
+	if len(nodePaths) > 0 {
+		cmd.Env = append(cmd.Env, "NODE_PATH="+strings.Join(nodePaths, ":"))
+	}
+
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
