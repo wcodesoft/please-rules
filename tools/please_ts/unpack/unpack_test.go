@@ -3,141 +3,479 @@ package unpack
 import (
 	"archive/tar"
 	"archive/zip"
+	"bytes"
 	"compress/gzip"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"tools/please_ts/importmap"
 )
 
-func TestUnpackTarball(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "unpack_test_*")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(tmpDir)
-
-	tarPath := filepath.Join(tmpDir, "pkg.tgz")
-	f, err := os.Create(tarPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	gzw := gzip.NewWriter(f)
+func createTestTarball(t *testing.T, files map[string]string) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	gzw := gzip.NewWriter(&buf)
 	tw := tar.NewWriter(gzw)
 
-	pkgJSON := `{"name": "test-pkg", "main": "index.js", "types": "index.d.ts"}`
-	hdr := &tar.Header{
-		Name: "package/package.json",
-		Mode: 0644,
-		Size: int64(len(pkgJSON)),
-	}
-	if err := tw.WriteHeader(hdr); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := tw.Write([]byte(pkgJSON)); err != nil {
-		t.Fatal(err)
-	}
-
-	jsContent := `console.log("hello");`
-	hdr2 := &tar.Header{
-		Name: "package/index.js",
-		Mode: 0644,
-		Size: int64(len(jsContent)),
-	}
-	if err := tw.WriteHeader(hdr2); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := tw.Write([]byte(jsContent)); err != nil {
-		t.Fatal(err)
+	for name, content := range files {
+		tarName := name
+		if !strings.HasPrefix(tarName, "package/") {
+			tarName = "package/" + tarName
+		}
+		hdr := &tar.Header{
+			Name: tarName,
+			Mode: 0644,
+			Size: int64(len(content)),
+		}
+		if err := tw.WriteHeader(hdr); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tw.Write([]byte(content)); err != nil {
+			t.Fatal(err)
+		}
 	}
 
-	tw.Close()
-	gzw.Close()
-	f.Close()
+	_ = tw.Close()
+	_ = gzw.Close()
+	return buf.Bytes()
+}
 
-	outDir := filepath.Join(tmpDir, "out")
-	opts := Options{
-		Tarball: tarPath,
-		Out:     outDir,
-		Name:    "test-pkg",
+func TestSemverParseMatrix(t *testing.T) {
+	tests := []struct {
+		input string
+		want  [3]int
+	}{
+		{"1.2.3", [3]int{1, 2, 3}},
+		{"v2.10.4", [3]int{2, 10, 4}},
+		{"0.4.0-alpha.1", [3]int{0, 4, 0}},
+		{"1.0.0+build.1", [3]int{1, 0, 0}},
+		{"3", [3]int{3, 0, 0}},
+		{"1.5", [3]int{1, 5, 0}},
 	}
 
-	if err := Run(opts); err != nil {
-		t.Fatalf("unpack.Run failed: %v", err)
-	}
-
-	if _, err := os.Stat(filepath.Join(outDir, "index.js")); err != nil {
-		t.Errorf("expected extracted index.js: %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(outDir, "ts_module.json")); err != nil {
-		t.Errorf("expected generated ts_module.json: %v", err)
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := parseSemver(tt.input)
+			if got != tt.want {
+				t.Errorf("parseSemver(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+		})
 	}
 }
 
-func TestUnpackZipToolchain(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "unpack_toolchain_test_*")
+func TestSemverCompareMatrix(t *testing.T) {
+	tests := []struct {
+		a    [3]int
+		b    [3]int
+		want int
+	}{
+		{[3]int{1, 2, 3}, [3]int{1, 2, 3}, 0},
+		{[3]int{2, 0, 0}, [3]int{1, 9, 9}, 1},
+		{[3]int{1, 2, 0}, [3]int{1, 3, 0}, -1},
+		{[3]int{1, 2, 4}, [3]int{1, 2, 3}, 1},
+		{[3]int{1, 2, 3}, [3]int{1, 2, 4}, -1},
+	}
+
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("%v_vs_%v", tt.a, tt.b), func(t *testing.T) {
+			got := compareSemver(tt.a, tt.b)
+			if got != tt.want {
+				t.Errorf("compareSemver(%v, %v) = %d, want %d", tt.a, tt.b, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestResolveVersionMatrix(t *testing.T) {
+	versions := map[string]npmVersionData{
+		"1.0.0": {Version: "1.0.0"},
+		"1.1.0": {Version: "1.1.0"},
+		"1.2.3": {Version: "1.2.3"},
+		"2.0.0": {Version: "2.0.0"},
+		"2.1.0": {Version: "2.1.0"},
+	}
+
+	tests := []struct {
+		constraint string
+		latest     string
+		want       string
+	}{
+		{"^1.0.0", "2.1.0", "1.2.3"},
+		{"~1.1.0", "2.1.0", "1.1.0"},
+		{">=2.0.0", "2.1.0", "2.1.0"},
+		{"1.0.0", "2.1.0", "1.0.0"},
+		{"latest", "2.1.0", "2.1.0"},
+		{"*", "2.1.0", "2.1.0"},
+		{"", "2.1.0", "2.1.0"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.constraint, func(t *testing.T) {
+			got := resolveVersion(tt.latest, versions, tt.constraint)
+			if got != tt.want {
+				t.Errorf("resolveVersion(latest=%q, constraint=%q) = %q, want %q", tt.latest, tt.constraint, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCleanRelativePathMatrix(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"foo/bar", "./foo/bar"},
+		{"./foo/bar", "./foo/bar"},
+		{"../foo/bar", "../foo/bar"},
+		{"/abs/path", "/abs/path"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := cleanRelativePath(tt.input)
+			if got != tt.want {
+				t.Errorf("cleanRelativePath(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestUnpackArchiveMatrix(t *testing.T) {
+	tests := []struct {
+		name      string
+		files     map[string]string
+		pkgName   string
+		wantEntry string
+		wantTypes string
+	}{
+		{
+			name: "package with main and types",
+			files: map[string]string{
+				"package.json": `{"name": "test-pkg", "main": "index.js", "types": "index.d.ts"}`,
+				"index.js":     `console.log("hello");`,
+				"index.d.ts":   `export declare const hello: string;`,
+			},
+			pkgName:   "test-pkg",
+			wantEntry: "index.js",
+			wantTypes: "index.d.ts",
+		},
+		{
+			name: "package with module field and typings alias",
+			files: map[string]string{
+				"package.json":    `{"name": "esm-pkg", "module": "dist/index.mjs", "typings": "dist/index.d.ts"}`,
+				"dist/index.mjs":  `export const foo = 1;`,
+				"dist/index.d.ts": `export declare const foo: number;`,
+			},
+			pkgName:   "esm-pkg",
+			wantEntry: "dist/index.mjs",
+			wantTypes: "dist/index.d.ts",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir, err := os.MkdirTemp("", "unpack_archive_*")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer os.RemoveAll(tmpDir)
+
+			tarPath := filepath.Join(tmpDir, "pkg.tgz")
+			tarBytes := createTestTarball(t, tt.files)
+			if err := os.WriteFile(tarPath, tarBytes, 0644); err != nil {
+				t.Fatal(err)
+			}
+
+			outDir := filepath.Join(tmpDir, "out")
+			opts := Options{
+				Tarball: tarPath,
+				Out:     outDir,
+				Name:    tt.pkgName,
+			}
+
+			if err := Run(opts); err != nil {
+				t.Fatalf("unpack.Run failed: %v", err)
+			}
+
+			metaBytes, err := os.ReadFile(filepath.Join(outDir, "ts_module.json"))
+			if err != nil {
+				t.Fatalf("failed reading ts_module.json: %v", err)
+			}
+			var meta importmap.ModuleMetadata
+			if err := json.Unmarshal(metaBytes, &meta); err != nil {
+				t.Fatalf("failed unmarshaling ts_module.json: %v", err)
+			}
+
+			if meta.Name != tt.pkgName {
+				t.Errorf("meta.Name = %q, want %q", meta.Name, tt.pkgName)
+			}
+			if meta.Entry != tt.wantEntry {
+				t.Errorf("meta.Entry = %q, want %q", meta.Entry, tt.wantEntry)
+			}
+			if meta.Types != tt.wantTypes {
+				t.Errorf("meta.Types = %q, want %q", meta.Types, tt.wantTypes)
+			}
+		})
+	}
+}
+
+func TestUnpackWithDiscoveredLocalDepsMatrix(t *testing.T) {
+	tests := []struct {
+		name      string
+		localDeps map[string]map[string]string // pkgName -> relFile -> content
+		wantDeps  map[string]string
+	}{
+		{
+			name: "unscoped and scoped local dependencies",
+			localDeps: map[string]map[string]string{
+				"child": {
+					"package.json": `{"name": "child", "main": "index.js"}`,
+					"index.js":     `module.exports = 'child';`,
+				},
+				"@scope/helper": {
+					"package.json": `{"name": "@scope/helper", "main": "index.js"}`,
+					"index.js":     `module.exports = 'scoped';`,
+				},
+			},
+			wantDeps: map[string]string{
+				"child":         "./.deps/child/index.js",
+				"@scope/helper": "./.deps/@scope/helper/index.js",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir, err := os.MkdirTemp("", "unpack_localdeps_*")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer os.RemoveAll(tmpDir)
+
+			tarPath := filepath.Join(tmpDir, "pkg.tgz")
+			tarBytes := createTestTarball(t, map[string]string{
+				"package.json": `{"name": "parent-pkg", "main": "index.js"}`,
+				"index.js":     `require("child");`,
+			})
+			if err := os.WriteFile(tarPath, tarBytes, 0644); err != nil {
+				t.Fatal(err)
+			}
+
+			outDir := filepath.Join(tmpDir, "out")
+
+			// Pre-stage local dependencies in .deps/
+			for depName, files := range tt.localDeps {
+				depDir := filepath.Join(outDir, ".deps", depName)
+				_ = os.MkdirAll(depDir, 0755)
+				for relPath, content := range files {
+					filePath := filepath.Join(depDir, relPath)
+					_ = os.MkdirAll(filepath.Dir(filePath), 0755)
+					_ = os.WriteFile(filePath, []byte(content), 0644)
+				}
+			}
+
+			opts := Options{
+				Tarball: tarPath,
+				Out:     outDir,
+				Name:    "parent-pkg",
+			}
+
+			if err := Run(opts); err != nil {
+				t.Fatalf("unpack.Run failed: %v", err)
+			}
+
+			metaBytes, err := os.ReadFile(filepath.Join(outDir, "ts_module.json"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var meta importmap.ModuleMetadata
+			if err := json.Unmarshal(metaBytes, &meta); err != nil {
+				t.Fatal(err)
+			}
+
+			for depName, want := range tt.wantDeps {
+				got, ok := meta.Deps[depName]
+				if !ok {
+					t.Errorf("meta.Deps[%q] missing, want %q", depName, want)
+				} else if got != want {
+					t.Errorf("meta.Deps[%q] = %q, want %q", depName, got, want)
+				}
+			}
+		})
+	}
+}
+
+func TestUnpackWithMockRegistryMatrix(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "unpack_mockreg_*")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(tmpDir)
 
-	zipPath := filepath.Join(tmpDir, "toolchain.zip")
-	f, err := os.Create(zipPath)
-	if err != nil {
+	helperTarball := createTestTarball(t, map[string]string{
+		"package.json": `{"name": "helper-pkg", "version": "1.0.0", "main": "index.js"}`,
+		"index.js":     `module.exports = { helper: true };`,
+	})
+
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/helper-pkg") {
+			manifest := fmt.Sprintf(`{
+				"name": "helper-pkg",
+				"dist-tags": { "latest": "1.0.0" },
+				"versions": {
+					"1.0.0": {
+						"version": "1.0.0",
+						"dist": { "tarball": "%s/helper-pkg/-/helper-pkg-1.0.0.tgz" }
+					}
+				}
+			}`, server.URL)
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(manifest))
+			return
+		}
+		if strings.HasSuffix(r.URL.Path, "helper-pkg-1.0.0.tgz") {
+			w.Header().Set("Content-Type", "application/octet-stream")
+			_, _ = w.Write(helperTarball)
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	rootTarball := createTestTarball(t, map[string]string{
+		"package.json": `{"name": "root-pkg", "version": "2.0.0", "main": "index.js", "dependencies": {"helper-pkg": "^1.0.0"}}`,
+		"index.js":     `const h = require("helper-pkg");`,
+	})
+
+	rootTarPath := filepath.Join(tmpDir, "root.tgz")
+	if err := os.WriteFile(rootTarPath, rootTarball, 0644); err != nil {
 		t.Fatal(err)
 	}
 
-	zw := zip.NewWriter(f)
-	binHeader := &zip.FileHeader{
-		Name: "chrome-headless-shell-linux64/chrome-headless-shell",
-	}
-	w, err := zw.CreateHeader(binHeader)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := w.Write([]byte("#!/bin/sh\necho ok\n")); err != nil {
-		t.Fatal(err)
-	}
-
-	libHeader := &zip.FileHeader{
-		Name: "chrome-headless-shell-linux64/libEGL.so",
-	}
-	w2, err := zw.CreateHeader(libHeader)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := w2.Write([]byte("fake-lib")); err != nil {
-		t.Fatal(err)
-	}
-
-	zw.Close()
-	f.Close()
-
-	outDir := filepath.Join(tmpDir, "bin")
+	outDir := filepath.Join(tmpDir, "out")
 	opts := Options{
-		Archive: zipPath,
-		Out:     outDir,
-		Binary:  "chrome-headless-shell",
-		Symlink: "chromium",
+		Tarball:           rootTarPath,
+		Out:               outDir,
+		Name:              "root-pkg",
+		ResolveTransitive: true,
+		Registry:          server.URL,
 	}
 
 	if err := Run(opts); err != nil {
-		t.Fatalf("unpack.Run toolchain failed: %v", err)
+		t.Fatalf("unpack.Run failed with mock registry: %v", err)
 	}
 
-	binStat, err := os.Stat(filepath.Join(outDir, "chrome-headless-shell"))
+	// Verify helper-pkg was downloaded and unpacked into .deps/helper-pkg
+	if _, err := os.Stat(filepath.Join(outDir, ".deps", "helper-pkg", "index.js")); err != nil {
+		t.Errorf("expected downloaded .deps/helper-pkg/index.js: %v", err)
+	}
+
+	metaBytes, err := os.ReadFile(filepath.Join(outDir, "ts_module.json"))
 	if err != nil {
-		t.Fatalf("expected extracted binary: %v", err)
+		t.Fatal(err)
 	}
-	if binStat.Mode().Perm()&0111 == 0 {
-		t.Errorf("expected binary to be executable, got mode: %v", binStat.Mode())
-	}
-
-	if _, err := os.Stat(filepath.Join(outDir, "libEGL.so")); err != nil {
-		t.Errorf("expected sibling library libEGL.so to be copied: %v", err)
+	var meta importmap.ModuleMetadata
+	if err := json.Unmarshal(metaBytes, &meta); err != nil {
+		t.Fatal(err)
 	}
 
-	if _, err := os.Stat(filepath.Join(outDir, "chromium")); err != nil {
-		t.Errorf("expected chromium symlink: %v", err)
+	wantDep := "./.deps/helper-pkg/index.js"
+	if got := meta.Deps["helper-pkg"]; got != wantDep {
+		t.Errorf("meta.Deps['helper-pkg'] = %q, want %q", got, wantDep)
+	}
+}
+
+func TestUnpackToolchainMatrix(t *testing.T) {
+	tests := []struct {
+		name        string
+		binaryName  string
+		symlinkName string
+		wantBinMode os.FileMode
+	}{
+		{
+			name:        "extracts binary with executable perm and creates symlink",
+			binaryName:  "chrome-headless-shell",
+			symlinkName: "chromium",
+			wantBinMode: 0755,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir, err := os.MkdirTemp("", "unpack_toolchain_matrix_*")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer os.RemoveAll(tmpDir)
+
+			zipPath := filepath.Join(tmpDir, "toolchain.zip")
+			f, err := os.Create(zipPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			zw := zip.NewWriter(f)
+			binHeader := &zip.FileHeader{
+				Name: "chrome-headless-shell-linux64/chrome-headless-shell",
+			}
+			w, err := zw.CreateHeader(binHeader)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := w.Write([]byte("#!/bin/sh\necho ok\n")); err != nil {
+				t.Fatal(err)
+			}
+
+			libHeader := &zip.FileHeader{
+				Name: "chrome-headless-shell-linux64/libEGL.so",
+			}
+			w2, err := zw.CreateHeader(libHeader)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := w2.Write([]byte("fake-lib")); err != nil {
+				t.Fatal(err)
+			}
+
+			zw.Close()
+			f.Close()
+
+			outDir := filepath.Join(tmpDir, "bin")
+			opts := Options{
+				Archive: zipPath,
+				Out:     outDir,
+				Binary:  tt.binaryName,
+				Symlink: tt.symlinkName,
+			}
+
+			if err := Run(opts); err != nil {
+				t.Fatalf("unpack.Run toolchain failed: %v", err)
+			}
+
+			binStat, err := os.Stat(filepath.Join(outDir, tt.binaryName))
+			if err != nil {
+				t.Fatalf("expected extracted binary: %v", err)
+			}
+			if binStat.Mode().Perm()&0111 == 0 {
+				t.Errorf("binary mode = %v, want executable", binStat.Mode())
+			}
+
+			if _, err := os.Stat(filepath.Join(outDir, "libEGL.so")); err != nil {
+				t.Errorf("expected sibling library libEGL.so to be copied: %v", err)
+			}
+
+			if tt.symlinkName != "" {
+				if _, err := os.Stat(filepath.Join(outDir, tt.symlinkName)); err != nil {
+					t.Errorf("expected symlink %q to exist: %v", tt.symlinkName, err)
+				}
+			}
+		})
 	}
 }

@@ -31,6 +31,12 @@ type cdpResponse struct {
 	Error  error
 }
 
+type cdpMessage struct {
+	ID     int64                  `json:"id"`
+	Method string                 `json:"method,omitempty"`
+	Params map[string]interface{} `json:"params,omitempty"`
+}
+
 // DialCDP establishes a WebSocket connection to the given DevTools target URL.
 func DialCDP(targetURL string) (*CDPClient, error) {
 	addr := strings.TrimPrefix(targetURL, "ws://")
