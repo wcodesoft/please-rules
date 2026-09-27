@@ -67,6 +67,28 @@ class TestExtractReleaseNotes(unittest.TestCase):
             notes,
         )
 
+    def test_unwraps_hard_wrapped_list_items(self):
+        wrapped = """# Changelog
+
+## [0.2.0] - 2026-09-20
+
+### Added
+
+- Added automatic transitive dependency resolution in `please_ts unpack` and
+  `ts_module` via the npm registry (`resolve_transitive = True`), eliminating
+  the need to manually declare non-singleton transitive packages in
+  `third_party/ts`.
+- Simple bullet.
+"""
+        notes = extract_release_notes(wrapped, "0.2.0", "TypeScript")
+        expected_unwrapped = (
+            "- Added automatic transitive dependency resolution in `please_ts unpack` and "
+            "`ts_module` via the npm registry (`resolve_transitive = True`), eliminating "
+            "the need to manually declare non-singleton transitive packages in `third_party/ts`."
+        )
+        self.assertIn(expected_unwrapped, notes)
+        self.assertIn("- Simple bullet.", notes)
+
 
 class TestCliExecution(unittest.TestCase):
     def setUp(self):
