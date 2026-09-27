@@ -8,6 +8,8 @@
 # Language / Package Manager Artifacts
 target/
 Cargo.lock
+__pycache__/
+*.pyc
 
 # Entries below this point are managed by Please (DO NOT EDIT)
 plz-out
