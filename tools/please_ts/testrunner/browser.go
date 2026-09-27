@@ -130,7 +130,18 @@ func (opts RunOptions) runBrowserTest(resultsFile string) error {
 		return err
 	}
 
-	pageWS, _ := targets[0]["webSocketDebuggerUrl"].(string)
+	var pageWS string
+	for _, t := range targets {
+		if t["type"] == "page" {
+			if ws, ok := t["webSocketDebuggerUrl"].(string); ok && ws != "" {
+				pageWS = ws
+				break
+			}
+		}
+	}
+	if pageWS == "" && len(targets) > 0 {
+		pageWS, _ = targets[0]["webSocketDebuggerUrl"].(string)
+	}
 	if pageWS == "" {
 		err := fmt.Errorf("no webSocketDebuggerUrl found for page target")
 		_ = writeFallbackJUnit(resultsFile, opts.Srcs, err)
@@ -146,11 +157,13 @@ func (opts RunOptions) runBrowserTest(resultsFile string) error {
 
 	_, _ = client.Send("Runtime.enable", nil)
 	_, _ = client.Send("Page.enable", nil)
+	targetURL := "file://" + htmlPath
+	_, _ = client.Send("Page.navigate", map[string]interface{}{"url": targetURL})
 
-	// Ensure DOM is fully loaded and document.body exists
+	// Ensure DOM is fully loaded and document.body exists on the file:// page
 	readyJS := `(async () => {
 		for (let i = 0; i < 200; i++) {
-			if (document.body) {
+			if (window.location.protocol === 'file:' && document.body) {
 				return true;
 			}
 			await new Promise(r => setTimeout(r, 25));
@@ -163,9 +176,18 @@ func (opts RunOptions) runBrowserTest(resultsFile string) error {
 		}
 		return !!document.body;
 	})()`
-	if _, err := client.Evaluate(readyJS); err != nil {
-		_ = writeFallbackJUnit(resultsFile, opts.Srcs, err)
-		return fmt.Errorf("failed preparing browser DOM: %w", err)
+
+	var evalErr error
+	for attempt := 0; attempt < 100; attempt++ {
+		_, evalErr = client.Evaluate(readyJS)
+		if evalErr == nil {
+			break
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	if evalErr != nil {
+		_ = writeFallbackJUnit(resultsFile, opts.Srcs, evalErr)
+		return fmt.Errorf("failed preparing browser DOM: %w", evalErr)
 	}
 
 	// 3. Inject test harness into browser
