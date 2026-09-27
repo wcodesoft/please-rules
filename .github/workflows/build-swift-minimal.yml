@@ -1,0 +1,125 @@
+name: Build & Distribute Minimal Swift Toolchain
+
+on:
+  workflow_dispatch:
+    inputs:
+      swift_version:
+        description: "Swift version to package (e.g. 6.3.3 or 6.0.3)"
+        required: true
+        default: "6.3.3"
+      publish_release:
+        description: "Whether to publish to GitHub Releases"
+        required: false
+        default: true
+        type: boolean
+      dry_run:
+        description: "Dry run (package and verify without uploading to release)"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  build-minimal:
+    name: Build Minimal Swift (${{ matrix.platform }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux_amd64
+            runner: ubuntu-22.04
+          - platform: linux_arm64
+            runner: ubuntu-22.04-arm
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Build stripped minimal Swift toolchain
+        id: build
+        run: |
+          python3 scripts/strip_swift_toolchain.py \
+            --version "${{ inputs.swift_version }}" \
+            --platform "${{ matrix.platform }}" \
+            --output-dir "./dist"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: swift-${{ inputs.swift_version }}-minimal-${{ matrix.platform }}
+          path: ./dist/*
+
+  publish:
+    name: Publish Minimal Toolchain Release
+    needs: build-minimal
+    runs-on: ubuntu-latest
+    if: inputs.publish_release && !inputs.dry_run
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Download all built artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist-merged
+          merge-multiple: true
+
+      - name: Generate Checksums & Release Notes
+        id: release-meta
+        working-directory: dist-merged
+        run: |
+          sha256sum *.tar.gz > checksums.txt
+          echo "Computed checksums:"
+          cat checksums.txt
+
+          cat << 'EOF' > /tmp/release_notes.md
+          ### Minimal Swift Toolchain Distribution
+
+          Stripped, lightweight hermetic Swift toolchains (~150–180MB compressed) optimized for fast CI cold-starts and containerized builds.
+
+          #### Retained Components
+          - `bin/swiftc`, `bin/swift`, `bin/swift-frontend`, `bin/swift-driver`
+          - `bin/clang`, `bin/clang++`, `bin/ld.lld`, `bin/lld`
+          - `bin/llvm-profdata`, `bin/llvm-cov` (for test coverage collection)
+          - Swift runtime & standard library (`lib/swift/linux/`, `lib/swift/host/`)
+          - Clang builtin headers (`lib/clang/`)
+          - `LICENSE.txt` & Apache 2.0 with LLVM Exceptions notices
+
+          #### Stripped Non-Essential Components
+          - LLDB debugger & server (`bin/lldb*`, `lib/liblldb*`)
+          - Swift Package Manager (`bin/swift-build*`, `bin/swift-package*`, `lib/swift/pm`)
+          - DocC documentation compiler (`bin/docc`)
+          - SourceKit language server (`bin/sourcekit-lsp`, `bin/clangd`)
+          - Python 3 bindings and bare-metal embedded toolchains
+
+          #### Checksums
+          ```
+          EOF
+          cat checksums.txt >> /tmp/release_notes.md
+          echo '```' >> /tmp/release_notes.md
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: swift-toolchain-v${{ inputs.swift_version }}
+          VERSION: ${{ inputs.swift_version }}
+        working-directory: dist-merged
+        run: |
+          FILES=(*.tar.gz checksums.txt)
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            echo "Release '${TAG}' exists. Updating assets..."
+            gh release edit "${TAG}" --title "[Swift Toolchain] v${VERSION}" --notes-file /tmp/release_notes.md
+            gh release upload "${TAG}" "${FILES[@]}" --clobber
+          else
+            echo "Creating release '${TAG}'..."
+            gh release create "${TAG}" "${FILES[@]}" \
+              --title "[Swift Toolchain] v${VERSION}" \
+              --notes-file /tmp/release_notes.md
+          fi
