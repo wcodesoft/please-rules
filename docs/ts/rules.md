@@ -58,14 +58,17 @@ ts_module(
 
 #### Automatic Transitive Resolution & Scoped Import Maps
 
-When `resolve_transitive = True` (the default), `ts_module` automatically resolves
-and unpacks all transitive dependencies into an internal `.deps/` directory.
-Downstream targets (`ts_library`, `ts_binary`, `ts_test`) synthesize an ephemeral
-W3C import map using `scopes`:
+When `resolve_transitive = True` (the default), `ts_module` automatically
+resolves and unpacks all transitive dependencies into an internal `.deps/`
+directory. Downstream targets (`ts_library`, `ts_binary`, `ts_test`) synthesize
+an ephemeral W3C import map using `scopes`:
 
-- Transitive helpers remain strictly scoped to the parent module without leaking into global imports.
-- If multiple modules depend on the same singleton or peer dependency, it is automatically hoisted.
-- If an explicit `ts_module` target is provided in `deps`, it takes precedence and overrides any internal transitive version.
+- Transitive helpers remain strictly scoped to the parent module without leaking
+  into global imports.
+- If multiple modules depend on the same singleton or peer dependency, it is
+  automatically hoisted.
+- If an explicit `ts_module` target is provided in `deps`, it takes precedence
+  and overrides any internal transitive version.
 
 ---
 
