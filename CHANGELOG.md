@@ -7,6 +7,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-09-27
+
+### Added
+
+- Added automatic transitive dependency resolution in `please_ts unpack` and
+  `ts_module` via the npm registry (`resolve_transitive = True`), eliminating
+  the need to manually declare non-singleton transitive packages in `third_party/ts`.
+- Synthesized W3C Import Map `scopes` in `please_ts importmap` to encapsulate
+  transitive dependencies within private module subpaths (`./.deps/<pkg>`),
+  preventing global namespace pollution and supporting conflicting versions of
+  shared utilities.
+- Implemented explicit target precedence: any top-level explicit `deps` target
+  (such as `third_party/ts:react` or `third_party/ts:ms`) automatically
+  overrides and redirects private internal module dependencies to the shared
+  rule.
+- Added automatic singleton and peer dependency hoisting: undeclared peer
+  dependencies and singletons are automatically hoisted to the root `imports`
+  map.
+- Symlinked `.deps` to `node_modules` inside extracted module directories and
+  propagated `NODE_PATH` in `please_ts testrunner` to support CommonJS `require()`
+  resolution under Deno.
+- Added `--unstable-detect-cjs`, `--allow-read`, and `--allow-env` flags to Deno
+  test execution and binary compilation for legacy CommonJS interop.
+
 ## [0.4.0] - 2026-09-25
 
 ### Added
