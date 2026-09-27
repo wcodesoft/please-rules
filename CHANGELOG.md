@@ -7,6 +7,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1] - 2026-09-27
+
+### Fixed
+
+- Fixed timing race condition in `please_ts testrunner` browser test execution
+  where CDP client evaluated test scripts before Chromium finished navigating
+  from `about:blank` to the test HTML file.
+- Explicitly issued `Page.navigate` to local test file URL and polled for
+  `file:` protocol readiness and DOM initialization before executing test
+  suites.
+- Guarded `localStorage` against document access denial exceptions in
+  constrained headless CI runner sandboxes.
+
 ## [0.5.0] - 2026-09-27
 
 ### Added
