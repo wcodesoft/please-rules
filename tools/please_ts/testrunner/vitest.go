@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strings"
 
 	"tools/please_ts/importmap"
@@ -116,21 +118,48 @@ func buildVitestAliases(im *importmap.ImportMap) map[string]string {
 	return aliasMap
 }
 
+// aliasEntry is one Vite resolve.alias entry in the generated config.
+type aliasEntry struct {
+	Find        string `json:"find"`
+	Replacement string `json:"replacement"`
+}
+
+// writeVitestConfig writes a Vitest config whose aliases are an ordered array of
+// exact-match entries. A plain object alias prefix-matches ("a/b" is rewritten by
+// the alias "a"), which breaks nested module names such as "@scope/app" and
+// "@scope/app/components/widget"; subpaths are already enumerated by the import map.
 func writeVitestConfig(configPath string, srcs []string, aliases map[string]string) error {
-	aliasBytes, _ := json.MarshalIndent(aliases, "    ", "  ")
+	keys := make([]string, 0, len(aliases))
+	for k := range aliases {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		if len(keys[i]) != len(keys[j]) {
+			return len(keys[i]) > len(keys[j])
+		}
+		return keys[i] < keys[j]
+	})
+	entries := make([]aliasEntry, 0, len(keys))
+	for _, k := range keys {
+		entries = append(entries, aliasEntry{Find: "^" + regexp.QuoteMeta(k) + "$", Replacement: aliases[k]})
+	}
+	aliasBytes, _ := json.MarshalIndent(entries, "    ", "  ")
 	srcsBytes, _ := json.Marshal(srcs)
 
-	configContent := fmt.Sprintf(`export default {
+	// "find" is serialized as a string and revived into a RegExp by the config.
+	configContent := fmt.Sprintf(`const aliases = %s;
+
+export default {
   test: {
     globals: true,
     include: %s,
     watch: false,
   },
   resolve: {
-    alias: %s,
+    alias: aliases.map((a) => ({ find: new RegExp(a.find), replacement: a.replacement })),
   },
 };
-`, string(srcsBytes), string(aliasBytes))
+`, string(aliasBytes), string(srcsBytes))
 
 	return os.WriteFile(configPath, []byte(configContent), 0644)
 }

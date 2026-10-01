@@ -95,11 +95,35 @@ func TestWriteVitestConfigMatrix(t *testing.T) {
 		`export default {`,
 		`globals: true`,
 		`"/abs/test1.ts"`,
-		`"@domain/calc": "/abs/calc.ts"`,
+		`"find": "^@domain/calc$"`,
+		`"replacement": "/abs/calc.ts"`,
 	}
 	for _, want := range wantSnippets {
 		if !strings.Contains(content, want) {
 			t.Errorf("config missing %q in:\n%s", want, content)
 		}
+	}
+}
+
+func TestWriteVitestConfigNestedAliasOrdering(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "vitest.config.mjs")
+	aliases := map[string]string{
+		"@scope/app":                   "/abs/app.ts",
+		"@scope/app/components/widget": "/abs/widget.ts",
+	}
+	if err := writeVitestConfig(configPath, []string{"/abs/t.ts"}, aliases); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(configPath)
+	content := string(data)
+
+	// Exact-match anchors prevent "@scope/app" from capturing the nested name.
+	for _, want := range []string{`"^@scope/app$"`, `"^@scope/app/components/widget$"`} {
+		if !strings.Contains(content, want) {
+			t.Errorf("config missing %q in:\n%s", want, content)
+		}
+	}
+	if strings.Index(content, "components/widget") > strings.Index(content, `"^@scope/app$"`) {
+		t.Errorf("longer alias should precede shorter alias in:\n%s", content)
 	}
 }
