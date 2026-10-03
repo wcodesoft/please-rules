@@ -28,6 +28,7 @@ type RunOptions struct {
 	ResultsFile    string
 	CoverageActive bool
 	CoverageFile   string
+	LcovFile       string // raw lcov export (functions and branches), written empty without coverage
 	JacocoAgent    string
 	JacocoCli      string
 	SourceFiles    []string
@@ -113,6 +114,17 @@ func Run(opts RunOptions) error {
 		return fmt.Errorf("failed to create temp test dir: %w", err)
 	}
 	defer os.RemoveAll(tmpDir)
+
+	// The raw lcov export is a declared test output: create it up front so it exists
+	// (empty) when coverage is off or the report cannot be produced.
+	if opts.LcovFile != "" {
+		if err := os.MkdirAll(filepath.Dir(opts.LcovFile), 0755); err != nil {
+			return err
+		}
+		if err := os.WriteFile(opts.LcovFile, nil, 0644); err != nil {
+			return fmt.Errorf("failed to reset lcov file: %w", err)
+		}
+	}
 
 	jacocoExec := ""
 	if activeCov && opts.JacocoAgent != "" {
@@ -212,7 +224,26 @@ func processJacocoCoverage(javaBin string, opts RunOptions, tmpDir, jacocoExec, 
 	if err := os.MkdirAll(filepath.Dir(covFile), 0755); err != nil {
 		return err
 	}
-	return os.WriteFile(covFile, gcovData, 0644)
+	if err := os.WriteFile(covFile, gcovData, 0644); err != nil {
+		return err
+	}
+	return writeLcovFile(opts.LcovFile, xmlData, opts.RepoRoot, opts.SourceFiles)
+}
+
+// writeLcovFile exports the JaCoCo report as lcov. An empty path disables the export.
+func writeLcovFile(path string, jacocoXML []byte, repoRoot string, knownSrcs []string) error {
+	if path == "" {
+		return nil
+	}
+	report, err := JacocoToLcov(jacocoXML, repoRoot, knownSrcs)
+	if err != nil {
+		return err
+	}
+	var buf bytes.Buffer
+	if err := report.Write(&buf); err != nil {
+		return err
+	}
+	return os.WriteFile(path, buf.Bytes(), 0644)
 }
 
 // extractProjectClasses unpacks the project classes listed in jar into dir and
