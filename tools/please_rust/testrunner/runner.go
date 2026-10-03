@@ -133,7 +133,8 @@ func mergeProfdata(profdataPath, tmpDir string, profrawFiles []string) (string, 
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("llvm-profdata merge failed: %w", err)
+		version, _ := exec.Command(resolved, "--version").CombinedOutput()
+		return "", fmt.Errorf("llvm-profdata merge failed using %s (%s): %w", resolved, strings.Join(strings.Fields(string(version)), " "), err)
 	}
 	return mergedPath, nil
 }

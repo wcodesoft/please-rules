@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- `rust_test` ignored `LlvmProfdataTool`, `LlvmCovTool` and `Coverage` (plugin
+  config was read with `CONFIG.get`, which does not see it), so `llvm-profdata`
+  was taken from the host. With an older host LLVM the merge failed
+  (`unsupported instrumentation profile format version`) and `plz cover`
+  reported 0%. The configured tools are now passed to the test.
+- The coverage error now names the `llvm-profdata` that failed.
+
+### Documentation
+
+- Documented the Rust coverage report location, format and contents, and the
+  silent `No data` result when `[cover] fileextension = .rs` is missing.
+- Added a CI coverage smoke test.
+
 ## [0.5.0] - 2026-09-19
 
 ### Added
