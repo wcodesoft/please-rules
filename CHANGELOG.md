@@ -21,11 +21,9 @@ and this project adheres to
   `branches_vitest_test`) and a CI smoke test asserting the exported functions
   and branches.
 
-### Documentation
+### Changed
 
-- Documented the raw lcov export: location, contents, lifetime and merging.
-
-## [0.5.3] - 2026-10-03
+- The repository `.plzconfig` sets `[cover] fileextension = .ts`.
 
 ### Fixed
 
@@ -36,12 +34,9 @@ and this project adheres to
 - `vitest_toolchain` now also caches `@vitest/coverage-v8` so coverage works
   offline.
 
-### Changed
-
-- The repository `.plzconfig` sets `[cover] fileextension = .ts`.
-
 ### Documentation
 
+- Documented the raw lcov export: location, contents, lifetime and merging.
 - Documented the required `[cover]` setting, report location, format and
   contents for TypeScript.
 - Added a CI coverage smoke test for the Deno and Vitest runners.
