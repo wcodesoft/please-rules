@@ -154,6 +154,7 @@ func handleTestRunner(args []string) error {
 	resultsFile := cmd.String("results-file", "test.results", "Path to write JUnit XML test results")
 	coverageActive := cmd.Bool("coverage", false, "Whether coverage collection is enabled")
 	coverageFile := cmd.String("coverage-file", "", "Path to write coverage output file")
+	lcovFile := cmd.String("lcov-file", "", "Path to write the raw lcov report (functions and branches)")
 	browser := cmd.String("browser", "", "Browser engine for browser tests (chromium, firefox, webkit)")
 	browserBinary := cmd.String("browser-binary", "", "Path to hermetic browser executable")
 	vitestDir := cmd.String("vitest-dir", "", "Path to hermetic Vitest cache directory")
@@ -175,6 +176,7 @@ func handleTestRunner(args []string) error {
 		ResultsFile:   *resultsFile,
 		Coverage:      *coverageActive,
 		CoverageFile:  *coverageFile,
+		LcovFile:      *lcovFile,
 		Browser:       *browser,
 		BrowserBinary: *browserBinary,
 		VitestDir:     *vitestDir,

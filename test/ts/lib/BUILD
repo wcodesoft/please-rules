@@ -20,3 +20,23 @@ ts_test(
     runner = "vitest",
 )
 
+
+ts_library(
+    name = "branches",
+    srcs = ["branches.ts"],
+    module_name = "@domain/branches",
+    visibility = ["PUBLIC"],
+)
+
+ts_test(
+    name = "branches_test",
+    srcs = ["branches_test.ts"],
+    deps = [":branches"],
+)
+
+ts_test(
+    name = "branches_vitest_test",
+    srcs = ["branches_vitest_test.ts"],
+    deps = [":branches"],
+    runner = "vitest",
+)

@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"tools/common/lcov"
 )
 
 func (opts RunOptions) resolveCoverage() (bool, string) {
@@ -33,7 +35,7 @@ type coverageFileRecord struct {
 	Lines    []coverageLine
 }
 
-func generateDenoCoverage(denoBin, covDir, outputFile, denoCacheDir string) error {
+func generateDenoCoverage(denoBin, covDir, outputFile, denoCacheDir, lcovFile string) error {
 	if err := os.MkdirAll(filepath.Dir(outputFile), 0755); err != nil {
 		return err
 	}
@@ -51,7 +53,57 @@ func generateDenoCoverage(denoBin, covDir, outputFile, denoCacheDir string) erro
 
 	cwd, _ := os.Getwd()
 	xmlData := lcovToCoberturaXML(stdout.Bytes(), cwd)
-	return os.WriteFile(outputFile, xmlData, 0644)
+	if err := os.WriteFile(outputFile, xmlData, 0644); err != nil {
+		return err
+	}
+	return writeRawLcov(lcovFile, stdout.Bytes(), cwd)
+}
+
+// coveragePath maps a source path found in an lcov report to the repository-relative
+// path of the TypeScript file it was compiled from.
+func coveragePath(path, cleanCwd string) string {
+	path = strings.TrimPrefix(path, "file://")
+	if strings.HasPrefix(path, cleanCwd) {
+		path = strings.TrimPrefix(path, cleanCwd)
+		path = strings.TrimPrefix(path, "/")
+	}
+	path = strings.TrimPrefix(path, "./")
+
+	dir := filepath.Dir(path)
+	base := filepath.Base(path)
+	parentDir := filepath.Dir(dir)
+	if parentDir != "." && parentDir != "" {
+		if filepath.Base(dir) == strings.TrimSuffix(base, filepath.Ext(base)) {
+			path = filepath.Join(parentDir, base)
+		} else if _, err := os.Stat(filepath.Join(dir, "ts_metadata.json")); err == nil {
+			path = filepath.Join(parentDir, base)
+		}
+	}
+	return path
+}
+
+// writeRawLcov writes the coverage tool's lcov report to outputFile with
+// repository-relative paths, keeping the function and branch records that the
+// Cobertura conversion drops. An empty outputFile disables the export.
+func writeRawLcov(outputFile string, lcovData []byte, cwd string) error {
+	if outputFile == "" {
+		return nil
+	}
+	report, err := lcov.Parse(bytes.NewReader(lcovData))
+	if err != nil {
+		return fmt.Errorf("parsing lcov report: %w", err)
+	}
+	cleanCwd := filepath.Clean(cwd)
+	report.NormalizePaths(func(p string) string { return coveragePath(p, cleanCwd) })
+
+	var out bytes.Buffer
+	if err := report.Write(&out); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(outputFile), 0755); err != nil {
+		return err
+	}
+	return os.WriteFile(outputFile, out.Bytes(), 0644)
 }
 
 func lcovToCoberturaXML(lcovData []byte, cwd string) []byte {
@@ -67,24 +119,7 @@ func lcovToCoberturaXML(lcovData []byte, cwd string) []byte {
 			if currentFile != nil {
 				files = append(files, *currentFile)
 			}
-			path := strings.TrimPrefix(line, "SF:")
-			path = strings.TrimPrefix(path, "file://")
-			if strings.HasPrefix(path, cleanCwd) {
-				path = strings.TrimPrefix(path, cleanCwd)
-				path = strings.TrimPrefix(path, "/")
-			}
-			path = strings.TrimPrefix(path, "./")
-
-			dir := filepath.Dir(path)
-			base := filepath.Base(path)
-			parentDir := filepath.Dir(dir)
-			if parentDir != "." && parentDir != "" {
-				if filepath.Base(dir) == strings.TrimSuffix(base, filepath.Ext(base)) {
-					path = filepath.Join(parentDir, base)
-				} else if _, err := os.Stat(filepath.Join(dir, "ts_metadata.json")); err == nil {
-					path = filepath.Join(parentDir, base)
-				}
-			}
+			path := coveragePath(strings.TrimPrefix(line, "SF:"), cleanCwd)
 
 			currentFile = &coverageFileRecord{Filename: path}
 		} else if strings.HasPrefix(line, "DA:") && currentFile != nil {

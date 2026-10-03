@@ -145,7 +145,7 @@ func TestConvertVitestCoverage(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := filepath.Join(t.TempDir(), "sub", "test.coverage")
-	if err := convertVitestCoverage(dir, out); err != nil {
+	if err := convertVitestCoverage(dir, out, ""); err != nil {
 		t.Fatalf("convertVitestCoverage: %v", err)
 	}
 	got, err := os.ReadFile(out)
@@ -160,7 +160,30 @@ func TestConvertVitestCoverage(t *testing.T) {
 }
 
 func TestConvertVitestCoverageMissingReport(t *testing.T) {
-	if err := convertVitestCoverage(t.TempDir(), filepath.Join(t.TempDir(), "out")); err == nil {
+	if err := convertVitestCoverage(t.TempDir(), filepath.Join(t.TempDir(), "out"), ""); err == nil {
 		t.Error("expected error when vitest wrote no lcov.info")
+	}
+}
+
+func TestConvertVitestCoverageExportsRawLcov(t *testing.T) {
+	dir := t.TempDir()
+	cwd, _ := os.Getwd()
+	lcov := "TN:\nSF:" + filepath.Join(cwd, "lib.ts") + "\nFN:1,classify\nFNDA:2,classify\nDA:2,2\nDA:3,0\nBRDA:2,0,0,2\nBRDA:2,0,1,0\nend_of_record\n"
+	if err := os.WriteFile(filepath.Join(dir, "lcov.info"), []byte(lcov), 0644); err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	out, raw := filepath.Join(root, "test.coverage"), filepath.Join(root, "sub", "target.lcov")
+	if err := convertVitestCoverage(dir, out, raw); err != nil {
+		t.Fatalf("convertVitestCoverage: %v", err)
+	}
+	got, err := os.ReadFile(raw)
+	if err != nil {
+		t.Fatalf("raw lcov not written: %v", err)
+	}
+	for _, want := range []string{"SF:lib.ts\n", "FN:1,classify\n", "FNDA:2,classify\n", "BRDA:2,0,1,0\n", "DA:3,0\n"} {
+		if !strings.Contains(string(got), want) {
+			t.Errorf("raw lcov missing %q:\n%s", want, got)
+		}
 	}
 }

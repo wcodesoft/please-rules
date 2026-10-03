@@ -101,7 +101,7 @@ func (opts RunOptions) runVitest(resultsFile string) error {
 
 	testErr := cmd.Run()
 	if coverageDir != "" {
-		if err := convertVitestCoverage(coverageDir, coverageFile); err != nil && testErr == nil {
+		if err := convertVitestCoverage(coverageDir, coverageFile, opts.LcovFile); err != nil && testErr == nil {
 			testErr = err
 		}
 	}
@@ -126,8 +126,8 @@ func writeCoveragePackageJSON() error {
 }
 
 // convertVitestCoverage turns the lcov report vitest wrote into dir into the
-// Cobertura XML file that Please reads.
-func convertVitestCoverage(dir, outputFile string) error {
+// Cobertura XML file that Please reads, and also exports it as raw lcov to lcovFile.
+func convertVitestCoverage(dir, outputFile, lcovFile string) error {
 	lcov, err := os.ReadFile(filepath.Join(dir, "lcov.info"))
 	if err != nil {
 		return fmt.Errorf("vitest produced no lcov coverage: %w", err)
@@ -136,7 +136,10 @@ func convertVitestCoverage(dir, outputFile string) error {
 		return err
 	}
 	cwd, _ := os.Getwd()
-	return os.WriteFile(outputFile, lcovToCoberturaXML(lcov, cwd), 0644)
+	if err := os.WriteFile(outputFile, lcovToCoberturaXML(lcov, cwd), 0644); err != nil {
+		return err
+	}
+	return writeRawLcov(lcovFile, lcov, cwd)
 }
 
 func buildVitestAliases(im *importmap.ImportMap) map[string]string {

@@ -199,3 +199,23 @@ The Deno runner (the default) uses `deno test --coverage`; the Vitest runner
 - **Vitest note**: when coverage is active the runner writes a `package.json`
   declaring `vitest` and `@vitest/coverage-v8` in the test working directory (if
   none exists) so Deno can resolve the provider.
+
+### Raw lcov export (functions and branches)
+
+Please reduces every coverage report to per-line data. Each `ts_test` also keeps
+the coverage tool's own lcov report, which has the function (`FN`/`FNDA`) and
+branch (`BRDA`) records that `coverage.xml` and `coverage.json` do not:
+
+- **Location**: `plz-out/bin/<package>/<target name>.lcov`, for example
+  `plz-out/bin/test/ts/lib/branches_test.lcov`. It is declared as a test output,
+  so it is written next to the test binary.
+- **Content**: lcov with repository-relative paths. Both the Deno and the Vitest
+  runner provide lines, functions and branches. The file is empty unless the
+  test ran under `plz cover`.
+- **Lifetime**: the file reflects the last test run that actually executed. Read
+  it right after `./pleasew cover --rerun <target>`; do not assume it is
+  recreated when Please reuses a cached result.
+- **Merging**: reports from several targets can be merged with the shared
+  `tools/common/lcov` package. Do not merge branch records of the Deno and
+  Vitest runners for the same file: they number the arms of a branch
+  differently.
