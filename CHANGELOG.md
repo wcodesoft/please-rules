@@ -25,6 +25,8 @@ and this project adheres to
 
 - `swift_test` is now a binary target like the other languages' test rules, so
   its outputs are under `plz-out/bin` instead of `plz-out/gen`.
+- Removed a leftover debug print from the test runner and the stray
+  `fileextension = .go` from the repository `[cover]` config.
 
 ### Fixed
 
@@ -39,11 +41,6 @@ and this project adheres to
 - `plz cover` now also works for those transitive dependency chains: the build
   phase saves the transitive link inputs in a `<test>.deps` output for the
   instrumented rebuild.
-
-### Changed
-
-- Removed a leftover debug print from the test runner and the stray
-  `fileextension = .go` from the repository `[cover]` config.
 
 ### Documentation
 
