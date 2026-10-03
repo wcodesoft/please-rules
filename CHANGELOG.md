@@ -22,12 +22,6 @@ and this project adheres to
 - Branchy coverage fixture (`test/kotlin/branches:branches_test`) and a CI smoke
   test asserting the exported functions and branches.
 
-### Documentation
-
-- Documented the raw lcov export: location, contents, JaCoCo's limits, lifetime.
-
-## [0.3.6] - 2026-10-03
-
 ### Fixed
 
 - `plz cover` reported 0% for `kt_test` targets because JaCoCo failed to analyze
@@ -39,6 +33,7 @@ and this project adheres to
 
 ### Documentation
 
+- Documented the raw lcov export: location, contents, JaCoCo's limits, lifetime.
 - Documented the required `[cover]` setting, report location, format and
   contents for Kotlin.
 - Added a CI coverage smoke test.
