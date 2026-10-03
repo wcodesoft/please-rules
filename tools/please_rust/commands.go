@@ -125,6 +125,7 @@ func handleTestRunner(args []string) error {
 	coverageFile := cmd.String("coverage-file", "", "Path to write coverage report (default: $COVERAGE_FILE or test.coverage)")
 	llvmProfdata := cmd.String("llvm-profdata", "", "Path to llvm-profdata executable")
 	llvmCov := cmd.String("llvm-cov", "", "Path to llvm-cov executable")
+	lcovFile := cmd.String("lcov-file", "", "Path to write the raw lcov report (functions and branches)")
 	coverage := cmd.Bool("coverage", false, "Force coverage collection")
 
 	if err := cmd.Parse(args); err != nil {
@@ -145,6 +146,7 @@ func handleTestRunner(args []string) error {
 		ResultsFile:    *resultsFile,
 		CoverageActive: *coverage,
 		CoverageFile:   *coverageFile,
+		LcovFile:       *lcovFile,
 		LlvmProfdata:   *llvmProfdata,
 		LlvmCov:        *llvmCov,
 	})

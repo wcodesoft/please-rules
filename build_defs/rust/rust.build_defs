@@ -213,7 +213,7 @@ def rust_test(
     profdata_arg = f"--llvm-profdata '{llvm_profdata}'" if llvm_profdata and not (llvm_profdata.startswith("//") or llvm_profdata.startswith("///") or llvm_profdata.startswith(":")) else '${TOOLS_LLVM_PROFDATA:+--llvm-profdata "$TOOLS_LLVM_PROFDATA"}'
     cov_arg = f"--llvm-cov '{llvm_cov}'" if llvm_cov and not (llvm_cov.startswith("//") or llvm_cov.startswith("///") or llvm_cov.startswith(":")) else '${TOOLS_LLVM_COV:+--llvm-cov "$TOOLS_LLVM_COV"}'
 
-    test_cmd = f'TOOL="${{TOOLS_TOOL:-$TOOL}}" && $TOOL test-runner --pkg "{crate}" {profdata_arg} {cov_arg} "$TEST" --nocapture'
+    test_cmd = f'TOOL="${{TOOLS_TOOL:-$TOOL}}" && $TOOL test-runner --pkg "{crate}" {profdata_arg} {cov_arg} --lcov-file "{name}.lcov" "$TEST" --nocapture'
     if env:
         test_env_exports = " && ".join([f'export {k}="{v}"' for k, v in env.items()])
         test_cmd = f"{test_env_exports} && {test_cmd}"
@@ -225,6 +225,7 @@ def rust_test(
         outs = [name],
         cmd = cmd,
         test_cmd = test_cmd,
+        test_outputs = [f"{name}.lcov"],
         binary = True,
         test = True,
         needs_transitive_deps = True,

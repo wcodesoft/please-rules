@@ -5,9 +5,13 @@ go_library(
     srcs = [
         "coverage.go",
         "junit.go",
+        "lcov_export.go",
         "runner.go",
     ],
-    deps = ["//tools/please_rust/toolchain"],
+    deps = [
+        "//tools/common/lcov",
+        "//tools/please_rust/toolchain",
+    ],
     visibility = ["//tools/please_rust/..."],
 )
 
@@ -16,7 +20,11 @@ go_test(
     srcs = [
         "coverage_test.go",
         "junit_test.go",
+        "lcov_export_test.go",
         "runner_test.go",
     ],
-    deps = [":testrunner"],
+    deps = [
+        ":testrunner",
+        "//tools/common/lcov",
+    ],
 )
