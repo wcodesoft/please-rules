@@ -53,8 +53,15 @@ func (opts RunOptions) runVitest(resultsFile string) error {
 	}
 
 	coverageActive, coverageFile := opts.resolveCoverage()
+	coverageDir := ""
 	if coverageActive && coverageFile != "" {
-		args = append(args, "--coverage.enabled", "--coverage.reporter=lcov", "--coverage.reportsDirectory="+filepath.Dir(coverageFile))
+		// Vitest empties its reports directory before each run, so it must not be the
+		// test working directory (the default location of the coverage file).
+		coverageDir = filepath.Join(tmpDir, "coverage")
+		args = append(args, vitestCoverageArgs(coverageDir)...)
+		if err := writeCoveragePackageJSON(); err != nil {
+			return fmt.Errorf("failed preparing vitest coverage provider: %w", err)
+		}
 	}
 
 	args = append(args, opts.ExtraArgs...)
@@ -67,6 +74,11 @@ func (opts RunOptions) runVitest(resultsFile string) error {
 	denoArgs := []string{"run"}
 	if opts.VitestDir != "" {
 		denoArgs = append(denoArgs, "--no-remote")
+	}
+	if coverageDir != "" {
+		// The v8 coverage provider is a peer dependency that vitest resolves from the
+		// project's node_modules; deno only materializes it when asked to.
+		denoArgs = append(denoArgs, "--node-modules-dir=auto")
 	}
 	denoArgs = append(denoArgs, "-A", "npm:vitest")
 	denoArgs = append(denoArgs, args...)
@@ -88,10 +100,43 @@ func (opts RunOptions) runVitest(resultsFile string) error {
 	cmd.Stderr = os.Stderr
 
 	testErr := cmd.Run()
+	if coverageDir != "" {
+		if err := convertVitestCoverage(coverageDir, coverageFile); err != nil && testErr == nil {
+			testErr = err
+		}
+	}
 	if _, err := os.Stat(resultsFile); err != nil {
 		_ = writeFallbackJUnit(resultsFile, opts.Srcs, testErr)
 	}
 	return testErr
+}
+
+// vitestCoverageArgs returns the vitest flags that collect lcov coverage into dir.
+func vitestCoverageArgs(dir string) []string {
+	return []string{"--coverage.enabled", "--coverage.provider=v8", "--coverage.reporter=lcov", "--coverage.reportsDirectory=" + dir}
+}
+
+// writeCoveragePackageJSON declares the vitest coverage provider in the working
+// directory unless the target already ships a package.json.
+func writeCoveragePackageJSON() error {
+	if _, err := os.Stat("package.json"); err == nil {
+		return nil
+	}
+	return os.WriteFile("package.json", []byte(`{"dependencies":{"vitest":"*","@vitest/coverage-v8":"*"}}`+"\n"), 0644)
+}
+
+// convertVitestCoverage turns the lcov report vitest wrote into dir into the
+// Cobertura XML file that Please reads.
+func convertVitestCoverage(dir, outputFile string) error {
+	lcov, err := os.ReadFile(filepath.Join(dir, "lcov.info"))
+	if err != nil {
+		return fmt.Errorf("vitest produced no lcov coverage: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(outputFile), 0755); err != nil {
+		return err
+	}
+	cwd, _ := os.Getwd()
+	return os.WriteFile(outputFile, lcovToCoberturaXML(lcov, cwd), 0644)
 }
 
 func buildVitestAliases(im *importmap.ImportMap) map[string]string {
