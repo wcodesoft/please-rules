@@ -6,7 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.2.1] - 2026-10-03
+## [0.3.0] - 2026-10-03
+
+### Added
+
+- `swift_test` keeps the raw lcov report as a declared test output,
+  `plz-out/bin/<package>/<name>.lcov`, with repository-relative paths, function
+  records (`FN`/`FNDA`, Swift-mangled names) and, for lines that ran only
+  partly, synthesized branch records (`BRDA`) derived from `llvm-cov`'s sub-line
+  regions: Swift emits no branch regions, so this covers cases such as the
+  right-hand side of `a && b` or the body of an untaken `else if` that shares a
+  line with other code. It is written under `plz cover` and is empty otherwise.
+- `please_swift testrunner --lcov-file` flag.
+- Branchy coverage fixture (`test/swift/branches:branches_test`) and a CI smoke
+  test asserting the exported functions and branches.
+
+### Changed
+
+- `swift_test` is now a binary target like the other languages' test rules, so
+  its outputs are under `plz-out/bin` instead of `plz-out/gen`.
 
 ### Fixed
 
@@ -30,8 +48,8 @@ and this project adheres to
 ### Documentation
 
 - Documented the required `[cover]` setting, report location, format and
-  contents for Swift.
-- Added a CI coverage smoke test.
+  contents for Swift, and the raw lcov export.
+- Added CI coverage smoke tests.
 
 ## [0.2.0] - 2026-09-27
 

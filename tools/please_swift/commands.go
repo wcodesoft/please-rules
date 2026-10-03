@@ -124,6 +124,7 @@ func handleTestRunner(args []string) error {
 	resultsFile := cmd.String("results-file", "test.results", "Path to write JUnit XML test results")
 	coverageActive := cmd.Bool("coverage", false, "Whether coverage collection is enabled")
 	coverageFile := cmd.String("coverage-file", "", "Path to write coverage output file")
+	lcovFile := cmd.String("lcov-file", "", "Path to write the raw lcov report (functions and branches)")
 	testArgsFlag := cmd.String("test-args", "", "Arguments to pass to test runner executable")
 	flags := cmd.String("flags", "", "Additional swiftc flags")
 
@@ -158,6 +159,7 @@ func handleTestRunner(args []string) error {
 		ResultsFile:  *resultsFile,
 		Coverage:     *coverageActive,
 		CoverageFile: *coverageFile,
+		LcovFile:     *lcovFile,
 		TestArgs:     testArgs,
 		Flags:        extraFlags,
 	}

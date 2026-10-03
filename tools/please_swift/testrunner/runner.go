@@ -60,6 +60,7 @@ type RunOptions struct {
 	ResultsFile  string
 	Coverage     bool
 	CoverageFile string
+	LcovFile     string // raw lcov export (functions and branches), written empty without coverage
 	TestArgs     []string
 	Flags        []string
 }
@@ -164,6 +165,14 @@ func Run(opts RunOptions) error {
 			opts.CoverageFile = covEnv
 		} else {
 			opts.CoverageFile = "test.coverage"
+		}
+	}
+
+	// The raw lcov export is a declared test output: create it up front so it exists
+	// (empty) when coverage is off or the report cannot be produced.
+	if !opts.CompileOnly {
+		if err := writeRawLcov(opts.LcovFile, nil); err != nil {
+			return fmt.Errorf("failed to reset lcov file: %w", err)
 		}
 	}
 
@@ -733,6 +742,12 @@ func processCoverage(opts RunOptions, testBinary, profDir, tmpDir string) error 
 	cwd, _ := os.Getwd()
 	coberturaXML := LcovToCoberturaXML(lcovOut.Bytes(), cwd)
 
+	if opts.LcovFile != "" {
+		if err := exportRawLcov(opts, testBinary, mergedProf, lcovOut.Bytes(), cwd); err != nil {
+			fmt.Fprintf(os.Stderr, "raw lcov export error: %v\n", err)
+		}
+	}
+
 	if err := os.MkdirAll(filepath.Dir(opts.CoverageFile), 0755); err != nil {
 		return err
 	}
@@ -759,6 +774,34 @@ type coverageFileRecord struct {
 	Lines    []coverageLine
 }
 
+// coveragePath maps a source path found in an lcov report to a repository-relative
+// path. It returns "" for the synthetic test runner entry point, which is not part of
+// the project.
+func coveragePath(path, cleanCwd string) string {
+	path = strings.TrimPrefix(path, "file://")
+	if strings.Contains(path, "__runner_main.swift") {
+		return ""
+	}
+
+	// Normalize paths to repository-relative
+	if idx := strings.Index(path, "._test/"); idx != -1 {
+		path = path[idx+len("._test/"):]
+		if strings.HasPrefix(path, "run_") {
+			if slashIdx := strings.Index(path, "/"); slashIdx != -1 {
+				path = path[slashIdx+1:]
+			}
+		}
+	} else if idx := strings.Index(path, "._build/"); idx != -1 {
+		path = path[idx+len("._build/"):]
+	}
+
+	if strings.HasPrefix(path, cleanCwd) {
+		path = strings.TrimPrefix(path, cleanCwd)
+		path = strings.TrimPrefix(path, "/")
+	}
+	return strings.TrimPrefix(path, "./")
+}
+
 // LcovToCoberturaXML transforms LCOV data into standard Cobertura XML format.
 func LcovToCoberturaXML(lcovData []byte, cwd string) []byte {
 	lines := strings.Split(string(lcovData), "\n")
@@ -773,32 +816,12 @@ func LcovToCoberturaXML(lcovData []byte, cwd string) []byte {
 			if currentFile != nil && len(currentFile.Lines) > 0 {
 				files = append(files, *currentFile)
 			}
-			path := strings.TrimPrefix(line, "SF:")
-			path = strings.TrimPrefix(path, "file://")
-
-			// Ignore synthetic test runner files
-			if strings.Contains(path, "__runner_main.swift") {
+			path := coveragePath(strings.TrimPrefix(line, "SF:"), cleanCwd)
+			if path == "" {
+				// Synthetic test runner file
 				currentFile = nil
 				continue
 			}
-
-			// Normalize paths to repository-relative
-			if idx := strings.Index(path, "._test/"); idx != -1 {
-				path = path[idx+len("._test/"):]
-				if strings.HasPrefix(path, "run_") {
-					if slashIdx := strings.Index(path, "/"); slashIdx != -1 {
-						path = path[slashIdx+1:]
-					}
-				}
-			} else if idx := strings.Index(path, "._build/"); idx != -1 {
-				path = path[idx+len("._build/"):]
-			}
-
-			if strings.HasPrefix(path, cleanCwd) {
-				path = strings.TrimPrefix(path, cleanCwd)
-				path = strings.TrimPrefix(path, "/")
-			}
-			path = strings.TrimPrefix(path, "./")
 
 			currentFile = &coverageFileRecord{Filename: path}
 		} else if strings.HasPrefix(line, "DA:") && currentFile != nil {

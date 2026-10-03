@@ -85,3 +85,14 @@ jobs:
           grep -Eq '^\s+Base\.swift [1-9][0-9]*/' cover.log
         env:
           VERITAS_NO_HOOK: "1"
+
+      - name: Raw lcov export smoke test (functions and branches)
+        run: |
+          ./pleasew --plain_output cover //test/swift/branches:branches_test 2>&1 | tee cover.log
+          f="plz-out/bin/test/swift/branches/branches_test.lcov"
+          grep -q '^SF:test/swift/branches/Branches\.swift$' "$f"
+          grep -Eq '^FNDA:0,.*unused' "$f"
+          grep -q '^BRDA:4,0,1,0$' "$f"
+          grep -q '^BRDA:12,0,0,0$' "$f"
+        env:
+          VERITAS_NO_HOOK: "1"
