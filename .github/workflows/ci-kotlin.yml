@@ -65,7 +65,7 @@ jobs:
 
       - name: Raw lcov export smoke test (functions and branches)
         run: |
-          ./pleasew --plain_output cover //test/kotlin/branches:branches_test 2>&1 | tee cover.log
+          ./pleasew --plain_output cover --rerun //test/kotlin/branches:branches_test 2>&1 | tee cover.log
           f="plz-out/bin/test/kotlin/branches/branches_test.lcov"
           grep -q '^SF:test/kotlin/branches/branches\.kt$' "$f"
           grep -Eq '^FNDA:0,.*\.unused\(\)I$' "$f"
