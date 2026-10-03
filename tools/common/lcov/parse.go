@@ -18,6 +18,7 @@ func Parse(r io.Reader) (*Report, error) {
 	// FNDA lines refer to FN lines by name.
 	var cur *File
 	fnIndex := map[string]int{}
+	var armLabels map[armKey][]string
 
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 0, 64*1024), 16*1024*1024)
@@ -40,6 +41,7 @@ func Parse(r io.Reader) (*Report, error) {
 				report.Files = append(report.Files, f)
 			}
 			cur = f
+			armLabels = map[armKey][]string{}
 			fnIndex = map[string]int{}
 			for i, fn := range f.Functions {
 				fnIndex[fn.Name] = i
@@ -110,9 +112,25 @@ func Parse(r io.Reader) (*Report, error) {
 			}
 			ln, e1 := strconv.Atoi(parts[0])
 			block, e2 := strconv.Atoi(parts[1])
-			arm, e3 := strconv.Atoi(parts[2])
-			if e1 != nil || e2 != nil || e3 != nil {
+			if e1 != nil || e2 != nil {
 				return fail(errNumber)
+			}
+			// Some tools (coverage.py) label the arms of a branch with text such as
+			// "jump to line 5" instead of a number: number them in order of appearance.
+			arm, e3 := strconv.Atoi(parts[2])
+			if e3 != nil {
+				k := armKey{ln, block}
+				labels := armLabels[k]
+				arm = -1
+				for i, l := range labels {
+					if l == parts[2] {
+						arm = i
+					}
+				}
+				if arm < 0 {
+					arm = len(labels)
+					armLabels[k] = append(labels, parts[2])
+				}
 			}
 			taken := NotEvaluated
 			if parts[3] != "-" {
@@ -134,6 +152,8 @@ func Parse(r io.Reader) (*Report, error) {
 	}
 	return report, nil
 }
+
+type armKey struct{ line, block int }
 
 var (
 	errOutsideRecord = fmt.Errorf("record outside an SF section")
