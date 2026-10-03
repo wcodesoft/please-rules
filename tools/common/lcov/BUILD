@@ -4,6 +4,7 @@ go_library(
     name = "lcov",
     srcs = [
         "lcov.go",
+        "llvm.go",
         "merge.go",
         "parse.go",
         "path.go",
@@ -17,6 +18,8 @@ go_test(
     srcs = [
         "lcov.go",
         "lcov_test.go",
+        "llvm.go",
+        "llvm_test.go",
         "merge.go",
         "parse.go",
         "path.go",
