@@ -12,8 +12,7 @@ and this project adheres to
 
 - `plz cover` failed to link the instrumented test binary because the test
   runner scanned the whole test directory and linked every archive found in the
-  Swift toolchain. It now uses only the target's declared data and
-  dependencies.
+  Swift toolchain. It now uses only the target's declared data and dependencies.
 
 ### Changed
 
