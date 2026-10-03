@@ -5,9 +5,11 @@ go_library(
     srcs = [
         "coverage.go",
         "junit.go",
+        "lcov.go",
         "runner.go",
     ],
     deps = [
+        "//tools/common/lcov",
         "//tools/please_kotlin/compile",
         "//tools/please_kotlin/toolchain",
     ],
@@ -19,10 +21,12 @@ go_test(
     srcs = [
         "coverage_test.go",
         "junit_test.go",
+        "lcov_test.go",
         "runner_test.go",
     ],
     deps = [
         ":testrunner",
+        "//tools/common/lcov",
         "//tools/please_kotlin/compile",
     ],
 )

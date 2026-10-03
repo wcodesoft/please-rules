@@ -7,6 +7,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-10-03
+
+### Added
+
+- `kotlin_test` keeps the JaCoCo report converted to lcov as a declared test
+  output, `plz-out/bin/<package>/<name>.lcov`, with repository-relative paths
+  and the function (`FN`/`FNDA`) and branch (`BRDA`) records that Please's
+  merged `coverage.xml` and `coverage.json` do not carry. It is written under
+  `plz cover` and is empty otherwise. JaCoCo has no hit counts and reports
+  branches as per-line counts, so counts are 0 or 1 and branch arms are
+  anonymous.
+- `please_kotlin testrunner --lcov-file` flag.
+- Branchy coverage fixture (`test/kotlin/branches:branches_test`) and a CI smoke
+  test asserting the exported functions and branches.
+
+### Documentation
+
+- Documented the raw lcov export: location, contents, JaCoCo's limits, lifetime.
+
 ## [0.3.6] - 2026-10-03
 
 ### Fixed

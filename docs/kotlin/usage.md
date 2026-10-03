@@ -336,3 +336,30 @@ Test targets are run with the JaCoCo agent (`JacocoAgent`) and reported with
   `$COVERAGE_FILE`. Only classes compiled from your own `kt_library` targets are
   reported (third-party jars bundled into the test jar are excluded), and the
   test target's own sources are not counted.
+
+### Raw lcov export (functions and branches)
+
+Please reduces every coverage report to per-line data. Each `kotlin_test` also
+keeps the JaCoCo report converted to lcov, with the function (`FN`/`FNDA`) and
+branch (`BRDA`) records that `coverage.xml` and `coverage.json` do not carry:
+
+- **Location**: `plz-out/bin/<package>/<target name>.lcov`, for example
+  `plz-out/bin/test/kotlin/branches/branches_test.lcov`. It is declared as a
+  test output, so it is written next to the test jar.
+- **Content**: lcov with repository-relative paths, for the project classes only
+  (third-party classes bundled into the test jar are excluded). The file is
+  empty unless the test ran under `plz cover`.
+- **Functions**: one record per method with a source line, named
+  `<package>.<Class>.<method><descriptor>`, for example
+  `test.kotlin.branches.BranchesKt.both(ZZ)Z`.
+- **Hit counts are 0 or 1**: JaCoCo records whether code ran, not how often.
+- **Branches are anonymous**: JaCoCo reports, per line, how many branches ran
+  and how many did not, without saying which. The arms of a line are numbered
+  from 0 with the taken ones first, so only "N arms ran, M did not" is
+  meaningful, not which arm an index refers to. The counts are JVM-level
+  branches, so a short-circuit `a && b` can show more arms than the source has
+  conditions. Branches of a line that never ran are written as not evaluated
+  (`-`).
+- **Lifetime**: the file reflects the last test run that actually executed. Read
+  it right after `./pleasew cover --rerun <target>`; do not assume it is
+  recreated when Please reuses a cached result.
