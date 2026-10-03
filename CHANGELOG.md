@@ -6,9 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.6.0] - 2026-10-03
+
+### Added
+
+- `rust_test` keeps the raw lcov report as a declared test output,
+  `plz-out/bin/<package>/<name>.lcov`, with repository-relative paths, function
+  records (`FN`/`FNDA`, rustc v0-mangled names) and, for lines that ran only
+  partly, synthesized branch records (`BRDA`) derived from `llvm-cov`'s sub-line
+  regions: stable Rust emits no branch regions, so this covers cases such as the
+  right-hand side of `a && b` or a one-line `if` body that never ran. It is
+  written under `plz cover` and is empty otherwise.
+- `please_rust test-runner --lcov-file` flag.
+- Branchy coverage fixture (`test/rust/branches:branches_test`) and a CI smoke
+  test asserting the exported functions and branches.
 
 ### Fixed
+
+- Raw profiles were merged twice under Please (the test directory is also the
+  working directory), doubling every execution count in the lcov report. They
+  are now listed once.
 
 - `rust_test` ignored `LlvmProfdataTool`, `LlvmCovTool` and `Coverage` (plugin
   config was read with `CONFIG.get`, which does not see it), so `llvm-profdata`
@@ -21,6 +38,8 @@ and this project adheres to
 
 - Documented the Rust coverage report location, format and contents, and the
   silent `No data` result when `[cover] fileextension = .rs` is missing.
+- Documented the raw lcov export: location, contents, how partial lines are
+  derived, lifetime.
 - Added a CI coverage smoke test.
 
 ## [0.5.0] - 2026-09-19

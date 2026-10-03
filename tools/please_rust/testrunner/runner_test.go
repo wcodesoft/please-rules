@@ -69,3 +69,23 @@ func TestRunWithOptions_CoverageActive(t *testing.T) {
 		t.Errorf("expected results.xml to exist, got %v", err)
 	}
 }
+
+func TestFindProfrawFilesListsEachFileOnce(t *testing.T) {
+	dir := t.TempDir()
+	for _, n := range []string{"default_1_10.profraw", "default_1_11.profraw", "other.txt"} {
+		if err := os.WriteFile(filepath.Join(dir, n), nil, 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	old, _ := os.Getwd()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(old)
+
+	// TMP_DIR is the working directory under Please: the same files match twice.
+	got := findProfrawFiles(dir)
+	if len(got) != 2 {
+		t.Errorf("findProfrawFiles = %v, want the two profiles once each", got)
+	}
+}

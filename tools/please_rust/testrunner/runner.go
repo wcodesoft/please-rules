@@ -20,6 +20,7 @@ type RunOptions struct {
 	ResultsFile    string
 	CoverageActive bool
 	CoverageFile   string
+	LcovFile       string // raw lcov export (functions and branches), written empty without coverage
 	LlvmProfdata   string
 	LlvmCov        string
 }
@@ -51,6 +52,28 @@ func resolveTmpDir() string {
 		return dir
 	}
 	return os.TempDir()
+}
+
+// findProfrawFiles lists the raw profiles in tmpDir and the working directory, once
+// each. Under Please the two are the same directory, and merging a profile twice
+// doubles its execution counts.
+func findProfrawFiles(tmpDir string) []string {
+	var files []string
+	seen := make(map[string]bool)
+	for _, pattern := range []string{filepath.Join(tmpDir, "*.profraw"), "*.profraw"} {
+		matches, _ := filepath.Glob(pattern)
+		for _, m := range matches {
+			key := m
+			if abs, err := filepath.Abs(m); err == nil {
+				key = abs
+			}
+			if !seen[key] {
+				seen[key] = true
+				files = append(files, m)
+			}
+		}
+	}
+	return files
 }
 
 func cleanProfrawFiles(patterns ...string) {
@@ -96,6 +119,12 @@ func RunWithOptions(opts RunOptions) error {
 	coverageActive, coverageFile := resolveCoverageConfig(opts)
 	tmpDir := resolveTmpDir()
 
+	// The raw lcov export is a declared test output: create it up front so it exists
+	// (empty) when coverage is off or the report cannot be produced.
+	if err := writeRawLcov(opts.LcovFile, nil); err != nil {
+		return fmt.Errorf("failed to reset lcov file: %w", err)
+	}
+
 	var buf bytes.Buffer
 	cmd := prepareCommand(opts, tmpDir, coverageActive, &buf)
 
@@ -140,6 +169,12 @@ func mergeProfdata(profdataPath, tmpDir string, profrawFiles []string) (string, 
 }
 
 func exportLcov(covPath, testBinary, mergedProfdata string) ([]byte, error) {
+	return exportCoverage("lcov", covPath, testBinary, mergedProfdata)
+}
+
+// exportCoverage runs `llvm-cov export` in the given format ("lcov" or "text" for
+// the JSON export).
+func exportCoverage(format, covPath, testBinary, mergedProfdata string) ([]byte, error) {
 	if covPath == "" {
 		covPath = os.Getenv("TOOLS_LLVM_COV")
 	}
@@ -153,7 +188,7 @@ func exportLcov(covPath, testBinary, mergedProfdata string) ([]byte, error) {
 
 	args := []string{
 		"export",
-		"--format=lcov",
+		"--format=" + format,
 		"--instr-profile=" + mergedProfdata,
 		testBinary,
 		"--ignore-filename-regex=/rustc/|/.cargo/",
@@ -166,6 +201,21 @@ func exportLcov(covPath, testBinary, mergedProfdata string) ([]byte, error) {
 		return nil, fmt.Errorf("llvm-cov export failed: %w (stderr: %s)", err, errBuf.String())
 	}
 	return lcovBuf.Bytes(), nil
+}
+
+// exportRawLcov writes the raw lcov report. The JSON export adds branch records for
+// partly executed lines; if it fails the report is still written without them.
+func exportRawLcov(opts RunOptions, lcovBytes []byte, mergedProfdata, repoRoot string) error {
+	llvmJSON, err := exportCoverage("text", opts.LlvmCov, opts.TestBinary, mergedProfdata)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: no sub-line regions for the raw lcov export: %v\n", err)
+		llvmJSON = nil
+	}
+	data, err := buildRawLcov(lcovBytes, llvmJSON, repoRoot)
+	if err != nil {
+		return err
+	}
+	return writeRawLcov(opts.LcovFile, data)
 }
 
 func detectRepoRoot() string {
@@ -207,9 +257,7 @@ func writeCoverageFiles(normLcov, gcovData []byte, coverageFile string) error {
 }
 
 func collectAndProcessCoverage(opts RunOptions, tmpDir string, coverageFile string) error {
-	profrawFiles, _ := filepath.Glob(filepath.Join(tmpDir, "*.profraw"))
-	cwdFiles, _ := filepath.Glob("*.profraw")
-	profrawFiles = append(profrawFiles, cwdFiles...)
+	profrawFiles := findProfrawFiles(tmpDir)
 
 	if len(profrawFiles) == 0 {
 		return nil
@@ -229,6 +277,12 @@ func collectAndProcessCoverage(opts RunOptions, tmpDir string, coverageFile stri
 	normLcov, gcovData, err := ProcessCoverage(lcovBytes, repoRoot)
 	if err != nil {
 		return fmt.Errorf("failed to process coverage output: %w", err)
+	}
+
+	if opts.LcovFile != "" {
+		if err := exportRawLcov(opts, lcovBytes, mergedProfdata, repoRoot); err != nil {
+			fmt.Fprintf(os.Stderr, "raw lcov export error: %v\n", err)
+		}
 	}
 
 	return writeCoverageFiles(normLcov, gcovData, coverageFile)

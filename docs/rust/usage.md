@@ -313,13 +313,38 @@ Display detailed, line-by-line covered source listings:
 - **Location**: Please merges the per-test results into
   `plz-out/log/coverage.xml` (Cobertura XML) and `plz-out/log/coverage.json`
   (per-file line markers plus per-file and per-directory percentages).
-- **Contents**: line coverage only. Branch coverage and per-function data are
-  not emitted, so consumers cannot join coverage with per-function complexity
-  from this report.
+- **Contents**: line coverage only. Function and branch data are in the raw lcov
+  export described below.
 - **Missing `[cover]` setting**: without `fileextension = .rs` the report is
   silently `Total coverage: No data`.
 
-### 5. Per-Rule Coverage Control
+### 5. Raw lcov Export (functions and branches)
+
+Each `rust_test` also keeps the `llvm-cov` report as lcov, with the function
+(`FN`/`FNDA`) and branch (`BRDA`) records that `coverage.xml` and
+`coverage.json` do not carry:
+
+- **Location**: `plz-out/bin/<package>/<target name>.lcov`, for example
+  `plz-out/bin/test/rust/branches/branches_test.lcov`. It is declared as a test
+  output, so it is written next to the test binary.
+- **Content**: lcov with repository-relative paths; toolchain and registry
+  sources are excluded. The file is empty unless the test ran under `plz cover`.
+- **Functions**: `FN`/`FNDA` records. Names are rustc v0-mangled (`_R...`);
+  demangle them with `rustfilt` for display.
+- **Partial lines**: stable `rustc` emits no branch regions, so `llvm-cov` has
+  no branch records of its own. Instead, a `BRDA` record is synthesized for
+  every line that ran but contains a sub-line region that never did, such as the
+  right-hand side of `a && b` or the body of a one-line `if`: one arm per region
+  starting on the line, in column order, with its count. This is a heuristic,
+  not source-level branches. If the arms of a branch are on separate lines (a
+  normal multi-line `if`/`else`), the untaken side shows up as an uncovered
+  line, not as a partial one. Lines whose sub-line regions all ran carry no
+  branch record.
+- **Lifetime**: the file reflects the last test run that actually executed. Read
+  it right after `./pleasew cover --rerun <target>`; do not assume it is
+  recreated when Please reuses a cached result.
+
+### 6. Per-Rule Coverage Control
 
 You can enable or disable coverage instrumentation on individual rules:
 
