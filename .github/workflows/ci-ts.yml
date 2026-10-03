@@ -58,14 +58,14 @@ jobs:
 
       - name: Coverage smoke test (calculator_test)
         run: |
-          ./pleasew --plain_output cover //test/ts/lib:calculator_test | tee cover.log
+          ./pleasew --plain_output cover //test/ts/lib:calculator_test  2>&1 | tee cover.log
           grep -Eq '^\s+calculator\.ts [1-9][0-9]*/' cover.log
         env:
           VERITAS_NO_HOOK: "1"
 
       - name: Coverage smoke test (calculator_vitest_test)
         run: |
-          ./pleasew --plain_output cover //test/ts/lib:calculator_vitest_test | tee cover.log
+          ./pleasew --plain_output cover //test/ts/lib:calculator_vitest_test  2>&1 | tee cover.log
           grep -Eq '^\s+calculator\.ts [1-9][0-9]*/' cover.log
         env:
           VERITAS_NO_HOOK: "1"
