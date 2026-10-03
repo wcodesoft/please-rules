@@ -3,6 +3,7 @@ subinclude("///go//build_defs:go")
 go_library(
     name = "lcov",
     srcs = [
+        "gocover.go",
         "lcov.go",
         "llvm.go",
         "merge.go",
@@ -16,6 +17,8 @@ go_library(
 go_test(
     name = "lcov_test",
     srcs = [
+        "gocover.go",
+        "gocover_test.go",
         "lcov.go",
         "lcov_test.go",
         "llvm.go",
