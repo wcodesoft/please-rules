@@ -7,6 +7,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.6] - 2026-10-03
+
+### Fixed
+
+- `plz cover` reported 0% for `kt_test` targets because JaCoCo failed to analyze
+  third-party classes bundled into the test jar. Each jar now records its own
+  project classes and only those are reported; the test target's own sources are
+  excluded.
+- Coverage processing errors are now printed as warnings instead of being
+  silently discarded.
+
+### Documentation
+
+- Documented the required `[cover]` setting, report location, format and
+  contents for Kotlin.
+- Added a CI coverage smoke test.
+
 ## [0.3.5] - 2026-09-23
 
 ### Added

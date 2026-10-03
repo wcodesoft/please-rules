@@ -296,3 +296,43 @@ print("Connected after union?", bool(exports["isConnected"](store, 1, 2)))  # Tr
    together into `.wasm`. The dependency graph remains a strict, clean Directed
    Acyclic Graph (DAG):
    $$\text{Binary} \longrightarrow \text{Implementation} \longrightarrow \text{Contract}$$
+
+---
+
+## Code Coverage (`plz cover`)
+
+### Required `[cover]` setting
+
+Please only reports coverage for files whose extension is listed under `[cover]`
+in your `.plzconfig`. The Kotlin plugin cannot set this for you; without it the
+report is silently `Total coverage: No data`, or lists files of other languages
+instead of yours.
+
+```ini
+[cover]
+fileextension = .kt
+```
+
+If your repository mixes languages, add one `fileextension` line per extension.
+
+### Running
+
+```bash
+./pleasew cover //src/...
+```
+
+Test targets are run with the JaCoCo agent (`JacocoAgent`) and reported with
+`JacocoCli`; both are provided by `kotlin_toolchain`.
+
+### Report output
+
+- **Location**: Please merges the per-test results into
+  `plz-out/log/coverage.xml` (Cobertura XML) and `plz-out/log/coverage.json`
+  (per-file line markers plus per-file and per-directory percentages).
+- **Contents**: line coverage only. Branch coverage and per-function data are
+  not emitted, so consumers cannot join coverage with per-function complexity
+  from this report.
+- **Format**: the runner converts the JaCoCo XML report to GCOV and writes it to
+  `$COVERAGE_FILE`. Only classes compiled from your own `kt_library` targets are
+  reported (third-party jars bundled into the test jar are excluded), and the
+  test target's own sources are not counted.

@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -15,6 +16,7 @@ type JarOptions struct {
 	OutJar         string
 	MainClass      string
 	MergeJars      []string
+	ExtraEntries   map[string][]byte
 	ExecutableStub bool
 	Java           string
 }
@@ -53,6 +55,22 @@ func CreateJar(opts JarOptions) error {
 	seenEntries := make(map[string]bool)
 	seenEntries["META-INF/MANIFEST.MF"] = true
 
+	extraNames := make([]string, 0, len(opts.ExtraEntries))
+	for name := range opts.ExtraEntries {
+		extraNames = append(extraNames, name)
+	}
+	sort.Strings(extraNames)
+	for _, name := range extraNames {
+		w, err := zw.Create(name)
+		if err != nil {
+			return fmt.Errorf("failed to create entry %s: %w", name, err)
+		}
+		if _, err := w.Write(opts.ExtraEntries[name]); err != nil {
+			return fmt.Errorf("failed to write entry %s: %w", name, err)
+		}
+		seenEntries[name] = true
+	}
+
 	// Walk SourceDir and write all files
 	if err := walkAndWriteFiles(zw, opts.SourceDir, seenEntries); err != nil {
 		return err
@@ -73,6 +91,36 @@ func CreateJar(opts JarOptions) error {
 		_ = os.Chmod(opts.OutJar, 0755)
 	}
 
+	return nil
+}
+
+// ProjectClassesEntry lists the classes compiled from project sources, as opposed
+// to third-party classes merged into the same jar. Code coverage reports only
+// cover these classes.
+const ProjectClassesEntry = "META-INF/please-kotlin-classes.txt"
+
+// ReadProjectClasses returns the class entries listed in a jar's ProjectClassesEntry.
+func ReadProjectClasses(jarPath string) []string {
+	r, err := zip.OpenReader(jarPath)
+	if err != nil {
+		return nil
+	}
+	defer r.Close()
+	for _, f := range r.File {
+		if f.Name != ProjectClassesEntry {
+			continue
+		}
+		rc, err := f.Open()
+		if err != nil {
+			return nil
+		}
+		defer rc.Close()
+		data, err := io.ReadAll(rc)
+		if err != nil {
+			return nil
+		}
+		return strings.Fields(string(data))
+	}
 	return nil
 }
 

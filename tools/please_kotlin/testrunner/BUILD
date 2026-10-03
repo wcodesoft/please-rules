@@ -23,5 +23,6 @@ go_test(
     ],
     deps = [
         ":testrunner",
+        "//tools/please_kotlin/compile",
     ],
 )
