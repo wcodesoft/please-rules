@@ -239,7 +239,7 @@ def swift_test(
     testrunner_args = [
         f'--framework "{framework}"',
         f'--srcs "{srcs_list}"',
-        '--deps "${DEPS:-}"',
+        '--deps "${DATA:-}"',
         '--binary "$TEST"',
         '--results-file "test.results"',
         '--coverage-file "${COVERAGE_FILE:-test.coverage}"',

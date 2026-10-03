@@ -158,7 +158,6 @@ func Run(opts RunOptions) error {
 	}
 
 	coverageActive := opts.Coverage || os.Getenv("COVERAGE") != "" || os.Getenv("COVERAGE_FILE") != ""
-	fmt.Fprintf(os.Stderr, "DEBUG ENV: COVERAGE=%q COVERAGE_FILE=%q coverageActive=%v opts.Coverage=%v\n", os.Getenv("COVERAGE"), os.Getenv("COVERAGE_FILE"), coverageActive, opts.Coverage)
 	if opts.CoverageFile == "" {
 		if covEnv := os.Getenv("COVERAGE_FILE"); covEnv != "" {
 			opts.CoverageFile = covEnv
