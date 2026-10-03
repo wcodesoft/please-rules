@@ -134,3 +134,6 @@ please-rules/
 
 - **[Veritas Code Quality & Telemetry](veritas.md)**: Local static analysis and
   automated test telemetry configuration.
+- **[Raw lcov Coverage Reports](coverage-lcov.md)**: where each test rule keeps
+  its function and branch coverage, the format, per-language limits, and how to
+  classify covered, uncovered and partly covered lines.
