@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"tools/please_swift/linkorder"
 )
 
 // JSON Event Stream structs
@@ -177,6 +178,7 @@ func Run(opts RunOptions) error {
 		testBinary = filepath.Join(tmpDir, "test_binary")
 	}
 
+	var linkIncDirs, linkArchives []string
 	if opts.Binary != "" && !coverageActive {
 		testBinary = opts.Binary
 	} else {
@@ -228,6 +230,8 @@ struct __PleaseTestRunner {
 
 		// 2. Discover dependency paths
 		incDirs, archives := discoverDependencies(opts.Deps)
+		archives = linkorder.Sort(archives)
+		linkIncDirs, linkArchives = incDirs, archives
 
 		var compileArgs []string
 		compileArgs = append(compileArgs, "-o", testBinary)
@@ -258,6 +262,13 @@ struct __PleaseTestRunner {
 	}
 
 	if opts.CompileOnly {
+		// Keep the transitive link inputs next to the binary: the coverage run
+		// rebuilds the test with instrumentation but only has the direct deps staged.
+		if opts.Out != "" {
+			if err := saveLinkInputs(opts.Out+".deps", linkIncDirs, linkArchives); err != nil {
+				return fmt.Errorf("failed to save link inputs: %w", err)
+			}
+		}
 		return nil
 	}
 
@@ -885,4 +896,49 @@ func discoverDependencies(deps []string) (includeDirs []string, archives []strin
 		})
 	}
 	return includeDirs, archives
+}
+
+// saveLinkInputs copies the module directories and archives found while compiling
+// into dest, keeping their paths relative to the working directory so that
+// discoverDependencies can find them again. dest is created even when empty.
+func saveLinkInputs(dest string, incDirs, archives []string) error {
+	if err := os.MkdirAll(dest, 0755); err != nil {
+		return err
+	}
+	copyFile := func(src string) error {
+		if filepath.IsAbs(src) {
+			return nil
+		}
+		target := filepath.Join(dest, src)
+		if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+			return err
+		}
+		data, err := os.ReadFile(src)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(target, data, 0644)
+	}
+	for _, dir := range incDirs {
+		if dir == "." || filepath.IsAbs(dir) {
+			continue
+		}
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			if !e.IsDir() {
+				if err := copyFile(filepath.Join(dir, e.Name())); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	for _, a := range archives {
+		if err := copyFile(a); err != nil {
+			return err
+		}
+	}
+	return nil
 }

@@ -12,7 +12,15 @@ and this project adheres to
 
 - `plz cover` failed to link the instrumented test binary because the test
   runner scanned the whole test directory and linked every archive found in the
-  Swift toolchain. It now uses only the target's declared data and dependencies.
+  Swift toolchain. It now uses the link inputs saved by the build phase.
+
+- Tests and binaries that depend on a library which itself depends on another
+  Swift library failed to link on Linux (`undefined reference`): archives are
+  now ordered so each library precedes its dependencies, using the module
+  dependencies recorded in `swift_metadata.json`.
+- `plz cover` now also works for those transitive dependency chains: the build
+  phase saves the transitive link inputs in a `<test>.deps` output for the
+  instrumented rebuild.
 
 ### Changed
 

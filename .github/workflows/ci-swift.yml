@@ -77,3 +77,11 @@ jobs:
           grep -Eq '^\s+Math\.swift [1-9][0-9]*/' cover.log
         env:
           VERITAS_NO_HOOK: "1"
+
+      - name: Coverage smoke test (mid_test, transitive dependencies)
+        run: |
+          ./pleasew --plain_output cover //test/swift/chain:mid_test | tee cover.log
+          grep -Eq '^\s+Mid\.swift [1-9][0-9]*/' cover.log
+          grep -Eq '^\s+Base\.swift [1-9][0-9]*/' cover.log
+        env:
+          VERITAS_NO_HOOK: "1"
