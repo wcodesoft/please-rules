@@ -1,8 +1,10 @@
 package testrunner
 
 import (
+	"archive/zip"
 	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -156,7 +158,9 @@ func Run(opts RunOptions) error {
 	}
 
 	if activeCov && jacocoExec != "" {
-		_ = processJacocoCoverage(javaBin, opts, tmpDir, jacocoExec, covFile)
+		if err := processJacocoCoverage(javaBin, opts, tmpDir, jacocoExec, covFile); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to process coverage: %v\n", err)
+		}
 	}
 
 	return runErr
@@ -164,25 +168,32 @@ func Run(opts RunOptions) error {
 
 func processJacocoCoverage(javaBin string, opts RunOptions, tmpDir, jacocoExec, covFile string) error {
 	if _, err := os.Stat(jacocoExec); os.IsNotExist(err) {
-		return nil
+		return fmt.Errorf("JaCoCo agent wrote no execution data to %s", jacocoExec)
 	}
 	if opts.JacocoCli == "" {
-		return nil
+		return fmt.Errorf("no JaCoCo CLI configured (set JacocoCli)")
 	}
 
 	classTarget := opts.ClassFiles
 	if classTarget == "" {
 		classTarget = opts.TestJar
+		// The test jar bundles third-party classes that JaCoCo cannot analyze (and
+		// that do not belong in the report); restrict it to the project's classes.
+		if projectDir, err := extractProjectClasses(opts.TestJar, filepath.Join(tmpDir, "project-classes")); err != nil {
+			return err
+		} else if projectDir != "" {
+			classTarget = projectDir
+		}
 	}
 	if classTarget == "" {
-		return nil
+		return fmt.Errorf("no class files to report coverage on")
 	}
 
 	reportXml := filepath.Join(tmpDir, "jacoco_report.xml")
 	repCmd := exec.Command(javaBin, "-jar", opts.JacocoCli, "report", jacocoExec,
 		"--classfiles", classTarget, "--xml", reportXml)
-	if err := repCmd.Run(); err != nil {
-		return err
+	if out, err := repCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("jacococli report: %w: %s", err, strings.TrimSpace(string(out)))
 	}
 
 	xmlData, err := os.ReadFile(reportXml)
@@ -202,4 +213,47 @@ func processJacocoCoverage(javaBin string, opts RunOptions, tmpDir, jacocoExec, 
 		return err
 	}
 	return os.WriteFile(covFile, gcovData, 0644)
+}
+
+// extractProjectClasses unpacks the project classes listed in jar into dir and
+// returns dir, or "" if the jar does not list its project classes.
+func extractProjectClasses(jar, dir string) (string, error) {
+	names := compile.ReadProjectClasses(jar)
+	if len(names) == 0 {
+		return "", nil
+	}
+	r, err := zip.OpenReader(jar)
+	if err != nil {
+		return "", err
+	}
+	defer r.Close()
+	wanted := make(map[string]bool, len(names))
+	for _, n := range names {
+		wanted[n] = true
+	}
+	for _, f := range r.File {
+		if !wanted[f.Name] || !strings.HasSuffix(f.Name, ".class") {
+			continue
+		}
+		dest := filepath.Join(dir, filepath.FromSlash(f.Name))
+		if !strings.HasPrefix(dest, filepath.Clean(dir)+string(os.PathSeparator)) {
+			continue
+		}
+		if err := os.MkdirAll(filepath.Dir(dest), 0755); err != nil {
+			return "", err
+		}
+		rc, err := f.Open()
+		if err != nil {
+			return "", err
+		}
+		data, err := io.ReadAll(rc)
+		rc.Close()
+		if err != nil {
+			return "", err
+		}
+		if err := os.WriteFile(dest, data, 0644); err != nil {
+			return "", err
+		}
+	}
+	return dir, nil
 }
