@@ -61,13 +61,13 @@ def _is_coverage_enabled(rule_coverage=None):
     """Determines whether coverage instrumentation is enabled for a target."""
     if rule_coverage is not None:
         return rule_coverage
-    return CONFIG.get("RUST.COVERAGE", "true").lower() in ("true", "1", "yes", "on")
+    return (CONFIG.RUST.COVERAGE or "true").lower() in ("true", "1", "yes", "on")
 
 def _test_tools(profdata_override=None, cov_override=None):
     """Returns test_tools dictionary for rust_test."""
     tools = {"TOOL": [_rust_tool()]}
-    profdata = profdata_override or CONFIG.get("RUST.LLVM_PROFDATA_TOOL", "")
-    cov = cov_override or CONFIG.get("RUST.LLVM_COV_TOOL", "")
+    profdata = profdata_override or CONFIG.RUST.LLVM_PROFDATA_TOOL
+    cov = cov_override or CONFIG.RUST.LLVM_COV_TOOL
     if profdata and (profdata.startswith("//") or profdata.startswith("///") or profdata.startswith(":")):
         tools["LLVM_PROFDATA"] = [profdata]
     if cov and (cov.startswith("//") or cov.startswith("///") or cov.startswith(":")):
