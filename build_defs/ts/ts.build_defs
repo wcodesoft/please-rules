@@ -158,7 +158,7 @@ def vitest_toolchain(
     cmd = f"""
 mkdir -p "$OUT"
 export DENO_DIR="$OUT"
-{deno_cmd} cache npm:vitest@{version}
+{deno_cmd} cache npm:vitest@{version} npm:@vitest/coverage-v8@{version}
 """
     return build_rule(
         name = name,

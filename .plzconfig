@@ -15,6 +15,9 @@ DenoTool = //tools/ts_toolchain:toolchain|deno
 BrowserTool = //tools/browser_toolchain:toolchain|chromium
 VitestTool = //tools/vitest_toolchain:toolchain
 
+[cover]
+fileextension = .ts
+
 [PluginDefinition]
 Name = ts
 

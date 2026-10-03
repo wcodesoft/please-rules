@@ -156,3 +156,46 @@ Run the built executable:
 ```bash
 ./pleasew run //src/cli:cli
 ```
+
+---
+
+## Code Coverage (`plz cover`)
+
+### Required `[cover]` setting
+
+Please only reports coverage for files whose extension is listed under `[cover]`
+in your `.plzconfig`. The TypeScript plugin cannot set this for you; without it
+the report is silently `Total coverage: No data`, or lists files of other
+languages instead of yours.
+
+```ini
+[cover]
+fileextension = .ts
+```
+
+If your repository mixes languages, add one `fileextension` line per extension.
+
+### Running
+
+```bash
+./pleasew cover //src/...
+```
+
+The Deno runner (the default) uses `deno test --coverage`; the Vitest runner
+(`runner = "vitest"`) uses the V8 provider (`@vitest/coverage-v8`), which
+`vitest_toolchain` caches alongside Vitest so coverage also works offline.
+
+### Report output
+
+- **Location**: Please merges the per-test results into
+  `plz-out/log/coverage.xml` (Cobertura XML) and `plz-out/log/coverage.json`
+  (per-file line markers plus per-file and per-directory percentages).
+- **Contents**: line coverage only. Branch coverage and per-function data are
+  not emitted, so consumers cannot join coverage with per-function complexity
+  from this report.
+- **Format**: both runners write Cobertura XML to `$COVERAGE_FILE`, converted
+  from lcov. Vitest writes its lcov report to a scratch directory (Vitest
+  empties its reports directory, so it cannot be the test working directory).
+- **Vitest note**: when coverage is active the runner writes a `package.json`
+  declaring `vitest` and `@vitest/coverage-v8` in the test working directory (if
+  none exists) so Deno can resolve the provider.

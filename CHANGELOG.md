@@ -7,6 +7,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.3] - 2026-10-03
+
+### Fixed
+
+- `plz cover` now works for `ts_test` targets with `runner = "vitest"`. Vitest's
+  lcov report is written to a scratch subdirectory (Vitest empties its reports
+  directory, which previously was the test working directory) and converted to
+  the Cobertura file Please reads.
+- `vitest_toolchain` now also caches `@vitest/coverage-v8` so coverage works
+  offline.
+
+### Changed
+
+- The repository `.plzconfig` sets `[cover] fileextension = .ts`.
+
+### Documentation
+
+- Documented the required `[cover]` setting, report location, format and
+  contents for TypeScript.
+- Added a CI coverage smoke test for the Deno and Vitest runners.
+
 ## [0.5.2] - 2026-10-01
 
 ### Fixed

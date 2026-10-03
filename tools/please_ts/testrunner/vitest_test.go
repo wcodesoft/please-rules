@@ -127,3 +127,40 @@ func TestWriteVitestConfigNestedAliasOrdering(t *testing.T) {
 		t.Errorf("longer alias should precede shorter alias in:\n%s", content)
 	}
 }
+
+func TestVitestCoverageArgsUseDedicatedDirectory(t *testing.T) {
+	args := strings.Join(vitestCoverageArgs("/tmp/run/coverage"), " ")
+	for _, want := range []string{"--coverage.enabled", "--coverage.reporter=lcov", "--coverage.reportsDirectory=/tmp/run/coverage"} {
+		if !strings.Contains(args, want) {
+			t.Errorf("vitestCoverageArgs missing %q in %q", want, args)
+		}
+	}
+}
+
+func TestConvertVitestCoverage(t *testing.T) {
+	dir := t.TempDir()
+	cwd, _ := os.Getwd()
+	lcov := "SF:" + filepath.Join(cwd, "lib.ts") + "\nDA:1,1\nDA:2,0\nend_of_record\n"
+	if err := os.WriteFile(filepath.Join(dir, "lcov.info"), []byte(lcov), 0644); err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(t.TempDir(), "sub", "test.coverage")
+	if err := convertVitestCoverage(dir, out); err != nil {
+		t.Fatalf("convertVitestCoverage: %v", err)
+	}
+	got, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`filename="lib.ts"`, `<line number="1" hits="1"/>`, `<line number="2" hits="0"/>`} {
+		if !strings.Contains(string(got), want) {
+			t.Errorf("coverage file missing %q:\n%s", want, got)
+		}
+	}
+}
+
+func TestConvertVitestCoverageMissingReport(t *testing.T) {
+	if err := convertVitestCoverage(t.TempDir(), filepath.Join(t.TempDir(), "out")); err == nil {
+		t.Error("expected error when vitest wrote no lcov.info")
+	}
+}
