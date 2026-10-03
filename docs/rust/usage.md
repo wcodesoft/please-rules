@@ -308,7 +308,18 @@ Display detailed, line-by-line covered source listings:
 ./pleasew cover -l //test/lib:lib_test
 ```
 
-### 4. Per-Rule Coverage Control
+### 4. Report Output
+
+- **Location**: Please merges the per-test results into
+  `plz-out/log/coverage.xml` (Cobertura XML) and `plz-out/log/coverage.json`
+  (per-file line markers plus per-file and per-directory percentages).
+- **Contents**: line coverage only. Branch coverage and per-function data are
+  not emitted, so consumers cannot join coverage with per-function complexity
+  from this report.
+- **Missing `[cover]` setting**: without `fileextension = .rs` the report is
+  silently `Total coverage: No data`.
+
+### 5. Per-Rule Coverage Control
 
 You can enable or disable coverage instrumentation on individual rules:
 
