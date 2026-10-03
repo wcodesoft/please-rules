@@ -70,3 +70,18 @@ jobs:
         run: ./pleasew --plain_output test //...
         env:
           VERITAS_NO_HOOK: "1"
+
+      - name: Coverage smoke test (math_test)
+        run: |
+          ./pleasew --plain_output cover //test/swift/lib:math_test  2>&1 | tee cover.log
+          grep -Eq '^\s+Math\.swift [1-9][0-9]*/' cover.log
+        env:
+          VERITAS_NO_HOOK: "1"
+
+      - name: Coverage smoke test (mid_test, transitive dependencies)
+        run: |
+          ./pleasew --plain_output cover //test/swift/chain:mid_test  2>&1 | tee cover.log
+          grep -Eq '^\s+Mid\.swift [1-9][0-9]*/' cover.log
+          grep -Eq '^\s+Base\.swift [1-9][0-9]*/' cover.log
+        env:
+          VERITAS_NO_HOOK: "1"

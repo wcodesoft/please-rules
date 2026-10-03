@@ -3,6 +3,7 @@ subinclude("///go//build_defs:go")
 go_library(
     name = "binary",
     srcs = ["binary.go"],
+    deps = ["//tools/please_swift/linkorder"],
     visibility = ["//tools/please_swift/..."],
 )
 
@@ -12,4 +13,5 @@ go_test(
         "binary.go",
         "binary_test.go",
     ],
+    deps = ["//tools/please_swift/linkorder"],
 )

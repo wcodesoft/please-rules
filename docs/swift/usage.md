@@ -156,3 +156,41 @@ SwiftcTool = //tools/toolchains:swift_toolchain|bin/swiftc
 LlvmProfdataTool = //tools/toolchains:swift_toolchain|bin/llvm-profdata
 LlvmCovTool = //tools/toolchains:swift_toolchain|bin/llvm-cov
 ```
+
+---
+
+## Code Coverage (`plz cover`)
+
+### Required `[cover]` setting
+
+Please only reports coverage for files whose extension is listed under `[cover]`
+in your `.plzconfig`. The Swift plugin cannot set this for you; without it the
+report is silently `Total coverage: No data`, or lists files of other languages
+instead of yours.
+
+```ini
+[cover]
+fileextension = .swift
+```
+
+If your repository mixes languages, add one `fileextension` line per extension.
+
+### Running
+
+```bash
+./pleasew cover //src/...
+```
+
+Under `cover`, the test runner recompiles the test binary with
+`-profile-generate -profile-coverage-mapping`, runs it, and exports the LLVM
+profile with `llvm-profdata` and `llvm-cov`.
+
+### Report output
+
+- **Location**: Please merges the per-test results into
+  `plz-out/log/coverage.xml` (Cobertura XML) and `plz-out/log/coverage.json`
+  (per-file line markers plus per-file and per-directory percentages).
+- **Contents**: line coverage only. Branch coverage and per-function data are
+  not emitted, so consumers cannot join coverage with per-function complexity
+  from this report.
+- **Format**: LLVM lcov converted to Cobertura XML in `$COVERAGE_FILE`.

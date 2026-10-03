@@ -6,6 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-10-03
+
+### Fixed
+
+- `plz cover` failed to link the instrumented test binary because the test
+  runner scanned the whole test directory and linked every archive found in the
+  Swift toolchain. It now uses the link inputs saved by the build phase.
+
+- Tests and binaries that depend on a library which itself depends on another
+  Swift library failed to link on Linux (`undefined reference`): archives are
+  now ordered so each library precedes its dependencies, using the module
+  dependencies recorded in `swift_metadata.json`.
+- `plz cover` now also works for those transitive dependency chains: the build
+  phase saves the transitive link inputs in a `<test>.deps` output for the
+  instrumented rebuild.
+
+### Changed
+
+- Removed a leftover debug print from the test runner and the stray
+  `fileextension = .go` from the repository `[cover]` config.
+
+### Documentation
+
+- Documented the required `[cover]` setting, report location, format and
+  contents for Swift.
+- Added a CI coverage smoke test.
+
 ## [0.2.0] - 2026-09-27
 
 ### Added

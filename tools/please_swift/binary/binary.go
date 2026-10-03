@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"tools/please_swift/linkorder"
 )
 
 // Options contains parameters for building a native Swift executable.
@@ -76,6 +77,7 @@ func Run(opts Options) error {
 	}
 
 	includeDirs, archives := discoverDependencies(opts.Deps)
+	archives = linkorder.Sort(archives)
 
 	var args []string
 	args = append(args, "-o", opts.Out)

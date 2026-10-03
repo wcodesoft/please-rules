@@ -225,7 +225,7 @@ def swift_test(
 
     # Compile phase: build the binary
     compile_args = [
-        '--out "$OUT"',
+        '--out "${OUTS%% *}"',
         '--srcs "${SRCS:-}"',
         '--deps "${DEPS:-}"',
         f'--framework "{framework}"',
@@ -239,7 +239,7 @@ def swift_test(
     testrunner_args = [
         f'--framework "{framework}"',
         f'--srcs "{srcs_list}"',
-        '--deps "${DEPS:-}"',
+        '--deps "$TEST.deps"',
         '--binary "$TEST"',
         '--results-file "test.results"',
         '--coverage-file "${COVERAGE_FILE:-test.coverage}"',
@@ -258,7 +258,7 @@ def swift_test(
         srcs = srcs,
         deps = deps,
         data = data,
-        outs = [name],
+        outs = [name, f"{name}.deps"],
         cmd = compile_cmd,
         test_cmd = test_cmd,
         needs_transitive_deps = True,
