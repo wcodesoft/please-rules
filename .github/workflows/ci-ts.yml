@@ -72,7 +72,7 @@ jobs:
 
       - name: Raw lcov export smoke test (functions and branches)
         run: |
-          ./pleasew --plain_output cover //test/ts/lib:branches_test //test/ts/lib:branches_vitest_test 2>&1 | tee cover.log
+          ./pleasew --plain_output cover --rerun //test/ts/lib:branches_test //test/ts/lib:branches_vitest_test 2>&1 | tee cover.log
           for t in branches_test branches_vitest_test; do
             f="plz-out/bin/test/ts/lib/$t.lcov"
             echo "Checking $f"
