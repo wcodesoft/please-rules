@@ -7,6 +7,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-10-03
+
+### Added
+
+- `ts_test` keeps the raw lcov report of its coverage tool as a declared test
+  output, `plz-out/bin/<package>/<name>.lcov`, with repository-relative paths
+  and the function (`FN`/`FNDA`) and branch (`BRDA`) records that Please's
+  merged `coverage.xml` and `coverage.json` do not carry. It is written by both
+  the Deno and the Vitest runner under `plz cover`, and is empty otherwise.
+- `please_ts testrunner --lcov-file` flag.
+- Branchy coverage fixtures (`test/ts/lib:branches_test` and
+  `branches_vitest_test`) and a CI smoke test asserting the exported functions
+  and branches.
+
+### Documentation
+
+- Documented the raw lcov export: location, contents, lifetime and merging.
+
 ## [0.5.3] - 2026-10-03
 
 ### Fixed

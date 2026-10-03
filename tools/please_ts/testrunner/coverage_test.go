@@ -1,6 +1,8 @@
 package testrunner
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -97,5 +99,59 @@ end_of_record
 				}
 			}
 		})
+	}
+}
+
+func TestCoveragePath(t *testing.T) {
+	cwd := "/run/dir"
+	for in, want := range map[string]string{
+		"file:///run/dir/pkg/lib.ts": "pkg/lib.ts",
+		"/run/dir/lib.ts":            "lib.ts",
+		"./pkg/lib.ts":               "pkg/lib.ts",
+		// compiled layout: <pkg>/<name>/<name>.ts maps back to <pkg>/<name>.ts
+		"pkg/lib/lib.ts": "pkg/lib.ts",
+	} {
+		if got := coveragePath(in, cwd); got != want {
+			t.Errorf("coveragePath(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestWriteRawLcovKeepsFunctionsAndBranches(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "x.lcov")
+	in := "SF:/run/dir/lib.ts\nFN:1,f\nFNDA:0,f\nDA:2,0\nBRDA:2,0,0,-\nend_of_record\n"
+	if err := writeRawLcov(out, []byte(in), "/run/dir"); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := os.ReadFile(out)
+	for _, want := range []string{"SF:lib.ts\n", "FN:1,f\n", "FNDA:0,f\n", "BRDA:2,0,0,-\n", "FNF:1\n", "BRF:1\n"} {
+		if !strings.Contains(string(got), want) {
+			t.Errorf("missing %q in:\n%s", want, got)
+		}
+	}
+}
+
+func TestWriteRawLcovDisabledAndInvalid(t *testing.T) {
+	if err := writeRawLcov("", []byte("SF:a\n"), "/x"); err != nil {
+		t.Errorf("empty path must be a no-op, got %v", err)
+	}
+	if err := writeRawLcov(filepath.Join(t.TempDir(), "o"), []byte("DA:1,1\n"), "/x"); err == nil {
+		t.Error("expected an error for a record outside an SF section")
+	}
+}
+
+func TestRunCreatesEmptyLcovFileWithoutCoverage(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "target.lcov")
+	if err := os.WriteFile(file, []byte("stale"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	// No sources: Run fails, but only after validating its options; use the
+	// helper that Run uses to prepare the output instead.
+	opts := RunOptions{LcovFile: file}
+	if err := opts.prepareLcovFile(); err != nil {
+		t.Fatal(err)
+	}
+	if data, _ := os.ReadFile(file); len(data) != 0 {
+		t.Errorf("lcov file should be reset to empty, got %q", data)
 	}
 }

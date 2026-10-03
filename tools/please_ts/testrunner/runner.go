@@ -16,6 +16,7 @@ type RunOptions struct {
 	ResultsFile   string
 	Coverage      bool
 	CoverageFile  string
+	LcovFile      string // raw lcov export (functions and branches), written empty without coverage
 	Browser       string
 	BrowserBinary string
 	VitestDir     string
@@ -41,6 +42,12 @@ func (opts RunOptions) Run() error {
 		return err
 	}
 
+	// The raw lcov export is a declared test output: create it up front so it exists
+	// (empty) when coverage is off or the tool produces nothing.
+	if err := opts.prepareLcovFile(); err != nil {
+		return err
+	}
+
 	if opts.Browser != "" && opts.Runner != "vitest" {
 		return opts.runBrowserTest(resultsFile)
 	}
@@ -50,6 +57,17 @@ func (opts RunOptions) Run() error {
 	}
 
 	return opts.runDeno(resultsFile)
+}
+
+// prepareLcovFile resets the raw lcov export to an empty file.
+func (opts RunOptions) prepareLcovFile() error {
+	if opts.LcovFile == "" {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(opts.LcovFile), 0755); err != nil {
+		return err
+	}
+	return os.WriteFile(opts.LcovFile, nil, 0644)
 }
 
 func writeFallbackJUnit(resultsFile string, srcs []string, testErr error) error {

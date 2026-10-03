@@ -82,7 +82,7 @@ func (opts RunOptions) runDeno(resultsFile string) error {
 
 	// 4. Generate coverage report if requested
 	if coverageActive && coverageFile != "" && covDir != "" {
-		_ = generateDenoCoverage(denoBin, covDir, coverageFile, denoCacheDir)
+		_ = generateDenoCoverage(denoBin, covDir, coverageFile, denoCacheDir, opts.LcovFile)
 	}
 
 	if testErr != nil {
