@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"tools/please_ts/importmap"
+	"tools/please_ts/npmcache"
 )
 
 // Options holds configuration for compiling a standalone executable via deno compile.
@@ -45,6 +46,12 @@ func Run(opts Options) error {
 		return fmt.Errorf("failed to create DENO_DIR: %w", err)
 	}
 
+	// npm packages provided by ts_npm_module targets are merged into the per-run Deno cache,
+	// and the executable embeds them from there.
+	if _, err := npmcache.Prepare(".", denoCacheDir); err != nil {
+		return fmt.Errorf("failed preparing the npm cache: %w", err)
+	}
+
 	// Synthesize import map
 	importMapPath := ".import_map.json"
 	im, err := importmap.Synthesize(opts.ModuleName, opts.Srcs, opts.Deps, ".")
@@ -68,6 +75,11 @@ func Run(opts Options) error {
 		"--unstable-detect-cjs",
 		"--import-map", importMapPath,
 		"-o", opts.Out,
+	}
+	// npm packages come from the merged cache only: a ts_npm_module missing from the
+	// target's deps must fail here, not be downloaded.
+	if im.HasNpmSpecifiers() {
+		args = append(args, "--cached-only")
 	}
 	args = append(args, opts.Flags...)
 	args = append(args, opts.Main)

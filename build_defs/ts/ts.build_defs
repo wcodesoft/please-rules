@@ -24,6 +24,15 @@ def _browser_tool_arg(tools, browser_binary = ""):
         return f"--browser-binary '{tool}'"
     return ""
 
+def _esbuild_tool_arg(tools):
+    tool = CONFIG.TS.ESBUILD_TOOL
+    if tool and (tool.startswith("//") or tool.startswith("///") or tool.startswith(":")):
+        tools["ESBUILD"] = [tool]
+        return '--esbuild-binary "$TOOLS_ESBUILD"'
+    elif tool:
+        return f"--esbuild-binary '{tool}'"
+    return ""
+
 def _vitest_tool_arg(tools, vitest_dir = ""):
     tool = vitest_dir or CONFIG.TS.VITEST_TOOL
     if not tool:
@@ -143,6 +152,47 @@ def browser_toolchain(
         visibility = visibility or ["PUBLIC"],
         labels = labels or ["ts", "toolchain", "browser"],
         building_description = f"Assembling hermetic headless Chromium toolchain {version}...",
+    )
+
+def esbuild_toolchain(
+        name: str = "toolchain",
+        version: str = DEFAULT_ESBUILD_VERSION,
+        esbuild_url: str = "",
+        esbuild_hash: str = "",
+        target_platform: str = "",
+        labels: list = None,
+        visibility: list = None):
+    """Provides the pinned esbuild binary that `deno bundle` runs to bundle npm packages.
+
+    Deno downloads its own esbuild when it does not find one in its cache. Bundling puts this
+    one there, taken from a hash-pinned download, so that nothing is fetched while building.
+    The version must be the one the Deno version in use expects (see DEFAULT_ESBUILD_VERSION).
+    """
+    plat = target_platform or f"{CONFIG.OS}_{CONFIG.ARCH}"
+    esbuild_info = ESBUILD_PLATFORM_MAP.get(plat, ESBUILD_PLATFORM_MAP["linux_amd64"])
+
+    dl_target = f"_{name}_esbuild_dl"
+    remote_file(
+        name = dl_target,
+        url = esbuild_url or esbuild_info["url"],
+        hashes = [esbuild_hash or esbuild_info["hash"]],
+        out = f"{name}.tgz",
+    )
+
+    tools = {"TOOL": [_ts_tool()]}
+    return build_rule(
+        name = name,
+        srcs = [f":{dl_target}"],
+        outs = [name],
+        cmd = '$TOOLS_TOOL unpack --archive "$SRCS" --out "$OUT/bin" --binary "esbuild"',
+        entry_points = {
+            "esbuild": f"{name}/bin/esbuild",
+        },
+        binary = True,
+        tools = tools,
+        visibility = visibility or ["PUBLIC"],
+        labels = labels or ["ts", "toolchain", "esbuild"],
+        building_description = f"Unpacking the pinned esbuild {version}...",
     )
 
 def vitest_toolchain(
@@ -433,6 +483,8 @@ def ts_bundle(
     flags_joined = " ".join(flags) if flags else ""
     flags_str = f"--flags '{flags_joined}'" if flags else ""
 
+    esbuild_arg = _esbuild_tool_arg(tools)
+
     resolved_module = _resolve_module_name(name, module_name)
     bundle_args = [
         '--out "$OUT"',
@@ -444,6 +496,7 @@ def ts_bundle(
         '--minify' if minify else "",
         '--sourcemap' if sourcemap else "",
         f'--bundler-tool "{bundler_tool}"' if bundler_tool else "",
+        esbuild_arg,
         deno_arg,
         flags_str,
     ]
@@ -554,6 +607,7 @@ def ts_browser_test(
     tools = {"TOOL": [_ts_tool()]}
     deno_arg = _deno_tool_arg(tools)
     browser_arg = _browser_tool_arg(tools, browser_binary)
+    esbuild_arg = _esbuild_tool_arg(tools)
 
     flags_joined = " ".join(flags) if flags else ""
     flags_str = f"--flags '{flags_joined}'" if flags else ""
@@ -576,6 +630,7 @@ def ts_browser_test(
         f'--runner "{runner}"',
         f'--browser "{browser}"',
         browser_arg,
+        esbuild_arg,
         f'--srcs "{srcs_list}"',
         '--deps "${DEPS:-}"',
         f'--module-name "{resolved_module}"' if resolved_module else "",

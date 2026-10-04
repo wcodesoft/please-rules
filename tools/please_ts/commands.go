@@ -66,6 +66,8 @@ func handleBundle(args []string) error {
 	depsFlag := cmd.String("deps", "", "Comma-separated dependency paths")
 	deno := cmd.String("deno", "deno", "Path to deno binary")
 	bundlerTool := cmd.String("bundler-tool", "", "External bundler executable (e.g. esbuild)")
+	esbuildBinary := cmd.String("esbuild-binary", "", "Pinned esbuild executable, used to bundle npm packages")
+	esbuildCacheVersion := cmd.String("esbuild-cache-version", "", "Directory esbuild-<version> under DENO_DIR/dl where this Deno looks for esbuild (default: known per Deno version)")
 	moduleName := cmd.String("module-name", "", "Module name alias")
 	format := cmd.String("format", "esm", "Bundle format (esm or iife)")
 	minify := cmd.Bool("minify", false, "Minify bundled output")
@@ -88,15 +90,19 @@ func handleBundle(args []string) error {
 	opts := bundle.Options{
 		Deno:        *deno,
 		BundlerTool: *bundlerTool,
-		Out:         *out,
-		Main:        *main,
-		Srcs:        srcs,
-		Deps:        deps,
-		ModuleName:  *moduleName,
-		Format:      *format,
-		Minify:      *minify,
-		Sourcemap:   *sourcemap,
-		Flags:       extraFlags,
+
+		EsbuildBinary:       *esbuildBinary,
+		EsbuildCacheVersion: *esbuildCacheVersion,
+
+		Out:        *out,
+		Main:       *main,
+		Srcs:       srcs,
+		Deps:       deps,
+		ModuleName: *moduleName,
+		Format:     *format,
+		Minify:     *minify,
+		Sourcemap:  *sourcemap,
+		Flags:      extraFlags,
 	}
 	return bundle.Run(opts)
 }
@@ -158,6 +164,7 @@ func handleTestRunner(args []string) error {
 	browser := cmd.String("browser", "", "Browser engine for browser tests (chromium, firefox, webkit)")
 	browserBinary := cmd.String("browser-binary", "", "Path to hermetic browser executable")
 	vitestDir := cmd.String("vitest-dir", "", "Path to hermetic Vitest cache directory")
+	esbuildBinary := cmd.String("esbuild-binary", "", "Pinned esbuild executable, used to bundle npm packages for browser tests")
 
 	if err := cmd.Parse(args); err != nil {
 		return err
@@ -168,6 +175,7 @@ func handleTestRunner(args []string) error {
 	deps := compile.ExpandCommaSeparated([]string{*depsFlag})
 
 	opts := testrunner.RunOptions{
+		EsbuildBinary: *esbuildBinary,
 		Deno:          *deno,
 		Runner:        *runner,
 		Srcs:          srcs,

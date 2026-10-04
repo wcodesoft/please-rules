@@ -131,3 +131,74 @@ ts_test(
         ":modes_auto",
     ],
 )
+
+# Bundling and compiling with npm packages: Deno resolves them from the cache slices (no network,
+# no node_modules), and `deno bundle` runs the pinned esbuild.
+ts_bundle(
+    name = "highlight_bundle",
+    srcs = ["highlight_main.ts"],
+    format = "iife",
+    main = "highlight_main.ts",
+    deps = [
+        ":highlight",
+        "//test/ts/npm_cache/modules:highlight_js",
+    ],
+)
+
+ts_binary(
+    name = "highlight_app",
+    srcs = ["highlight_main.ts"],
+    main = "highlight_main.ts",
+    deps = [
+        ":highlight",
+        "//test/ts/npm_cache/modules:highlight_js",
+    ],
+)
+
+# The exports-only package with its declared closure, and with the closure resolved automatically.
+ts_bundle(
+    name = "modes_bundle",
+    srcs = ["modes.ts"],
+    format = "iife",
+    main = "modes.ts",
+    deps = [
+        "//test/ts/npm_cache/modules:codemirror_language",
+        "//test/ts/npm_cache/modules:codemirror_legacy_modes",
+    ],
+)
+
+ts_bundle(
+    name = "modes_auto_bundle",
+    srcs = ["modes.ts"],
+    format = "iife",
+    main = "modes.ts",
+    deps = [
+        ":codemirror_language_auto",
+        ":legacy_modes_auto",
+    ],
+)
+
+gentest(
+    name = "bundles_test",
+    data = {
+        "highlight": [":highlight_bundle"],
+        "modes": [":modes_bundle"],
+        "modes_auto": [":modes_auto_bundle"],
+        "app": [":highlight_app"],
+    },
+    no_test_output = True,
+    test_cmd = " && ".join([
+        # self-contained: the npm packages are inlined, no specifier is left to resolve at run time
+        '! grep -q "npm:" $DATA_HIGHLIGHT',
+        '! grep -q "highlight.js/lib" $DATA_HIGHLIGHT',
+        # ...and their code really is in there: highlight.js's Go grammar, CodeMirror's StreamLanguage
+        'grep -q "registerLanguage" $DATA_HIGHLIGHT',
+        'grep -q "golang" $DATA_HIGHLIGHT',
+        '! grep -q "npm:" $DATA_MODES',
+        'grep -q "StreamLanguage" $DATA_MODES',
+        'grep -q "StreamLanguage" $DATA_MODES_AUTO',
+        # the compiled program carries highlight.js and runs without any cache or network
+        'out=$(DENO_DIR=/nonexistent $DATA_APP)',
+        'echo "$out" | grep -q "hljs-keyword"',
+    ]),
+)

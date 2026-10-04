@@ -24,6 +24,14 @@ type Options struct {
 	Minify      bool
 	Sourcemap   bool
 	Flags       []string
+
+	// EsbuildBinary is the pinned esbuild executable that `deno bundle` runs. It is needed
+	// when the target depends on npm packages (ts_npm_module), which esbuild cannot resolve
+	// itself: Deno does, and bundles through esbuild.
+	EsbuildBinary string
+	// EsbuildCacheVersion overrides the directory (esbuild-<version>) under DENO_DIR/dl in
+	// which that Deno version looks for its esbuild, for a Deno version this tool does not know.
+	EsbuildCacheVersion string
 }
 
 // Run bundles the source files into a single distribution asset using esbuild by default.
@@ -39,7 +47,17 @@ func Run(opts Options) error {
 		return err
 	}
 
-	return runEsbuildBundler(opts)
+	im, err := importmap.Synthesize(opts.ModuleName, opts.Srcs, opts.Deps, ".")
+	if err != nil {
+		return fmt.Errorf("failed synthesizing import map: %w", err)
+	}
+
+	// npm packages are resolved by Deno from the cache slices of the ts_npm_module targets
+	// the target depends on; everything else goes through esbuild with aliases.
+	if im.HasNpmSpecifiers() {
+		return runDenoBundle(opts, im)
+	}
+	return runEsbuildBundler(opts, im)
 }
 
 func isValidEsbuildAlias(name string) bool {
@@ -114,12 +132,7 @@ func buildEsbuildArgs(opts Options, im *importmap.ImportMap) []string {
 	return args
 }
 
-func runEsbuildBundler(opts Options) error {
-	im, err := importmap.Synthesize(opts.ModuleName, opts.Srcs, opts.Deps, ".")
-	if err != nil {
-		return fmt.Errorf("failed synthesizing import map: %w", err)
-	}
-
+func runEsbuildBundler(opts Options, im *importmap.ImportMap) error {
 	args := buildEsbuildArgs(opts, im)
 
 	// Execute bundler:

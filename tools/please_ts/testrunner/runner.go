@@ -20,6 +20,7 @@ type RunOptions struct {
 	Browser       string
 	BrowserBinary string
 	VitestDir     string
+	EsbuildBinary string // pinned esbuild, to bundle npm packages for browser tests
 	ExtraArgs     []string
 }
 
