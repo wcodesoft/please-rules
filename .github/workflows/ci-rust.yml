@@ -69,18 +69,20 @@ jobs:
 
       - name: Coverage smoke test (lib_test)
         run: |
-          ./pleasew --plain_output cover //test/rust/lib:lib_test 2>&1 | tee cover.log
-          grep -Eq '^\s+lib\.rs [1-9][0-9]*/' cover.log
+          ./pleasew --plain_output build //tools/common/lcovcheck
+          ./pleasew --plain_output cover //test/rust/lib:lib_test
+          plz-out/bin/tools/common/lcovcheck/lcovcheck -coverage-json plz-out/log/coverage.json -covered test/rust/lib/lib.rs
         env:
           VERITAS_NO_HOOK: "1"
 
       - name: Raw lcov export smoke test (functions and branches)
         run: |
-          ./pleasew --plain_output cover --rerun //test/rust/branches:branches_test 2>&1 | tee cover.log
-          f="plz-out/bin/test/rust/branches/branches_test.lcov"
-          grep -q '^SF:test/rust/branches/branches\.rs$' "$f"
-          grep -Eq '^FNDA:0,.*unused$' "$f"
-          grep -q '^BRDA:12,0,0,0$' "$f"
-          grep -Eq '^FNDA:2,.*classify$' "$f"
+          ./pleasew --plain_output build //tools/common/lcovcheck
+          ./pleasew --plain_output cover --rerun //test/rust/branches:branches_test
+          plz-out/bin/tools/common/lcovcheck/lcovcheck \
+            -lcov plz-out/bin/test/rust/branches/branches_test.lcov \
+            -path test/rust/branches/branches.rs \
+            -line 12=partial -line 5=uncovered \
+            -function unused=missed -function classify=2
         env:
           VERITAS_NO_HOOK: "1"
