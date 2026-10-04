@@ -259,9 +259,12 @@ ts_test(
 ```
 
 - **Hermetic**: the tarball is pinned by `hashes` (sha256, checked by Please).
-  The build step runs in the sandbox, without network access, and extracts it
-  into a slice of a Deno npm cache. There is no `node_modules` directory and no
-  lockfile; the BUILD files are the lock.
+  The build step needs no network access: it only reads that tarball and the
+  modules of its dependencies, and extracts the package into a slice of a Deno
+  npm cache. Enable Please's `[sandbox]` build setting to have the sandbox
+  enforce it; the rule does not force it, because it needs user namespaces that
+  some hosts, including CI runners, do not allow. There is no `node_modules`
+  directory and no lockfile; the BUILD files are the lock.
 - **Dependencies are explicit**: nothing is resolved at build time. If a package
   depends on something that is not in `deps`, the build fails and names it. Each
   module bundles the packages of its dependencies, so a target lists only the
