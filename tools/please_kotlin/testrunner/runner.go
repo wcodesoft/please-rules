@@ -151,22 +151,19 @@ func Run(opts RunOptions) error {
 		resultsFile = DefaultResultsFile
 	}
 
-	written := false
-	entries, _ := os.ReadDir(tmpDir)
-	for _, e := range entries {
-		if strings.HasSuffix(e.Name(), ".xml") {
-			xmlBytes, err := os.ReadFile(filepath.Join(tmpDir, e.Name()))
-			if err == nil && len(xmlBytes) > 0 {
-				_ = os.WriteFile(resultsFile, xmlBytes, 0644)
-				written = true
-				break
-			}
-		}
+	suites, err := ReadJUnitReports(tmpDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: unreadable JUnit report: %v\n", err)
 	}
-
-	if !written {
-		suite := ParseTestOutput(output, opts.TestClass, opts.TestClass, duration, runErr == nil)
-		_ = WriteJUnitResults(resultsFile, suite)
+	// Without a report, or when the process failed but no test case did (the JVM crashed
+	// at exit, no test was found), say so with a test case of its own.
+	if len(suites) == 0 {
+		suites = []JUnitTestSuite{ProcessSuite(opts.TestClass, output, duration, runErr == nil)}
+	} else if runErr != nil && !Failed(suites) {
+		suites = append(suites, ProcessSuite(opts.TestClass+" (process)", output, duration, false))
+	}
+	if err := WriteJUnitResults(resultsFile, suites...); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to write test results: %v\n", err)
 	}
 
 	if activeCov && jacocoExec != "" {

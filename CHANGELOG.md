@@ -7,6 +7,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- `kotlin_test` now reads the test results from every JUnit report the launcher
+  writes. It used to copy only the first `.xml` file, so the results of the
+  other test engines (a JUnit 4 class run by the vintage engine, for example)
+  were lost. Errors (unexpected exceptions) and skipped tests are reported as
+  such, and the counts come from the test cases.
+- When no report was written (the JVM crashed, no test was found) the runner
+  reports a single failing test case with the process output, instead of parsing
+  that output with a regular expression. A process that fails while no test case
+  does gets a failing case of its own.
+
 ## [0.4.0] - 2026-10-03
 
 ### Added
