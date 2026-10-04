@@ -5,12 +5,14 @@ ts_npm_module(
     name = "ms",
     hashes = ["f6616e15e530ed552f9daa2d3ce71963947c6bc7c98c9b64fd3e673fd02622c6"],
     version = "2.1.3",
+    resolve_transitive = False,
 )
 
 ts_npm_module(
     name = "debug",
     hashes = ["c803a8ca9b835b7a75f7150ee52f7f640675515bafbe8f5da78fcc0ae12914ac"],
     version = "4.3.7",
+    resolve_transitive = False,
     deps = [":ms"],
 )
 
@@ -65,5 +67,67 @@ ts_test(
         ":modes",
         "//test/ts/npm_cache/modules:codemirror_language",
         "//test/ts/npm_cache/modules:codemirror_legacy_modes",
+    ],
+)
+
+# Automatic resolution: only the root tarball is pinned. The dependencies are resolved from
+# the registry when the module is built, as of the day the root version was published, and
+# verified against the registry's integrity data.
+ts_npm_module(
+    name = "debug_auto",
+    package = "debug",
+    hashes = ["c803a8ca9b835b7a75f7150ee52f7f640675515bafbe8f5da78fcc0ae12914ac"],
+    version = "4.3.7",
+)
+
+ts_library(
+    name = "humanize_auto",
+    srcs = ["humanize.ts"],
+    module_name = "@test/humanize_auto",
+    deps = [":debug_auto"],
+)
+
+ts_test(
+    name = "humanize_auto_test",
+    srcs = ["humanize_auto_test.ts"],
+    deps = [
+        ":debug_auto",
+        ":humanize_auto",
+    ],
+)
+
+# The same exports-only package as modes_test, with its eleven dependencies resolved
+# automatically instead of declared.
+ts_npm_module(
+    name = "legacy_modes_auto",
+    package = "@codemirror/legacy-modes",
+    hashes = ["61143cdb9c375dc1521895e4e536d75036baaf6e9df6b4431691f7ea5d273463"],
+    version = "6.5.1",
+)
+
+ts_npm_module(
+    name = "codemirror_language_auto",
+    package = "@codemirror/language",
+    hashes = ["5e49acf55fde65ce9848068f0f06478be9ec71f818e91de6eca00824e9152226"],
+    version = "6.12.4",
+)
+
+ts_library(
+    name = "modes_auto",
+    srcs = ["modes.ts"],
+    module_name = "@test/modes_auto",
+    deps = [
+        ":codemirror_language_auto",
+        ":legacy_modes_auto",
+    ],
+)
+
+ts_test(
+    name = "modes_auto_test",
+    srcs = ["modes_auto_test.ts"],
+    deps = [
+        ":codemirror_language_auto",
+        ":legacy_modes_auto",
+        ":modes_auto",
     ],
 )

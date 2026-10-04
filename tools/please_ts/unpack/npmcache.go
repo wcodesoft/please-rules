@@ -13,58 +13,51 @@ import (
 	"tools/please_ts/npmcache"
 )
 
-// buildNpmCache turns a hash-pinned npm tarball into a slice of a Deno npm cache, with no
-// network access: the package is extracted into npm/registry.npmjs.org/<name>/<version>/
-// and described by a minimal registry.json, so that Deno resolves npm:<name>@<version>
-// from its cache. Deno does not verify the cache, so the integrity of the package is the
-// sha256 Please checked on the tarball.
+// buildNpmCache turns an npm tarball into a slice of a Deno npm cache: the package is
+// extracted into npm/registry.npmjs.org/<name>/<version>/ and described by a minimal
+// registry.json, so that Deno resolves npm:<name>@<version> from its cache. Deno does not
+// verify the cache, so the integrity of the package is the sha256 Please checked on the
+// tarball.
 //
-// Every dependency the package declares must be provided by another slice staged in the
-// build directory (a ts_npm_module in deps); otherwise Deno would only notice at run time,
-// by trying the network.
+// The dependencies of the package come from other slices staged in the build directory (a
+// ts_npm_module in deps), whose packages are bundled into this slice. With
+// ResolveTransitive, dependencies that no staged slice provides are resolved from the
+// registry instead, each verified against the registry's integrity data, and kept as
+// separate versions when dependents need different ones. Without it every dependency must
+// be provided, and the build fails naming those that are not, since Deno would only notice
+// at run time, by trying the network.
 func buildNpmCache(opts Options) error {
-	tmp, err := os.MkdirTemp("", "please_ts_npm_*")
+	data, err := os.ReadFile(opts.ArchivePath())
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(tmp)
-
-	if err := extractArchive(opts.ArchivePath(), tmp); err != nil {
-		return fmt.Errorf("failed extracting %s: %w", opts.ArchivePath(), err)
-	}
-	pkg, raw, err := readPackageManifest(tmp)
+	pkg, _, err := inspectTarball(data, opts.Name)
 	if err != nil {
-		return err
-	}
-	if pkg.Name == "" || pkg.Version == "" {
-		return fmt.Errorf("package.json has no name or version")
-	}
-	if opts.Name != "" && opts.Name != pkg.Name {
-		return fmt.Errorf("tarball holds package %q, expected %q", pkg.Name, opts.Name)
+		return fmt.Errorf("%s: %w", opts.ArchivePath(), err)
 	}
 
 	staged, err := stagedSlices(opts.Out)
 	if err != nil {
 		return err
 	}
+
+	if opts.ResolveTransitive && len(pkg.Dependencies) > 0 {
+		tmp, err := os.MkdirTemp("", "please_ts_resolved_*")
+		if err != nil {
+			return err
+		}
+		defer os.RemoveAll(tmp)
+		resolved, err := resolveIntoSlices(pkg, staged, newResolver(opts.RegistryURL()), tmp)
+		if err != nil {
+			return fmt.Errorf("failed resolving the dependencies of %s: %w", pkg.Name, err)
+		}
+		staged = append(staged, resolved...)
+	}
+
 	if err := checkDependencyClosure(pkg, staged); err != nil {
 		return err
 	}
-
-	pkgDir := filepath.Join(opts.Out, "npm", "registry.npmjs.org", filepath.FromSlash(pkg.Name))
-	versionDir := filepath.Join(pkgDir, pkg.Version)
-	if err := os.MkdirAll(filepath.Dir(versionDir), 0755); err != nil {
-		return err
-	}
-	if err := copyPath(tmp, versionDir); err != nil {
-		return fmt.Errorf("failed staging the package: %w", err)
-	}
-
-	integrity, err := tarballIntegrity(opts.ArchivePath())
-	if err != nil {
-		return err
-	}
-	if err := writePackument(pkgDir, pkg, raw, integrity); err != nil {
+	if _, err := writeSlice(data, opts.Name, opts.Out); err != nil {
 		return err
 	}
 
@@ -87,31 +80,74 @@ func buildNpmCache(opts Options) error {
 	})
 }
 
-// readPackageManifest reads package.json, returning both the typed fields and the raw
-// object (to carry dependency fields into registry.json unchanged).
-func readPackageManifest(dir string) (PackageJSON, map[string]json.RawMessage, error) {
+// inspectTarball extracts a tarball to a scratch directory and reads its package.json,
+// returning the typed fields and the raw object (to carry dependency fields into
+// registry.json unchanged). wantName, when set, must be the package the tarball holds.
+func inspectTarball(data []byte, wantName string) (PackageJSON, map[string]json.RawMessage, error) {
 	var pkg PackageJSON
-	data, err := os.ReadFile(filepath.Join(dir, "package.json"))
+	tmp, err := os.MkdirTemp("", "please_ts_npm_*")
+	if err != nil {
+		return pkg, nil, err
+	}
+	defer os.RemoveAll(tmp)
+	if err := extractTarballBytes(data, tmp); err != nil {
+		return pkg, nil, fmt.Errorf("failed extracting the tarball: %w", err)
+	}
+	manifest, err := os.ReadFile(filepath.Join(tmp, "package.json"))
 	if err != nil {
 		return pkg, nil, fmt.Errorf("package.json not found in the tarball: %w", err)
 	}
-	if err := json.Unmarshal(data, &pkg); err != nil {
+	if err := json.Unmarshal(manifest, &pkg); err != nil {
 		return pkg, nil, fmt.Errorf("invalid package.json: %w", err)
 	}
 	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(data, &raw); err != nil {
+	if err := json.Unmarshal(manifest, &raw); err != nil {
 		return pkg, nil, err
+	}
+	if pkg.Name == "" || pkg.Version == "" {
+		return pkg, nil, fmt.Errorf("package.json has no name or version")
+	}
+	if wantName != "" && wantName != pkg.Name {
+		return pkg, nil, fmt.Errorf("the tarball holds package %q, expected %q", pkg.Name, wantName)
 	}
 	return pkg, raw, nil
 }
 
-func tarballIntegrity(path string) (string, error) {
-	data, err := os.ReadFile(path)
+// writeSlice lays a tarball out as a slice in outDir: the package in the Deno cache layout,
+// its registry.json and ts_npm.json.
+func writeSlice(tarball []byte, wantName, outDir string) (PackageJSON, error) {
+	tmp, err := os.MkdirTemp("", "please_ts_npm_*")
 	if err != nil {
-		return "", err
+		return PackageJSON{}, err
 	}
-	sum := sha512.Sum512(data)
-	return "sha512-" + base64.StdEncoding.EncodeToString(sum[:]), nil
+	defer os.RemoveAll(tmp)
+	if err := extractTarballBytes(tarball, tmp); err != nil {
+		return PackageJSON{}, fmt.Errorf("failed extracting the tarball: %w", err)
+	}
+	pkg, raw, err := inspectTarball(tarball, wantName)
+	if err != nil {
+		return pkg, err
+	}
+
+	pkgDir := filepath.Join(outDir, "npm", "registry.npmjs.org", filepath.FromSlash(pkg.Name))
+	versionDir := filepath.Join(pkgDir, pkg.Version)
+	if err := os.MkdirAll(filepath.Dir(versionDir), 0755); err != nil {
+		return pkg, err
+	}
+	if err := copyPath(tmp, versionDir); err != nil {
+		return pkg, fmt.Errorf("failed staging the package: %w", err)
+	}
+	sum := sha512.Sum512(tarball)
+	integrity := "sha512-" + base64.StdEncoding.EncodeToString(sum[:])
+	if err := writePackument(pkgDir, pkg, raw, integrity); err != nil {
+		return pkg, err
+	}
+	return pkg, npmcache.Write(outDir, npmcache.Slice{
+		Name:         pkg.Name,
+		Version:      pkg.Version,
+		Specifier:    npmcache.Specifier(pkg.Name, pkg.Version),
+		Dependencies: pkg.Dependencies,
+	})
 }
 
 // writePackument writes the registry.json Deno reads from its cache. The
@@ -175,6 +211,54 @@ func stagedSlices(outDir string) ([]stagedSlice, error) {
 	return staged, nil
 }
 
+// resolveIntoSlices resolves the dependencies of pkg that no staged slice provides, and
+// theirs in turn, writing each package as a slice under tmpDir. Versions that are already
+// available (staged, or resolved for another dependent) are reused when they satisfy the
+// specifier; otherwise another version is resolved, so dependents with incompatible needs
+// each get theirs. Dependencies come from the package.json inside the verified tarball, not
+// from registry metadata. Optional and peer dependencies are not resolved: a peer is for the
+// consumer to provide.
+func resolveIntoSlices(pkg PackageJSON, staged []stagedSlice, r *resolver, tmpDir string) ([]stagedSlice, error) {
+	r.pinToRoot(pkg.Name, pkg.Version)
+	have := map[string][]string{} // package -> versions available
+	for _, s := range staged {
+		have[s.Name] = append(have[s.Name], s.Version)
+	}
+
+	var queue []pendingDep
+	enqueue := func(deps map[string]string, requiredBy string) {
+		for _, name := range sortedKeys(deps) {
+			queue = append(queue, pendingDep{name: name, spec: deps[name], requiredBy: requiredBy})
+		}
+	}
+	enqueue(pkg.Dependencies, pkg.Name+"@"+pkg.Version)
+
+	var out []stagedSlice
+	for len(queue) > 0 {
+		d := queue[0]
+		queue = queue[1:]
+		if anySatisfies(have[d.name], d.spec) {
+			continue
+		}
+		info, data, err := r.fetch(d.name, d.spec)
+		if err != nil {
+			return nil, fmt.Errorf("%s@%s (required by %s): %w", d.name, d.spec, d.requiredBy, err)
+		}
+		dir := filepath.Join(tmpDir, strings.ReplaceAll(d.name, "/", "+")+"@"+info.Version)
+		resolved, err := writeSlice(data, d.name, dir)
+		if err != nil {
+			return nil, fmt.Errorf("%s@%s: %w", d.name, info.Version, err)
+		}
+		have[d.name] = append(have[d.name], resolved.Version)
+		out = append(out, stagedSlice{dir: dir, Slice: npmcache.Slice{
+			Name: resolved.Name, Version: resolved.Version,
+			Specifier: npmcache.Specifier(resolved.Name, resolved.Version), Dependencies: resolved.Dependencies,
+		}})
+		enqueue(resolved.Dependencies, resolved.Name+"@"+resolved.Version)
+	}
+	return out, nil
+}
+
 // checkDependencyClosure verifies that each required dependency of pkg is provided by a
 // staged slice. Optional dependencies and peer dependencies, which the consumer provides,
 // are not required.
@@ -202,39 +286,8 @@ func checkDependencyClosure(pkg PackageJSON, staged []stagedSlice) error {
 	}
 	if len(missing) > 0 {
 		return fmt.Errorf("%s@%s depends on %s, which no ts_npm_module in deps provides; "+
-			"add a ts_npm_module for each (with its tarball hash) to deps",
+			"add a ts_npm_module for each (with its tarball hash) to deps, or set resolve_transitive",
 			pkg.Name, pkg.Version, strings.Join(missing, ", "))
 	}
 	return nil
-}
-
-func anySatisfies(versions []string, constraint string) bool {
-	for _, v := range versions {
-		if satisfies(v, constraint) {
-			return true
-		}
-	}
-	return false
-}
-
-// satisfies reports whether version meets an npm range. It understands exact versions,
-// "*", "x"-less ranges with ^, ~ and >= prefixes; any other range form (||, spaces, <,
-// hyphen ranges, x-ranges) is accepted when a version is staged at all, since the
-// closure check only has to catch a dependency that was forgotten, not pick versions.
-func satisfies(version, constraint string) bool {
-	c := strings.TrimSpace(constraint)
-	if c == "" || c == "*" || c == "latest" || version == c {
-		return true
-	}
-	prefix := ""
-	switch {
-	case strings.HasPrefix(c, "^"), strings.HasPrefix(c, "~"):
-		prefix, c = c[:1], c[1:]
-	case strings.HasPrefix(c, ">="):
-		prefix, c = ">=", strings.TrimSpace(c[2:])
-	}
-	if strings.ContainsAny(c, " |<>=xX-") || c == "" {
-		return true
-	}
-	return matchesConstraint(parseSemver(version), parseSemver(c), prefix)
 }

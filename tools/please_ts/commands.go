@@ -194,7 +194,7 @@ func handleUnpack(args []string) error {
 	symlink := cmd.String("symlink", "", "Optional symlink name for extracted binary")
 	resolveTransitive := cmd.Bool("resolve-transitive", false, "Recursively resolve and download transitive dependencies")
 	registry := cmd.String("registry", "", "NPM registry base URL")
-	npmCache := cmd.Bool("npm-cache", false, "Build a Deno npm cache slice from the tarball (offline, with a dependency closure check)")
+	npmCache := cmd.Bool("npm-cache", false, "Build a Deno npm cache slice from the tarball")
 
 	if err := cmd.Parse(args); err != nil {
 		return err

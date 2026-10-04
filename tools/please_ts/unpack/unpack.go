@@ -7,13 +7,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
-	"time"
 
 	"tools/please_ts/importmap"
 )
@@ -28,7 +24,7 @@ type Options struct {
 	Symlink           string // optional symlink name for extracted binary
 	ResolveTransitive bool   // recursively resolve and unpack transitive dependencies
 	Registry          string // npm registry URL (default https://registry.npmjs.org)
-	NpmCache          bool   // build a Deno npm cache slice from the tarball, offline
+	NpmCache          bool   // build a Deno npm cache slice from the tarball
 }
 
 // Validate checks whether the required options are provided.
@@ -71,22 +67,6 @@ type PackageJSON struct {
 	PeerDependencies map[string]string `json:"peerDependencies"`
 }
 
-type npmVersionData struct {
-	Version      string            `json:"version"`
-	Dependencies map[string]string `json:"dependencies"`
-	Dist         struct {
-		Tarball string `json:"tarball"`
-	} `json:"dist"`
-}
-
-type npmManifest struct {
-	Name     string `json:"name"`
-	DistTags struct {
-		Latest string `json:"latest"`
-	} `json:"dist-tags"`
-	Versions map[string]npmVersionData `json:"versions"`
-}
-
 // Run executes the unpacking operation based on provided Options.
 func Run(opts Options) error {
 	if err := opts.Validate(); err != nil {
@@ -118,8 +98,8 @@ func unpackModule(opts Options) error {
 	peerDepsMap := copyStringMap(pkg.PeerDependencies)
 
 	if opts.ResolveTransitive && hasDependencies(pkg) {
-		if err := resolveTransitiveDependencies(opts.Out, pkg, opts.RegistryURL(), depsMap); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: transitive dependency resolution failed: %v\n", err)
+		if err := resolveTransitiveDependencies(opts.Out, pkg, newResolver(opts.RegistryURL()), depsMap); err != nil {
+			return fmt.Errorf("failed resolving the dependencies of %s: %w", pkg.Name, err)
 		}
 	}
 
@@ -257,152 +237,6 @@ func findLocalEntry(pkgDir string) string {
 	return ""
 }
 
-func resolveTransitiveDependencies(outDir string, rootPkg PackageJSON, registry string, depsMap map[string]string) error {
-	client := &http.Client{Timeout: 30 * time.Second}
-	visited := make(map[string]bool)
-	visited[rootPkg.Name] = true
-
-	queue := make(map[string]string)
-	for k, v := range rootPkg.Dependencies {
-		queue[k] = v
-	}
-	for k, v := range rootPkg.PeerDependencies {
-		queue[k] = v
-	}
-
-	for len(queue) > 0 {
-		var currentPkg, currentConstraint string
-		for k, v := range queue {
-			currentPkg = k
-			currentConstraint = v
-			delete(queue, k)
-			break
-		}
-
-		if visited[currentPkg] {
-			continue
-		}
-		visited[currentPkg] = true
-
-		destDir := filepath.Join(outDir, ".deps", currentPkg)
-		if _, err := os.Stat(filepath.Join(destDir, "package.json")); err == nil {
-			entry := findLocalEntry(destDir)
-			if entry != "" {
-				depsMap[currentPkg] = cleanRelativePath(filepath.Join(".deps", currentPkg, entry))
-			}
-			continue
-		}
-
-		pkgInfo, err := fetchAndExtractPackage(client, registry, currentPkg, currentConstraint, destDir)
-		if err != nil {
-			return fmt.Errorf("failed fetching package %s: %w", currentPkg, err)
-		}
-
-		entry := determineEntry(destDir, *pkgInfo)
-		if entry != "" {
-			depsMap[currentPkg] = cleanRelativePath(filepath.Join(".deps", currentPkg, entry))
-		}
-
-		for nextDep, nextVer := range pkgInfo.Dependencies {
-			if !visited[nextDep] {
-				queue[nextDep] = nextVer
-			}
-		}
-	}
-
-	return nil
-}
-
-func fetchAndExtractPackage(client *http.Client, registry, pkgName, constraint, destDir string) (*PackageJSON, error) {
-	manifest, err := fetchPackageManifest(client, registry, pkgName)
-	if err != nil {
-		return nil, err
-	}
-
-	resolvedVer := resolveVersion(manifest.DistTags.Latest, manifest.Versions, constraint)
-	verData, ok := manifest.Versions[resolvedVer]
-	if !ok {
-		return nil, fmt.Errorf("version %s not found in manifest for %s", resolvedVer, pkgName)
-	}
-
-	tarballURL := verData.Dist.Tarball
-	if tarballURL == "" {
-		base := pkgName
-		if strings.Contains(base, "/") {
-			base = base[strings.LastIndex(base, "/")+1:]
-		}
-		tarballURL = fmt.Sprintf("%s/%s/-/%s-%s.tgz", strings.TrimSuffix(registry, "/"), pkgName, base, resolvedVer)
-	}
-
-	tarballFile, err := os.CreateTemp("", "please_ts_dep_*.tgz")
-	if err != nil {
-		return nil, err
-	}
-	defer os.Remove(tarballFile.Name())
-	defer tarballFile.Close()
-
-	if err := downloadTarball(client, tarballURL, tarballFile); err != nil {
-		return nil, err
-	}
-	_ = tarballFile.Close()
-
-	if err := os.MkdirAll(destDir, 0755); err != nil {
-		return nil, err
-	}
-
-	if err := extractTarGz(tarballFile.Name(), destDir); err != nil {
-		return nil, fmt.Errorf("failed extracting %s: %w", tarballFile.Name(), err)
-	}
-
-	pkg := readPackageJSON(destDir)
-	if pkg.Version == "" {
-		pkg.Version = resolvedVer
-	}
-	ensureCommonJSType(destDir)
-
-	return &pkg, nil
-}
-
-func fetchPackageManifest(client *http.Client, registry, pkgName string) (*npmManifest, error) {
-	manifestURL := strings.TrimSuffix(registry, "/") + "/" + url.PathEscape(pkgName)
-	req, err := http.NewRequest("GET", manifestURL, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Accept", "application/vnd.npm.install-v1+json; q=1.0, application/json; q=0.8, */*")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("registry returned status %d for %s", resp.StatusCode, manifestURL)
-	}
-
-	var manifest npmManifest
-	if err := json.NewDecoder(resp.Body).Decode(&manifest); err != nil {
-		return nil, fmt.Errorf("failed decoding manifest for %s: %w", pkgName, err)
-	}
-	return &manifest, nil
-}
-
-func downloadTarball(client *http.Client, tarballURL string, destFile *os.File) error {
-	dlResp, err := client.Get(tarballURL)
-	if err != nil {
-		return fmt.Errorf("failed downloading tarball from %s: %w", tarballURL, err)
-	}
-	defer dlResp.Body.Close()
-
-	if dlResp.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed downloading tarball from %s: status %d", tarballURL, dlResp.StatusCode)
-	}
-
-	_, err = io.Copy(destFile, dlResp.Body)
-	return err
-}
-
 func ensureCommonJSType(dir string) {
 	pkgJSONPath := filepath.Join(dir, "package.json")
 	data, err := os.ReadFile(pkgJSONPath)
@@ -419,91 +253,6 @@ func ensureCommonJSType(dir string) {
 			_ = os.WriteFile(pkgJSONPath, updated, 0644)
 		}
 	}
-}
-
-func resolveVersion(latest string, versions map[string]npmVersionData, constraint string) string {
-	clean := strings.TrimSpace(constraint)
-	if clean == "" || clean == "*" || clean == "latest" {
-		if latest != "" {
-			return latest
-		}
-	}
-	if _, ok := versions[clean]; ok {
-		return clean
-	}
-
-	prefix := ""
-	if strings.HasPrefix(clean, "^") || strings.HasPrefix(clean, "~") {
-		prefix = clean[:1]
-		clean = clean[1:]
-	} else if strings.HasPrefix(clean, ">=") {
-		prefix = ">="
-		clean = strings.TrimSpace(clean[2:])
-	}
-
-	targetParts := parseSemver(clean)
-	var bestMatch string
-	var bestParts [3]int
-
-	for ver := range versions {
-		parts := parseSemver(ver)
-		if matchesConstraint(parts, targetParts, prefix) {
-			if bestMatch == "" || compareSemver(parts, bestParts) > 0 {
-				bestMatch = ver
-				bestParts = parts
-			}
-		}
-	}
-
-	if bestMatch != "" {
-		return bestMatch
-	}
-	if latest != "" {
-		return latest
-	}
-	for ver := range versions {
-		return ver
-	}
-	return constraint
-}
-
-func matchesConstraint(parts, targetParts [3]int, prefix string) bool {
-	switch prefix {
-	case "^":
-		return parts[0] == targetParts[0] && compareSemver(parts, targetParts) >= 0
-	case "~":
-		return parts[0] == targetParts[0] && parts[1] == targetParts[1] && compareSemver(parts, targetParts) >= 0
-	case ">=":
-		return compareSemver(parts, targetParts) >= 0
-	default:
-		return compareSemver(parts, targetParts) == 0
-	}
-}
-
-func parseSemver(v string) [3]int {
-	v = strings.TrimPrefix(v, "v")
-	if idx := strings.IndexAny(v, "-+"); idx != -1 {
-		v = v[:idx]
-	}
-	parts := strings.Split(v, ".")
-	var res [3]int
-	for i := 0; i < len(parts) && i < 3; i++ {
-		n, _ := strconv.Atoi(parts[i])
-		res[i] = n
-	}
-	return res
-}
-
-func compareSemver(a, b [3]int) int {
-	for i := 0; i < 3; i++ {
-		if a[i] > b[i] {
-			return 1
-		}
-		if a[i] < b[i] {
-			return -1
-		}
-	}
-	return 0
 }
 
 func extractArchive(archivePath, destDir string) error {

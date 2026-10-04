@@ -213,34 +213,6 @@ func TestBuildNpmCacheRejectsBadTarballs(t *testing.T) {
 	}
 }
 
-func TestSatisfies(t *testing.T) {
-	for _, tc := range []struct {
-		version, rng string
-		want         bool
-	}{
-		{"2.1.3", "2.1.3", true},
-		{"2.1.3", "^2.1.3", true},
-		{"2.4.0", "^2.1.3", true},
-		{"2.0.0", "^2.1.3", false},
-		{"3.0.0", "^2.1.3", false},
-		{"1.2.9", "~1.2.3", true},
-		{"1.3.0", "~1.2.3", false},
-		{"5.0.0", ">=2.0.0", true},
-		{"1.0.0", ">=2.0.0", false},
-		{"9.9.9", "*", true},
-		{"9.9.9", "", true},
-		{"9.9.9", "latest", true},
-		// range forms that are not interpreted are accepted: only a forgotten dependency is an error
-		{"9.9.9", "^1 || ^2", true},
-		{"9.9.9", ">=1 <3", true},
-		{"9.9.9", "1.x", true},
-	} {
-		if got := satisfies(tc.version, tc.rng); got != tc.want {
-			t.Errorf("satisfies(%q, %q) = %v, want %v", tc.version, tc.rng, got, tc.want)
-		}
-	}
-}
-
 // stageSliceWithPackage stages a dependency slice that holds an extracted package, as the
 // output of a ts_npm_module does.
 func stageSliceWithPackage(t *testing.T, root, name, version string) {
@@ -317,5 +289,39 @@ func TestBuildNpmCacheSlicesWithDifferentVersionsOfADependencyStayResolvable(t *
 	}
 	if !strings.Contains(string(data), `"2.0.0"`) || !strings.Contains(string(data), `"2.1.3"`) {
 		t.Errorf("both ms versions must be in the merged packument: %s", data)
+	}
+}
+
+func TestVersionSatisfies(t *testing.T) {
+	for _, tc := range []struct {
+		version, spec string
+		want          bool
+	}{
+		{"2.1.3", "2.1.3", true},
+		{"2.1.3", "^2.1.3", true},
+		{"2.4.0", "^2.1.3", true},
+		{"2.0.0", "^2.1.3", false},
+		{"3.0.0", "^2.1.3", false},
+		{"1.2.9", "~1.2.3", true},
+		{"1.3.0", "~1.2.3", false},
+		{"5.0.0", ">=2.0.0", true},
+		{"1.0.0", ">=2.0.0", false},
+		{"9.9.9", "*", true},
+		{"9.9.9", "", true},
+		// Ranges are interpreted completely, not approximated.
+		{"2.5.0", "^1 || ^2", true},
+		{"3.5.0", "^1 || ^2", false},
+		{"2.0.0", ">=1 <3", true},
+		{"3.0.0", ">=1 <3", false},
+		{"1.9.0", "1.x", true},
+		{"2.0.0", "1.x", false},
+		{"1.2.3-beta.1", "^1.0.0", false},
+		// Specifiers that are not version ranges cannot be judged and are accepted.
+		{"9.9.9", "latest", true},
+		{"9.9.9", "git+https://example.com/x.git", true},
+	} {
+		if got := versionSatisfies(tc.version, tc.spec); got != tc.want {
+			t.Errorf("versionSatisfies(%q, %q) = %v, want %v", tc.version, tc.spec, got, tc.want)
+		}
 	}
 }
