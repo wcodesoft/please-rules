@@ -11,12 +11,12 @@ and this project adheres to
 
 ### Changed
 
-- World and package discovery (`DiscoverWorlds`, `DiscoverPackage`) read the
-  WIT with the AST parser instead of line-based regular expressions, so
-  versioned packages (`package wasi:cli@0.2.0;`), commented-out declarations,
-  several declarations on one line and `use`, `variant` or `flags` declarations
-  are handled. A file that does not parse is now an error naming the file
-  instead of being skipped silently.
+- World and package discovery (`DiscoverWorlds`, `DiscoverPackage`) read the WIT
+  with the AST parser instead of line-based regular expressions, so versioned
+  packages (`package wasi:cli@0.2.0;`), commented-out declarations, several
+  declarations on one line and `use`, `variant` or `flags` declarations are
+  handled. A file that does not parse is now an error naming the file instead of
+  being skipped silently.
 - The AST parser moved to `tools/common/wit/ast` (shared on `main`, so other
   language plugins can use it).
 
@@ -24,9 +24,12 @@ and this project adheres to
 
 ### Added
 
-- Support for WIT `resource` declarations in AST parser (`tools/please_wit/ast`).
-- Support for `constructor`, instance methods, and `static` functions inside resource blocks.
-- Resource interface generation across Kotlin, Swift, TypeScript, Python, Rust, Go, and C++ code generators.
+- Support for WIT `resource` declarations in AST parser
+  (`tools/please_wit/ast`).
+- Support for `constructor`, instance methods, and `static` functions inside
+  resource blocks.
+- Resource interface generation across Kotlin, Swift, TypeScript, Python, Rust,
+  Go, and C++ code generators.
 
 ## [0.3.0] - 2026-09-19
 
