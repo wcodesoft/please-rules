@@ -413,6 +413,12 @@ func (p *Parser) parseFunction() (*Function, error) {
 	}
 
 	funcKeyword, err := p.expectIdent()
+	static := false
+	if err == nil && funcKeyword == "static" {
+		// WIT spells a static function `name: static func(...)`.
+		static = true
+		funcKeyword, err = p.expectIdent()
+	}
 	if err != nil || funcKeyword != "func" {
 		return nil, fmt.Errorf("expected 'func', got %q", funcKeyword)
 	}
@@ -465,6 +471,7 @@ func (p *Parser) parseFunction() (*Function, error) {
 		Name:    name,
 		Params:  params,
 		Results: resultType,
+		Static:  static,
 	}, nil
 }
 
@@ -680,18 +687,24 @@ func (p *Parser) parseResource() (*Resource, error) {
 				}
 				res.Constructor = fn
 			case "static":
+				// Older, non-standard spelling: `static name: func(...)`.
 				p.next()
 				fn, err := p.parseFunction()
 				if err != nil {
 					return nil, err
 				}
+				fn.Static = true
 				res.Static = append(res.Static, *fn)
 			default:
 				fn, err := p.parseFunction()
 				if err != nil {
 					return nil, err
 				}
-				res.Methods = append(res.Methods, *fn)
+				if fn.Static {
+					res.Static = append(res.Static, *fn)
+				} else {
+					res.Methods = append(res.Methods, *fn)
+				}
 			}
 		} else {
 			p.next()
