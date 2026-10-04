@@ -58,17 +58,20 @@ jobs:
 
       - name: Coverage smoke test (lib_test)
         run: |
-          ./pleasew --plain_output cover //test/kotlin/lib:lib_test  2>&1 | tee cover.log
-          grep -Eq '^\s+lib\.kt [1-9][0-9]*/' cover.log
+          ./pleasew --plain_output build //tools/common/lcovcheck
+          ./pleasew --plain_output cover //test/kotlin/lib:lib_test
+          plz-out/bin/tools/common/lcovcheck/lcovcheck -coverage-json plz-out/log/coverage.json -covered test/kotlin/lib/lib.kt
         env:
           VERITAS_NO_HOOK: "1"
 
       - name: Raw lcov export smoke test (functions and branches)
         run: |
-          ./pleasew --plain_output cover --rerun //test/kotlin/branches:branches_test 2>&1 | tee cover.log
-          f="plz-out/bin/test/kotlin/branches/branches_test.lcov"
-          grep -q '^SF:test/kotlin/branches/branches\.kt$' "$f"
-          grep -Eq '^FNDA:0,.*\.unused\(\)I$' "$f"
-          grep -q '^BRDA:6,0,1,0$' "$f"
+          ./pleasew --plain_output build //tools/common/lcovcheck
+          ./pleasew --plain_output cover --rerun //test/kotlin/branches:branches_test
+          plz-out/bin/tools/common/lcovcheck/lcovcheck \
+            -lcov plz-out/bin/test/kotlin/branches/branches_test.lcov \
+            -path test/kotlin/branches/branches.kt \
+            -line 6=partial -line 7=uncovered \
+            -function 'unused()I=missed' -function classify=hit
         env:
           VERITAS_NO_HOOK: "1"
