@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"tools/common/wit/ast"
 )
 
 func TestExpandCommaSeparated(t *testing.T) {
@@ -97,21 +99,109 @@ func TestCasesConversion(t *testing.T) {
 	}
 }
 
-func TestMapWitTypeToKotlin(t *testing.T) {
-	tests := map[string]string{
-		"s32":          "Int",
-		"s64":          "Long",
-		"bool":         "Boolean",
-		"string":       "String",
-		"list<string>": "List<String>",
-		"result<s32>":  "Int?",
-		"option<bool>": "Boolean?",
+// witType parses a WIT type by declaring it as the result of a function.
+func witType(t *testing.T, wit string) *ast.TypeRef {
+	t.Helper()
+	pkg, err := ast.ParseContent("interface i { f: func() -> " + wit + "; }")
+	if err != nil {
+		t.Fatalf("%s: %v", wit, err)
 	}
-	for wit, kt := range tests {
-		res := MapWitTypeToKotlin(wit)
-		if res != kt {
-			t.Errorf("for WIT %s, expected Kotlin %s, got %s", wit, kt, res)
+	return pkg.Interfaces[0].Functions[0].Results
+}
+
+func TestMapTypeToKotlin(t *testing.T) {
+	tests := map[string]string{
+		"s32":                        "Int",
+		"u8":                         "Int",
+		"s64":                        "Long",
+		"f64":                        "Double",
+		"bool":                       "Boolean",
+		"string":                     "String",
+		"list<string>":               "List<String>",
+		"list<list<s32>>":            "List<List<Int>>",
+		"result<s32>":                "Int?",
+		"result<s32, string>":        "Int?",
+		"result<_, string>":          "Unit",
+		"result<list<u8>, string>":   "List<Int>?",
+		"option<bool>":               "Boolean?",
+		"option<list<string>>":       "List<String>?",
+		"shape":                      "Shape",
+		"two-sum":                    "TwoSum",
+		"result<option<s32>, error>": "Int??",
+	}
+	for wit, want := range tests {
+		got, err := MapTypeToKotlin(witType(t, wit))
+		if err != nil || got != want {
+			t.Errorf("for WIT %s, expected Kotlin %s, got %s (err %v)", wit, want, got, err)
 		}
+	}
+	if got, err := MapTypeToKotlin(nil); err != nil || got != "Unit" {
+		t.Errorf("nil type = %q, %v; want Unit", got, err)
+	}
+}
+
+func TestMapTypeToKotlinRejectsWhatItCannotMap(t *testing.T) {
+	_, err := MapTypeToKotlin(witType(t, "tuple<s32, string>"))
+	if err == nil || !strings.Contains(err.Error(), "tuple<s32, string> is not supported") {
+		t.Errorf("err = %v", err)
+	}
+	// ...and the error says where, once it comes out of ParseWit.
+	file := filepath.Join(t.TempDir(), "x.wit")
+	_ = os.WriteFile(file, []byte("package a:b;\ninterface i { pair: func(x: tuple<s32, s32>) -> s32; }\n"), 0644)
+	_, err = ParseWit(file)
+	if err == nil || !strings.Contains(err.Error(), "interface i: function pair: parameter x") {
+		t.Errorf("err = %v", err)
+	}
+}
+
+func TestParseWitReadsWitStructure(t *testing.T) {
+	dir := t.TempDir()
+	// The package is declared in one file only; interfaces of the others belong to it.
+	write := func(name, content string) {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("a-root.wit", "// package fake:one;\npackage example:orders@1.2.0;\n\ninterface api {\n  /// Doc\n  place: func(\n    item: string,\n    quantity: u32,\n  ) -> result<u32, string>;\n  use other.{thing};\n  variant status { open, closed(u32) }\n  flags perms { read, write }\n  resource cart {\n    constructor();\n    add: func(item: string);\n    total: static func() -> u32;\n  }\n  cancel: func(id: u32);\n}\n")
+	write("b-more.wit", "interface audit { log: func(message: string) -> list<string>; }\n")
+	write("notes.txt", "interface ignored { nope: func(); }\n")
+
+	ifaces, err := ParseWit(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ifaces) != 2 {
+		t.Fatalf("interfaces = %+v", ifaces)
+	}
+	api, audit := ifaces[0], ifaces[1]
+	if api.Name != "api" || api.Package != "example.orders" || audit.Name != "audit" || audit.Package != "example.orders" {
+		t.Errorf("api = %s/%s, audit = %s/%s", api.Package, api.Name, audit.Package, audit.Name)
+	}
+	// resource methods are not interface functions, and use/variant/flags generate nothing
+	if len(api.Functions) != 2 {
+		t.Fatalf("api functions = %+v", api.Functions)
+	}
+	place := api.Functions[0]
+	if place.Name != "place" || place.ReturnType != "Int?" || len(place.Params) != 2 ||
+		place.Params[0] != (WitParam{Name: "item", Type: "String"}) || place.Params[1] != (WitParam{Name: "quantity", Type: "Int"}) {
+		t.Errorf("place = %+v", place)
+	}
+	if api.Functions[1].Name != "cancel" || api.Functions[1].ReturnType != "Unit" {
+		t.Errorf("cancel = %+v", api.Functions[1])
+	}
+	if audit.Functions[0].ReturnType != "List<String>" {
+		t.Errorf("log = %+v", audit.Functions[0])
+	}
+}
+
+func TestParseWitErrors(t *testing.T) {
+	if _, err := ParseWit(filepath.Join(t.TempDir(), "missing")); err == nil {
+		t.Error("expected an error for a missing path")
+	}
+	file := filepath.Join(t.TempDir(), "bad.wit")
+	_ = os.WriteFile(file, []byte("interface {\n"), 0644)
+	if _, err := ParseWit(file); err == nil || !strings.Contains(err.Error(), file) {
+		t.Errorf("err = %v, want one naming %s", err, file)
 	}
 }
 
