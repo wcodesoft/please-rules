@@ -219,3 +219,66 @@ branch (`BRDA`) records that `coverage.xml` and `coverage.json` do not:
   `tools/common/lcov` package. Do not merge branch records of the Deno and
   Vitest runners for the same file: they number the arms of a branch
   differently.
+
+---
+
+## npm Packages Through Deno's Own Resolution (`ts_npm_module`, experimental)
+
+`ts_module` unpacks a package and describes it with a single entry file, which
+cannot express CommonJS packages, subpath imports (`highlight.js/lib/core`) or
+packages that only have an `exports` map. `ts_npm_module` takes a different
+route: Deno resolves the package itself through an `npm:` specifier, and the
+rule only has to make the package available **offline**:
+
+```starlark
+ts_npm_module(
+    name = "ms",
+    hashes = ["f6616e15e530ed552f9daa2d3ce71963947c6bc7c98c9b64fd3e673fd02622c6"],
+    version = "2.1.3",
+)
+
+ts_npm_module(
+    name = "debug",
+    hashes = ["c803a8ca9b835b7a75f7150ee52f7f640675515bafbe8f5da78fcc0ae12914ac"],
+    version = "4.3.7",
+    deps = [":ms"],  # every dependency is its own ts_npm_module
+)
+
+ts_library(
+    name = "humanize",
+    srcs = ["humanize.ts"],
+    module_name = "@app/humanize",
+    deps = [":debug"],
+)
+
+ts_test(
+    name = "humanize_test",
+    srcs = ["humanize_test.ts"],
+    deps = [":debug", ":humanize"],  # list the npm module itself, as with ts_module
+)
+```
+
+- **Hermetic**: the tarball is pinned by `hashes` (sha256, checked by Please).
+  The build step runs in the sandbox, without network access, and extracts it
+  into a slice of a Deno npm cache. There is no `node_modules` directory and no
+  lockfile; the BUILD files are the lock.
+- **Dependencies are explicit**: nothing is resolved at build time. If a package
+  depends on something that is not in `deps`, the build fails and names it. Each
+  module bundles the packages of its dependencies, so a target lists only the
+  modules it imports.
+- **Resolution is Deno's**: `exports` maps, CommonJS, subpaths and a package's
+  own types work as they do for `npm:` specifiers. Imports use the plain package
+  name, for example `import createDebug from "debug"`.
+- **Offline is enforced**: targets whose import map has npm modules run Deno
+  with `--cached-only`. A module missing from a target's `deps` fails at once
+  with `npm package not found in cache`; Deno does not download it.
+- **Not wired yet**: `ts_bundle` and `ts_binary`, the Vitest and browser
+  runners, and a helper that prints the declarations for a package and its
+  dependencies. The cache layout (`registry.json`, including its
+  `_deno.packumentFormat` key) is internal to Deno, so it is tied to the Deno
+  version the plugin pins.
+
+The fixtures in `test/ts/npm_cache` cover a CommonJS package with a transitive
+dependency (`debug`), a CommonJS package imported through subpaths
+(`highlight.js`), and an ES module package that only has an `exports` map and no
+`main` (`@codemirror/legacy-modes`, with its eleven dependencies).

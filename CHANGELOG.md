@@ -7,6 +7,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Experimental `ts_npm_module` rule: provides an npm package to Deno's own
+  `npm:` resolution, offline. The sha256-pinned tarball is extracted by a
+  sandboxed build step into a slice of a Deno npm cache that targets merge into
+  their `DENO_DIR`; no `node_modules`, no lockfile. CommonJS packages, subpath
+  imports and packages with only an `exports` map work as Deno resolves them.
+  Dependencies are separate `ts_npm_module` targets and the build fails if one
+  is missing; targets run with `--cached-only` so a missing module fails instead
+  of being downloaded.
+- `please_ts unpack --npm-cache` and the `npmcache` package behind it.
+- Fixtures for `debug` (CommonJS, transitive dependency), `highlight.js`
+  (CommonJS, subpaths) and `@codemirror/legacy-modes` (exports map only).
+
 ## [0.6.0] - 2026-10-03
 
 ### Added

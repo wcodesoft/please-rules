@@ -28,6 +28,7 @@ type Options struct {
 	Symlink           string // optional symlink name for extracted binary
 	ResolveTransitive bool   // recursively resolve and unpack transitive dependencies
 	Registry          string // npm registry URL (default https://registry.npmjs.org)
+	NpmCache          bool   // build a Deno npm cache slice from the tarball, offline
 }
 
 // Validate checks whether the required options are provided.
@@ -93,6 +94,9 @@ func Run(opts Options) error {
 	}
 	if opts.Binary != "" {
 		return unpackToolchain(opts.ArchivePath(), opts.Out, opts.Binary, opts.Symlink)
+	}
+	if opts.NpmCache {
+		return buildNpmCache(opts)
 	}
 	return unpackModule(opts)
 }

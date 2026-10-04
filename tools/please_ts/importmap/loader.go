@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"tools/please_ts/npmcache"
 )
 
 // discoverDepPaths collects explicit dependencies and auto-discovers module metadata files in workingDir.
@@ -15,7 +17,7 @@ func discoverDepPaths(deps []string, workingDir string) []string {
 
 	_ = filepath.Walk(workingDir, func(path string, info os.FileInfo, err error) error {
 		if err == nil && !info.IsDir() {
-			if info.Name() == "ts_metadata.json" || info.Name() == "ts_module.json" {
+			if info.Name() == "ts_metadata.json" || info.Name() == "ts_module.json" || info.Name() == npmcache.MetadataFile {
 				allDeps = append(allDeps, path)
 			}
 		}
@@ -51,6 +53,9 @@ func (im *ImportMap) LoadDependencies(depPaths []string, workingDir string) ([]*
 
 // LoadDepItem handles a single dependency path: metadata file, directory, or source file.
 func (im *ImportMap) LoadDepItem(dep string, workingDir string) (*loadedModule, error) {
+	if filepath.Base(dep) == npmcache.MetadataFile {
+		return nil, im.registerNpmSlice(filepath.Dir(dep))
+	}
 	if isMetadataFile(dep) {
 		mod, err := loadMetadataFile(dep, workingDir)
 		if err != nil {
@@ -73,6 +78,10 @@ func (im *ImportMap) LoadDepItem(dep string, workingDir string) (*loadedModule, 
 
 // LoadDirectoryDep checks for metadata inside a directory or maps it directly.
 func (im *ImportMap) LoadDirectoryDep(dir, workingDir string) (*loadedModule, error) {
+	if _, err := os.Stat(filepath.Join(dir, npmcache.MetadataFile)); err == nil {
+		return nil, im.registerNpmSlice(dir)
+	}
+
 	metaPath := filepath.Join(dir, "ts_module.json")
 	if _, err := os.Stat(metaPath); err == nil {
 		return loadMetadataFile(metaPath, workingDir)
@@ -85,6 +94,19 @@ func (im *ImportMap) LoadDirectoryDep(dir, workingDir string) (*loadedModule, er
 
 	im.MapDirectory(dir, workingDir)
 	return nil, nil
+}
+
+// registerNpmSlice maps an npm package provided by a ts_npm_module to npm: specifiers that
+// Deno resolves from its cache (see package npmcache): the bare name for the package
+// entry, and name/ for subpaths, which Deno resolves with the package's own exports map.
+func (im *ImportMap) registerNpmSlice(dir string) error {
+	slice, err := npmcache.Read(dir)
+	if err != nil {
+		return fmt.Errorf("failed loading npm slice %s: %w", dir, err)
+	}
+	im.Imports[slice.Name] = slice.Specifier
+	im.Imports[slice.Name+"/"] = "npm:/" + slice.Name + "@" + slice.Version + "/"
+	return nil
 }
 
 // MapDirectSourceFile maps a single source file to imports.

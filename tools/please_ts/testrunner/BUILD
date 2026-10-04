@@ -8,6 +8,7 @@ go_library(
         "//tools/common/lcov",
         "//tools/please_ts/bundle",
         "//tools/please_ts/importmap",
+        "//tools/please_ts/npmcache",
     ],
 )
 
@@ -18,5 +19,6 @@ go_test(
         "//tools/common/lcov",
         "//tools/please_ts/bundle",
         "//tools/please_ts/importmap",
+        "//tools/please_ts/npmcache",
     ],
 )

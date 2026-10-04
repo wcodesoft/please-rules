@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"tools/please_ts/importmap"
+	"tools/please_ts/npmcache"
 )
 
 func (opts RunOptions) runDeno(resultsFile string) error {
@@ -27,6 +28,12 @@ func (opts RunOptions) runDeno(resultsFile string) error {
 	denoCacheDir := filepath.Join(tmpDir, ".deno_cache")
 	if err := os.MkdirAll(denoCacheDir, 0755); err != nil {
 		return fmt.Errorf("failed creating DENO_DIR: %w", err)
+	}
+
+	// npm packages provided by ts_npm_module targets are merged into the per-run Deno cache
+	// and resolved from there, offline.
+	if _, err := npmcache.Prepare(".", denoCacheDir); err != nil {
+		return fmt.Errorf("failed preparing the npm cache: %w", err)
 	}
 
 	// 1. Synthesize target-local import map
@@ -51,6 +58,11 @@ func (opts RunOptions) runDeno(resultsFile string) error {
 		"--allow-env",
 		"--import-map", importMapPath,
 		"--junit-path", resultsFile,
+	}
+	// npm packages come from the merged cache only: a ts_npm_module missing from the
+	// target's deps must fail here, not be downloaded.
+	if im.HasNpmSpecifiers() {
+		args = append(args, "--cached-only")
 	}
 
 	covDir := ""

@@ -219,6 +219,67 @@ def ts_module(
         building_description = f"Unpacking npm module {pkg}@{ver}...",
     )
 
+def ts_npm_module(
+        name: str,
+        package: str = "",
+        version: str = "",
+        hashes: list = None,
+        url: str = "",
+        deps: list = None,
+        visibility: list = None,
+        labels: list = None):
+    """Provides one npm package to Deno's own npm resolution, hermetically and offline.
+
+    The tarball is pinned by `hashes` (sha256, checked by Please). The build step, which
+    has no network access, extracts it into a slice of a Deno npm cache; targets that
+    depend on it get the slices merged into their DENO_DIR and import the package through
+    an `npm:` specifier. Deno then resolves `exports`, CommonJS and subpaths itself: there
+    is no node_modules directory and no lockfile, and a package that Deno cannot resolve
+    from the cache fails the build rather than reaching for the network.
+
+    Unlike ts_module, dependencies are not resolved at build time: every dependency of the
+    package (and theirs) must be its own ts_npm_module, listed in `deps`. The build fails
+    with the missing names if one is absent.
+
+    Args:
+      name: Name of the rule.
+      package: npm package name (defaults to `name`), e.g. "debug" or "@scope/pkg".
+      version: Exact package version.
+      hashes: sha256 of the package tarball.
+      url: Tarball URL (defaults to the npm registry).
+      deps: ts_npm_module targets for the package's dependencies.
+      visibility: Visibility of the rule.
+      labels: Labels for the rule.
+    """
+    pkg = package or name
+    if not url:
+        pkg_base = pkg.split("/")[-1] if "/" in pkg else pkg
+        url = f"https://registry.npmjs.org/{pkg}/-/{pkg_base}-{version}.tgz"
+
+    dl_target = f"_{name}#download"
+    remote_file(
+        name = dl_target,
+        url = url,
+        hashes = hashes or [],
+        out = f"{name}.tgz",
+    )
+
+    tools = {"TOOL": [_ts_tool()]}
+    return build_rule(
+        name = name,
+        srcs = [f":{dl_target}"],
+        deps = deps or [],
+        exported_deps = deps or [],
+        outs = [name],
+        cmd = f'$TOOLS_TOOL unpack --npm-cache --tarball "$SRCS" --out "$OUT" --name "{pkg}"',
+        sandbox = True,
+        needs_transitive_deps = True,
+        tools = tools,
+        visibility = visibility or ["PUBLIC"],
+        labels = labels or ["ts", "module", "npm", "npm_cache"],
+        building_description = f"Building Deno npm cache slice for {pkg}@{version}...",
+    )
+
 def ts_library(
         name: str,
         srcs: list,

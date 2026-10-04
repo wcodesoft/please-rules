@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"tools/please_ts/importmap"
+	"tools/please_ts/npmcache"
 )
 
 // Options holds configuration for TypeScript library compilation.
@@ -53,6 +54,14 @@ func Run(opts Options) error {
 		}
 	}
 
+	// npm packages provided by ts_npm_module targets are merged into the per-run Deno cache
+	// and resolved from there, offline. The shared Vitest cache is left as it is.
+	if opts.VitestDir == "" {
+		if _, err := npmcache.Prepare(".", denoCacheDir); err != nil {
+			return fmt.Errorf("failed preparing the npm cache: %w", err)
+		}
+	}
+
 	// 1. Synthesize target-local import map
 	importMapPath := ".import_map.json"
 	im, err := importmap.Synthesize(opts.ModuleName, opts.Srcs, opts.Deps, ".")
@@ -72,6 +81,12 @@ func Run(opts Options) error {
 		"check",
 		"--no-remote",
 		"--import-map", importMapPath,
+	}
+	// npm packages come from the merged cache only: a ts_npm_module missing from the
+	// target's deps must fail here, not be downloaded. (The shared Vitest cache is a
+	// different mechanism and keeps its own behaviour.)
+	if opts.VitestDir == "" && im.HasNpmSpecifiers() {
+		args = append(args, "--cached-only")
 	}
 	args = append(args, opts.Flags...)
 	args = append(args, opts.Srcs...)
