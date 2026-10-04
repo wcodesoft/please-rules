@@ -219,3 +219,27 @@ these files. It provides:
 
 The format is plain lcov, so a consumer outside this repository can use any lcov
 parser and apply the rules above.
+
+---
+
+## Checking a report in CI
+
+`lcovcheck` (`//tools/common/lcovcheck`) asserts facts about a report with the
+same parser, instead of `grep` over text:
+
+```bash
+./pleasew build //tools/common/lcovcheck
+L=plz-out/bin/tools/common/lcovcheck/lcovcheck
+
+# A raw lcov report: line statuses and functions, for one source file.
+$L -lcov plz-out/bin/test/ts/lib/branches_test.lcov -path test/ts/lib/branches.ts \
+   -line 4=partial -line 5=uncovered -function unused=missed -function classify=2
+
+# Please's merged report: these files must have coverage above zero.
+$L -coverage-json plz-out/log/coverage.json -covered test/ts/lib/branches.ts
+```
+
+A line is `covered`, `uncovered`, `partial` or `not-executable`. A function is
+matched by a substring of its name, which must identify exactly one function
+(names are mangled differently by each tool), and is `hit`, `missed`, or called
+exactly N times. Every failed assertion is listed and the exit status is 1.
