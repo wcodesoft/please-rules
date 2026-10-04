@@ -70,6 +70,7 @@ type Function struct {
 	Doc     string
 	Params  []Param
 	Results *TypeRef // nil means void / unit
+	Static  bool     // declared `name: static func(...)`; only meaningful inside a resource
 }
 
 // Field represents a field in a WIT record.

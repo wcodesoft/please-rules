@@ -698,3 +698,25 @@ func TestParseFileLenient(t *testing.T) {
 		t.Error("expected an error for a missing file")
 	}
 }
+
+func TestParseResourceStaticFunctionSpellings(t *testing.T) {
+	pkg, err := ParseContent(`interface i {
+  resource counter {
+    constructor(start: u32);
+    get: func() -> u32;
+    reset-all: static func();
+    static legacy-reset: func(to: u32);
+  }
+}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res := pkg.Interfaces[0].Resources[0]
+	if len(res.Methods) != 1 || res.Methods[0].Name != "get" || res.Methods[0].Static {
+		t.Errorf("methods = %+v", res.Methods)
+	}
+	if len(res.Static) != 2 || res.Static[0].Name != "reset-all" || !res.Static[0].Static ||
+		res.Static[1].Name != "legacy-reset" || !res.Static[1].Static || len(res.Static[1].Params) != 1 {
+		t.Errorf("static = %+v", res.Static)
+	}
+}
