@@ -58,27 +58,31 @@ jobs:
 
       - name: Coverage smoke test (calculator_test)
         run: |
-          ./pleasew --plain_output cover //test/ts/lib:calculator_test  2>&1 | tee cover.log
-          grep -Eq '^\s+calculator\.ts [1-9][0-9]*/' cover.log
+          ./pleasew --plain_output build //tools/common/lcovcheck
+          ./pleasew --plain_output cover //test/ts/lib:calculator_test
+          plz-out/bin/tools/common/lcovcheck/lcovcheck -coverage-json plz-out/log/coverage.json -covered test/ts/lib/calculator.ts
         env:
           VERITAS_NO_HOOK: "1"
 
       - name: Coverage smoke test (calculator_vitest_test)
         run: |
-          ./pleasew --plain_output cover //test/ts/lib:calculator_vitest_test  2>&1 | tee cover.log
-          grep -Eq '^\s+calculator\.ts [1-9][0-9]*/' cover.log
+          ./pleasew --plain_output build //tools/common/lcovcheck
+          ./pleasew --plain_output cover //test/ts/lib:calculator_vitest_test
+          plz-out/bin/tools/common/lcovcheck/lcovcheck -coverage-json plz-out/log/coverage.json -covered test/ts/lib/calculator.ts
         env:
           VERITAS_NO_HOOK: "1"
 
       - name: Raw lcov export smoke test (functions and branches)
         run: |
-          ./pleasew --plain_output cover --rerun //test/ts/lib:branches_test //test/ts/lib:branches_vitest_test 2>&1 | tee cover.log
+          ./pleasew --plain_output build //tools/common/lcovcheck
+          ./pleasew --plain_output cover --rerun //test/ts/lib:branches_test //test/ts/lib:branches_vitest_test
           for t in branches_test branches_vitest_test; do
-            f="plz-out/bin/test/ts/lib/$t.lcov"
-            echo "Checking $f"
-            grep -q '^SF:test/ts/lib/branches\.ts$' "$f"
-            grep -q '^FNDA:0,unused$' "$f"
-            grep -Eq '^BRDA:4,[0-9]+,0,0$' "$f"
+            echo "Checking $t"
+            plz-out/bin/tools/common/lcovcheck/lcovcheck \
+              -lcov "plz-out/bin/test/ts/lib/$t.lcov" \
+              -path test/ts/lib/branches.ts \
+              -line 4=partial -line 5=uncovered \
+              -function unused=missed -function classify=2
           done
         env:
           VERITAS_NO_HOOK: "1"
