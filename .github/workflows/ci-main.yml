@@ -25,7 +25,13 @@ jobs:
           echo "$CHANGED_FILES"
 
           # Detect language-specific rules, tools, or integration tests
-          VIOLATIONS=$(echo "$CHANGED_FILES" | grep -E '^(build_defs/[^/]+|tools/please_[^/]+|test/[^/]+)' || true)
+          VIOLATIONS=""
+          while IFS= read -r file; do
+            case "$file" in
+              build_defs/*|tools/please_*|test/*) VIOLATIONS="${VIOLATIONS}${file}"$'\n' ;;
+            esac
+          done <<< "$CHANGED_FILES"
+          VIOLATIONS="${VIOLATIONS%$'\n'}"
           if [ -n "$VIOLATIONS" ]; then
             echo "::error::Language-specific rules or tests cannot be merged into 'main'."
             echo "The following files violate the Hub-and-Spoke Gitflow:"
