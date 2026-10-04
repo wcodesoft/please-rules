@@ -7,6 +7,7 @@ go_binary(
         "main.go",
     ],
     visibility = ["PUBLIC"],
+    deps = ["//tools/common/wit/ast"],
 )
 
 go_test(
@@ -17,4 +18,5 @@ go_test(
         "main.go",
         "main_test.go",
     ],
+    deps = ["//tools/common/wit/ast"],
 )

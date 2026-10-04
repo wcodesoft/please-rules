@@ -20,6 +20,15 @@ and this project adheres to
   reports a single failing test case with the process output, instead of parsing
   that output with a regular expression. A process that fails while no test case
   does gets a failing case of its own.
+- `kotlin_wasm_binary` / `kotlin_wasm_library` read the WIT file with the shared
+  parser instead of line-based regular expressions. Comments, a function
+  declared over several lines, a versioned package (`package a:b@1.0;`) and
+  `use`, `variant` or `flags` declarations no longer confuse it, and the methods
+  of a `resource` are no longer generated as functions of the enclosing
+  interface. An interface in a file without a `package` line takes the package
+  declared in another file of the directory. A WIT type that cannot be mapped to
+  Kotlin (a `tuple`) is now an error naming the function and parameter, instead
+  of a generated name that does not compile.
 
 ## [0.4.0] - 2026-10-03
 

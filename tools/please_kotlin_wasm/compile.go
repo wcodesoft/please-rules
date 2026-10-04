@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
 	"io"
 	"os"
@@ -9,6 +8,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"tools/common/wit/ast"
 )
 
 // WasmOptions configures a kotlinc-wasm compilation and linking invocation.
@@ -153,69 +154,77 @@ func ToPascalCase(s string) string {
 	return res
 }
 
-// MapWitTypeToKotlin maps standard WIT primitives to Kotlin types.
-func MapWitTypeToKotlin(witType string) string {
-	witType = strings.TrimSpace(witType)
-	switch witType {
-	case "s8":
-		return "Byte"
-	case "s16":
-		return "Short"
-	case "s32", "u8", "u16", "u32":
-		return "Int"
-	case "s64", "u64":
-		return "Long"
-	case "f32":
-		return "Float"
-	case "f64":
-		return "Double"
-	case "bool":
-		return "Boolean"
-	case "string":
-		return "String"
-	case "_", "unit":
-		return "Unit"
+// MapTypeToKotlin maps a WIT type to the Kotlin type of the generated interface. A nil type
+// (a function without a result) is Unit.
+func MapTypeToKotlin(t *ast.TypeRef) (string, error) {
+	if t == nil {
+		return "Unit", nil
 	}
-
-	// Handle result<T, E>
-	if strings.HasPrefix(witType, "result<") && strings.HasSuffix(witType, ">") {
-		inner := witType[7 : len(witType)-1]
-		parts := strings.Split(inner, ",")
-		if len(parts) > 0 {
-			okType := strings.TrimSpace(parts[0])
-			if okType == "_" {
-				return "Unit"
-			}
-			mapped := MapWitTypeToKotlin(okType)
-			if mapped == "Unit" {
-				return "Unit"
-			}
-			return mapped + "?"
+	switch t.Kind {
+	case ast.KindPrimitive, ast.KindNamed:
+		switch t.Name {
+		case "s8":
+			return "Byte", nil
+		case "s16":
+			return "Short", nil
+		case "s32", "u8", "u16", "u32":
+			return "Int", nil
+		case "s64", "u64":
+			return "Long", nil
+		case "f32":
+			return "Float", nil
+		case "f64":
+			return "Double", nil
+		case "bool":
+			return "Boolean", nil
+		case "string":
+			return "String", nil
+		case "_", "unit":
+			return "Unit", nil
 		}
-		return "Unit"
-	}
+		return ToPascalCase(t.Name), nil
 
-	// Handle list<T>
-	if strings.HasPrefix(witType, "list<") && strings.HasSuffix(witType, ">") {
-		elemType := witType[5 : len(witType)-1]
-		return fmt.Sprintf("List<%s>", MapWitTypeToKotlin(elemType))
-	}
+	case ast.KindList:
+		if len(t.TypeArgs) != 1 {
+			return "", fmt.Errorf("list needs an element type, got %s", t)
+		}
+		elem, err := MapTypeToKotlin(t.TypeArgs[0])
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("List<%s>", elem), nil
 
-	// Handle option<T>
-	if strings.HasPrefix(witType, "option<") && strings.HasSuffix(witType, ">") {
-		elemType := witType[7 : len(witType)-1]
-		return MapWitTypeToKotlin(elemType) + "?"
-	}
+	case ast.KindOption:
+		if len(t.TypeArgs) != 1 {
+			return "", fmt.Errorf("option needs an element type, got %s", t)
+		}
+		elem, err := MapTypeToKotlin(t.TypeArgs[0])
+		if err != nil {
+			return "", err
+		}
+		return elem + "?", nil
 
-	return ToPascalCase(witType)
+	case ast.KindResult:
+		// The error side is not modelled: a result is its ok value, absent on failure.
+		if len(t.TypeArgs) == 0 {
+			return "Unit", nil
+		}
+		ok, err := MapTypeToKotlin(t.TypeArgs[0])
+		if err != nil {
+			return "", err
+		}
+		if ok == "Unit" {
+			return "Unit", nil
+		}
+		return ok + "?", nil
+	}
+	return "", fmt.Errorf("type %s is not supported", t)
 }
 
-var funcRegex = regexp.MustCompile(`^\s*([a-zA-Z0-9_-]+)\s*:\s*func\s*\((.*?)\)(?:\s*->\s*(.+))?`)
-var packageRegex = regexp.MustCompile(`(?m)^\s*package\s+([a-zA-Z0-9_:-]+);`)
-var ifaceRegex = regexp.MustCompile(`^\s*interface\s+([a-zA-Z0-9_-]+)\s*\{`)
-var resourceRegex = regexp.MustCompile(`^\s*resource\s+([a-zA-Z0-9_-]+)\s*\{`)
-
-// ParseWit parses .wit files in a given path into WitInterface structures.
+// ParseWit parses the .wit files at witPath (a file, or the .wit files under a directory) into
+// WitInterface structures. Declarations that generate nothing (use, variant, flags, ...) are
+// skipped. All files of a directory belong to one WIT package, so an interface in a file without
+// a package declaration takes the package declared in another file.
 func ParseWit(witPath string) ([]WitInterface, error) {
 	var files []string
 	fi, err := os.Stat(witPath)
@@ -224,89 +233,68 @@ func ParseWit(witPath string) ([]WitInterface, error) {
 	}
 
 	if fi.IsDir() {
-		_ = filepath.Walk(witPath, func(path string, info os.FileInfo, err error) error {
+		err := filepath.Walk(witPath, func(path string, info os.FileInfo, err error) error {
 			if err == nil && info != nil && !info.IsDir() && strings.HasSuffix(path, ".wit") {
 				files = append(files, path)
 			}
 			return nil
 		})
+		if err != nil {
+			return nil, err
+		}
 	} else {
 		files = append(files, witPath)
 	}
 
-	var interfaces []WitInterface
-
+	var parsed []*ast.Package
+	dirPackage := ""
 	for _, file := range files {
-		data, err := os.ReadFile(file)
+		pkg, err := ast.ParseFileLenient(file)
 		if err != nil {
-			continue
+			return nil, fmt.Errorf("%s: %w", file, err)
 		}
-
-		pkgName := ""
-		if match := packageRegex.FindStringSubmatch(string(data)); len(match) > 1 {
-			pkgName = strings.ReplaceAll(match[1], ":", ".")
+		parsed = append(parsed, pkg)
+		if dirPackage == "" {
+			dirPackage = strings.ReplaceAll(pkg.FullName(), ":", ".")
 		}
+	}
 
-		scanner := bufio.NewScanner(strings.NewReader(string(data)))
-		var currentIface *WitInterface
-
-		for scanner.Scan() {
-			line := strings.TrimSpace(scanner.Text())
-			if strings.HasPrefix(line, "//") {
-				continue
-			}
-
-			if m := ifaceRegex.FindStringSubmatch(line); len(m) > 1 {
-				interfaces = append(interfaces, WitInterface{
-					Name:    m[1],
-					Package: pkgName,
-				})
-				currentIface = &interfaces[len(interfaces)-1]
-				continue
-			}
-
-			if currentIface != nil {
-				if m := resourceRegex.FindStringSubmatch(line); len(m) > 1 {
-					continue
+	var interfaces []WitInterface
+	for i, pkg := range parsed {
+		pkgName := strings.ReplaceAll(pkg.FullName(), ":", ".")
+		if pkgName == "" {
+			pkgName = dirPackage
+		}
+		for _, iface := range pkg.Interfaces {
+			witIface := WitInterface{Name: iface.Name, Package: pkgName}
+			for _, fn := range iface.Functions {
+				witFn, err := toWitFunc(fn)
+				if err != nil {
+					return nil, fmt.Errorf("%s: interface %s: function %s: %w", files[i], iface.Name, fn.Name, err)
 				}
-
-				if m := funcRegex.FindStringSubmatch(line); len(m) > 1 {
-					funcName := m[1]
-					rawParams := m[2]
-					rawReturn := strings.TrimSuffix(strings.TrimSpace(m[3]), ";")
-
-					var params []WitParam
-					if rawParams != "" {
-						for _, p := range strings.Split(rawParams, ",") {
-							p = strings.TrimSpace(p)
-							if p == "" {
-								continue
-							}
-							parts := strings.SplitN(p, ":", 2)
-							if len(parts) == 2 {
-								pName := ToCamelCase(strings.TrimSpace(parts[0]))
-								pType := MapWitTypeToKotlin(strings.TrimSpace(parts[1]))
-								params = append(params, WitParam{Name: pName, Type: pType})
-							}
-						}
-					}
-
-					retType := "Unit"
-					if rawReturn != "" {
-						retType = MapWitTypeToKotlin(rawReturn)
-					}
-
-					currentIface.Functions = append(currentIface.Functions, WitFunc{
-						Name:       funcName,
-						Params:     params,
-						ReturnType: retType,
-					})
-				}
+				witIface.Functions = append(witIface.Functions, witFn)
 			}
+			interfaces = append(interfaces, witIface)
 		}
 	}
 
 	return interfaces, nil
+}
+
+func toWitFunc(fn ast.Function) (WitFunc, error) {
+	var params []WitParam
+	for _, p := range fn.Params {
+		typ, err := MapTypeToKotlin(p.Type)
+		if err != nil {
+			return WitFunc{}, fmt.Errorf("parameter %s: %w", p.Name, err)
+		}
+		params = append(params, WitParam{Name: ToCamelCase(p.Name), Type: typ})
+	}
+	ret, err := MapTypeToKotlin(fn.Results)
+	if err != nil {
+		return WitFunc{}, fmt.Errorf("result: %w", err)
+	}
+	return WitFunc{Name: fn.Name, Params: params, ReturnType: ret}, nil
 }
 
 // DetectPackage finds the declared Kotlin package across source files.
