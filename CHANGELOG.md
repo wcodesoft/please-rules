@@ -9,6 +9,8 @@ and this project adheres to
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-04
+
 ### Added
 
 - Experimental `ts_npm_module` rule: provides an npm package to Deno's own
