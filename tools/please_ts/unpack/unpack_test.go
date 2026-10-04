@@ -5,6 +5,8 @@ import (
 	"archive/zip"
 	"bytes"
 	"compress/gzip"
+	"crypto/sha512"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -44,85 +46,6 @@ func createTestTarball(t *testing.T, files map[string]string) []byte {
 	_ = tw.Close()
 	_ = gzw.Close()
 	return buf.Bytes()
-}
-
-func TestSemverParseMatrix(t *testing.T) {
-	tests := []struct {
-		input string
-		want  [3]int
-	}{
-		{"1.2.3", [3]int{1, 2, 3}},
-		{"v2.10.4", [3]int{2, 10, 4}},
-		{"0.4.0-alpha.1", [3]int{0, 4, 0}},
-		{"1.0.0+build.1", [3]int{1, 0, 0}},
-		{"3", [3]int{3, 0, 0}},
-		{"1.5", [3]int{1, 5, 0}},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
-			got := parseSemver(tt.input)
-			if got != tt.want {
-				t.Errorf("parseSemver(%q) = %v, want %v", tt.input, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestSemverCompareMatrix(t *testing.T) {
-	tests := []struct {
-		a    [3]int
-		b    [3]int
-		want int
-	}{
-		{[3]int{1, 2, 3}, [3]int{1, 2, 3}, 0},
-		{[3]int{2, 0, 0}, [3]int{1, 9, 9}, 1},
-		{[3]int{1, 2, 0}, [3]int{1, 3, 0}, -1},
-		{[3]int{1, 2, 4}, [3]int{1, 2, 3}, 1},
-		{[3]int{1, 2, 3}, [3]int{1, 2, 4}, -1},
-	}
-
-	for _, tt := range tests {
-		t.Run(fmt.Sprintf("%v_vs_%v", tt.a, tt.b), func(t *testing.T) {
-			got := compareSemver(tt.a, tt.b)
-			if got != tt.want {
-				t.Errorf("compareSemver(%v, %v) = %d, want %d", tt.a, tt.b, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestResolveVersionMatrix(t *testing.T) {
-	versions := map[string]npmVersionData{
-		"1.0.0": {Version: "1.0.0"},
-		"1.1.0": {Version: "1.1.0"},
-		"1.2.3": {Version: "1.2.3"},
-		"2.0.0": {Version: "2.0.0"},
-		"2.1.0": {Version: "2.1.0"},
-	}
-
-	tests := []struct {
-		constraint string
-		latest     string
-		want       string
-	}{
-		{"^1.0.0", "2.1.0", "1.2.3"},
-		{"~1.1.0", "2.1.0", "1.1.0"},
-		{">=2.0.0", "2.1.0", "2.1.0"},
-		{"1.0.0", "2.1.0", "1.0.0"},
-		{"latest", "2.1.0", "2.1.0"},
-		{"*", "2.1.0", "2.1.0"},
-		{"", "2.1.0", "2.1.0"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.constraint, func(t *testing.T) {
-			got := resolveVersion(tt.latest, versions, tt.constraint)
-			if got != tt.want {
-				t.Errorf("resolveVersion(latest=%q, constraint=%q) = %q, want %q", tt.latest, tt.constraint, got, tt.want)
-			}
-		})
-	}
 }
 
 func TestCleanRelativePathMatrix(t *testing.T) {
@@ -323,6 +246,8 @@ func TestUnpackWithMockRegistryMatrix(t *testing.T) {
 		"index.js":     `module.exports = { helper: true };`,
 	})
 
+	helperSum := sha512.Sum512(helperTarball)
+	helperIntegrity := "sha512-" + base64.StdEncoding.EncodeToString(helperSum[:])
 	var server *httptest.Server
 	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/helper-pkg") {
@@ -332,10 +257,10 @@ func TestUnpackWithMockRegistryMatrix(t *testing.T) {
 				"versions": {
 					"1.0.0": {
 						"version": "1.0.0",
-						"dist": { "tarball": "%s/helper-pkg/-/helper-pkg-1.0.0.tgz" }
+						"dist": { "tarball": "%s/helper-pkg/-/helper-pkg-1.0.0.tgz", "integrity": "%s" }
 					}
 				}
-			}`, server.URL)
+			}`, server.URL, helperIntegrity)
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(manifest))
 			return

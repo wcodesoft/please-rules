@@ -4,7 +4,10 @@ go_library(
     name = "compile",
     srcs = ["compile.go"],
     visibility = ["//tools/please_ts/..."],
-    deps = ["//tools/please_ts/importmap"],
+    deps = [
+        "//tools/please_ts/importmap",
+        "//tools/please_ts/npmcache",
+    ],
 )
 
 go_test(
@@ -13,5 +16,8 @@ go_test(
         "compile.go",
         "compile_test.go",
     ],
-    deps = ["//tools/please_ts/importmap"],
+    deps = [
+        "//tools/please_ts/importmap",
+        "//tools/please_ts/npmcache",
+    ],
 )

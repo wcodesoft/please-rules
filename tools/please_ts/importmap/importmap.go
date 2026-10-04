@@ -117,3 +117,16 @@ func (im *ImportMap) WriteToFile(filePath string) error {
 	}
 	return os.WriteFile(filePath, data, 0644)
 }
+
+// HasNpmSpecifiers reports whether the import map sends any module to an npm: specifier.
+// Those are resolved from the Deno cache that the npm slices are merged into, so a target
+// whose import map has them must run with --cached-only: a slice that is missing from the
+// target's dependencies then fails at once, instead of Deno quietly downloading the package.
+func (im *ImportMap) HasNpmSpecifiers() bool {
+	for _, target := range im.Imports {
+		if strings.HasPrefix(target, "npm:") {
+			return true
+		}
+	}
+	return false
+}

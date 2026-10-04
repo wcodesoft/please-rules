@@ -7,6 +7,45 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Experimental `ts_npm_module` rule: provides an npm package to Deno's own
+  `npm:` resolution. The sha256-pinned tarball is extracted by the build into a
+  slice of a Deno npm cache that targets merge into their `DENO_DIR`; no
+  `node_modules`, no lockfile. CommonJS packages, subpath imports and packages
+  with only an `exports` map work as Deno resolves them. Dependencies resolve
+  automatically (`resolve_transitive`, on by default, strictly and verified
+  against the registry's integrity data, with several versions kept side by side
+  when dependents need different ones), or can be declared as separate pinned
+  `ts_npm_module` targets with `resolve_transitive = False`. Type checks and
+  tests run with `--cached-only`, so a missing module fails instead of being
+  downloaded.
+- Dependency resolution is reproducible without a lockfile: only versions
+  published by the end of the day the root version was published are considered,
+  for both `ts_npm_module` and `ts_module`, so the version pinned by its hash
+  fixes the result and nothing needs configuring.
+- `please_ts unpack --npm-cache`, and the `npmcache`, `registry` and `semver`
+  packages behind it.
+- Fixtures for `debug` (CommonJS, transitive dependency), `highlight.js`
+  (CommonJS, subpaths) and `@codemirror/legacy-modes` (exports map only),
+  automatic and fully pinned.
+
+### Fixed
+
+- `ts_module`'s automatic dependency resolution (`resolve_transitive`) is now
+  strict and verified. It used to fall back to the `latest` version when no
+  version satisfied a range, verify no download against the registry's integrity
+  data, keep the first version of a package silently when a second dependent
+  needed an incompatible one, and only print a warning, leaving an incomplete
+  tree, when resolution failed. A range that no version satisfies, an integrity
+  mismatch, a tarball that holds another package and conflicting versions are
+  now build errors; unresolvable peer dependencies stay warnings. Version ranges
+  are interpreted completely (`||`, hyphen and x-ranges, prereleases) instead of
+  only `^`, `~` and `>=`. **This can make builds fail that used to pass with an
+  incomplete or inconsistent tree.**
+
 ## [0.6.0] - 2026-10-03
 
 ### Added

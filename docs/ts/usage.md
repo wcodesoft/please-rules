@@ -219,3 +219,85 @@ branch (`BRDA`) records that `coverage.xml` and `coverage.json` do not:
   `tools/common/lcov` package. Do not merge branch records of the Deno and
   Vitest runners for the same file: they number the arms of a branch
   differently.
+
+---
+
+## npm Packages Through Deno's Own Resolution (`ts_npm_module`, experimental)
+
+`ts_module` unpacks a package and describes it with a single entry file, which
+cannot express CommonJS packages, subpath imports (`highlight.js/lib/core`) or
+packages that only have an `exports` map. `ts_npm_module` takes a different
+route: Deno resolves the package itself through an `npm:` specifier, and the
+rule only has to make the package available **offline**. List the package you
+import, pinned by the hash of its tarball:
+
+```starlark
+ts_npm_module(
+    name = "debug",
+    hashes = ["c803a8ca9b835b7a75f7150ee52f7f640675515bafbe8f5da78fcc0ae12914ac"],
+    version = "4.3.7",
+)
+
+ts_library(
+    name = "humanize",
+    srcs = ["humanize.ts"],
+    module_name = "@app/humanize",
+    deps = [":debug"],
+)
+
+ts_test(
+    name = "humanize_test",
+    srcs = ["humanize_test.ts"],
+    deps = [":debug", ":humanize"],  # list the npm module itself, as with ts_module
+)
+```
+
+```typescript
+import createDebug from "debug"; // CommonJS, and it needs the package "ms"
+```
+
+- **Dependencies resolve automatically** (`resolve_transitive`, on by default,
+  as for `ts_module`): `debug` needs `ms`, and nothing else has to be declared.
+  The build resolves dependencies from the registry, strictly: a range that no
+  version satisfies, a download that does not match the registry's integrity
+  data, or a tarball that holds another package fails the build. Dependents that
+  need different versions of one package each get theirs (Deno resolves per
+  dependent), which `ts_module`'s single `.deps` directory cannot do. Optional
+  and peer dependencies are not fetched.
+- **Reproducible without a lockfile**: only dependency versions published by the
+  end of the day the root version was published are considered, so the version
+  you pin by hash fixes the result and nothing needs configuring. Bump the root
+  version to move the dependencies forward. If the registry does not know the
+  root version's publish time (a private registry, a tarball from another URL),
+  the build says so and does not pin.
+- **Cost of automatic resolution**: the build needs network access (so no
+  sandbox for these targets) and trusts the registry for everything except the
+  root tarball.
+- **Fully pinned alternative**: with `resolve_transitive = False` nothing is
+  resolved. Every dependency, and theirs, is its own `ts_npm_module` in `deps`,
+  each with its own tarball hash, and the build needs no network access. The
+  build fails and names any dependency that is missing. Dependencies you do list
+  in `deps` are always used as they are, never resolved again, so the two modes
+  can be mixed.
+- **Offline afterwards**: everything that runs after the build (type checks,
+  tests) uses only the extracted cache, with no `node_modules` directory and no
+  lockfile. Targets run with `--cached-only`, so a module missing from a
+  target's `deps` fails at once with `npm package not found in cache`; Deno does
+  not download it.
+- **Resolution is Deno's**: `exports` maps, CommonJS, subpaths and a package's
+  own types work as they do for `npm:` specifiers. Imports use the plain package
+  name.
+- **Not wired yet**: `ts_bundle` and `ts_binary`, the Vitest and browser
+  runners, and a helper that prints pinned declarations. The cache layout
+  (`registry.json`, including its `_deno.packumentFormat` key) is internal to
+  Deno, so it is tied to the Deno version the plugin pins.
+
+`ts_module` resolves its dependencies by the same rules (strictly, verified, as
+of the root's publish day), with the limit of one version per package: two
+dependents that need incompatible versions fail the build and name each other.
+
+The fixtures in `test/ts/npm_cache` cover a CommonJS package with a transitive
+dependency (`debug`), a CommonJS package imported through subpaths
+(`highlight.js`), and an ES module package that only has an `exports` map and no
+`main` (`@codemirror/legacy-modes`), each with automatic resolution and, for the
+last two, with every dependency pinned explicitly.
