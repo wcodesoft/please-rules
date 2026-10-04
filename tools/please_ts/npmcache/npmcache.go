@@ -112,6 +112,35 @@ func Merge(slices []string, denoDir string) error {
 	return nil
 }
 
+// CachedVersion returns the version of a package that the Deno cache at denoDir holds, or ""
+// when it holds none of it. An unversioned npm: specifier resolves to the registry's latest
+// release, which is not necessarily the cached one (Deno then downloads it, into a cache that
+// is meant to be read-only), so callers pin the cached version. More than one cached version is
+// an error: there is no telling which one is meant.
+func CachedVersion(denoDir, name string) (string, error) {
+	entries, err := os.ReadDir(filepath.Join(denoDir, registryDir, filepath.FromSlash(name)))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", err
+	}
+	var versions []string
+	for _, e := range entries {
+		if e.IsDir() {
+			versions = append(versions, e.Name())
+		}
+	}
+	switch len(versions) {
+	case 0:
+		return "", nil
+	case 1:
+		return versions[0], nil
+	}
+	sort.Strings(versions)
+	return "", fmt.Errorf("%s holds several versions of %s (%s); cannot tell which one to use", denoDir, name, strings.Join(versions, ", "))
+}
+
 // Prepare merges the slices found below root into denoDir and reports whether there were
 // any. Callers add --cached-only to the Deno command when it returns true, so a package
 // missing from the cache fails at once instead of reaching for the network.

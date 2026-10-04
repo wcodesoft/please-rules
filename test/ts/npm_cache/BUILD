@@ -202,3 +202,36 @@ gentest(
         'echo "$out" | grep -q "hljs-keyword"',
     ]),
 )
+
+# The browser runner bundles the test with its npm packages, then runs it in headless Chromium.
+ts_browser_test(
+    name = "highlight_browser_test",
+    srcs = ["highlight_browser_test.ts"],
+    deps = [
+        ":highlight",
+        "//test/ts/npm_cache/modules:highlight_js",
+    ],
+)
+
+# Vitest imports the npm packages natively (Deno resolves them from the merged cache) instead of
+# trying to resolve them itself.
+ts_test(
+    name = "highlight_vitest_test",
+    srcs = ["highlight_vitest_test.ts"],
+    runner = "vitest",
+    deps = [
+        ":highlight",
+        "//test/ts/npm_cache/modules:highlight_js",
+    ],
+)
+
+ts_test(
+    name = "modes_vitest_test",
+    srcs = ["modes_vitest_test.ts"],
+    runner = "vitest",
+    deps = [
+        ":modes",
+        "//test/ts/npm_cache/modules:codemirror_language",
+        "//test/ts/npm_cache/modules:codemirror_legacy_modes",
+    ],
+)

@@ -162,6 +162,11 @@ ts_bundle(
 | `sourcemap`    | `bool` | `False`    | Whether to generate source maps.                     |
 | `bundler_tool` | `str`  | `""`       | Optional external bundler executable (e.g. esbuild). |
 
+With npm packages (`ts_npm_module` dependencies) the bundle is built by
+`deno bundle`, using the pinned esbuild of `esbuild_toolchain`, and
+`bundler_tool` is not used. See
+[Bundling and compiling](usage.md#bundling-and-compiling).
+
 ---
 
 ## `ts_test`
@@ -214,6 +219,30 @@ vitest_toolchain(
 | :-------- | :---- | :------------ | :----------------------------------------------------- |
 | `name`    | `str` | `"toolchain"` | Target name.                                           |
 | `version` | `str` | `"5.0.1"`     | Vitest version to cache and bundle for test execution. |
+
+---
+
+## `esbuild_toolchain`
+
+Provides the pinned esbuild binary that `deno bundle` runs to bundle npm
+packages (Deno would download its own). The `EsbuildTool` config key points at
+it (`//tools/esbuild_toolchain:toolchain|esbuild` by default).
+
+```starlark
+esbuild_toolchain(
+    name = "toolchain",
+)
+```
+
+### Arguments
+
+| Argument          | Type  | Default       | Description                                                        |
+| :---------------- | :---- | :------------ | :----------------------------------------------------------------- |
+| `name`            | `str` | `"toolchain"` | Target name.                                                       |
+| `version`         | `str` | `"0.25.5"`    | esbuild version; must be the one the Deno version uses.            |
+| `esbuild_url`     | `str` | `""`          | Override the download URL (the `@esbuild/<platform>` npm tarball). |
+| `esbuild_hash`    | `str` | `""`          | sha256 of that download.                                           |
+| `target_platform` | `str` | `""`          | Platform (defaults to the host).                                   |
 
 ---
 

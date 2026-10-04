@@ -42,21 +42,27 @@ func Run(opts Options) error {
 	defer os.RemoveAll(tmpDir)
 
 	denoCacheDir := filepath.Join(tmpDir, ".deno_cache")
-	if opts.VitestDir != "" {
+	// npm packages provided by ts_npm_module targets are merged into the per-run Deno cache and
+	// resolved from there, offline.
+	usesNpmSlices := len(npmcache.Discover(".")) > 0
+	switch {
+	case opts.VitestDir != "" && !usesNpmSlices:
+		// The shared Vitest cache is used as it is, and never written to by this target.
 		if absV, err := filepath.Abs(opts.VitestDir); err == nil {
 			denoCacheDir = absV
 		} else {
 			denoCacheDir = opts.VitestDir
 		}
-	} else {
+	default:
 		if err := os.MkdirAll(denoCacheDir, 0755); err != nil {
 			return fmt.Errorf("failed to create DENO_DIR: %w", err)
 		}
-	}
-
-	// npm packages provided by ts_npm_module targets are merged into the per-run Deno cache
-	// and resolved from there, offline. The shared Vitest cache is left as it is.
-	if opts.VitestDir == "" {
+		if opts.VitestDir != "" {
+			// A per-run copy of the Vitest cache, so the slices do not end up in the shared one.
+			if err := npmcache.Merge([]string{opts.VitestDir}, denoCacheDir); err != nil {
+				return fmt.Errorf("failed copying the Vitest cache: %w", err)
+			}
+		}
 		if _, err := npmcache.Prepare(".", denoCacheDir); err != nil {
 			return fmt.Errorf("failed preparing the npm cache: %w", err)
 		}
@@ -69,7 +75,11 @@ func Run(opts Options) error {
 		return fmt.Errorf("failed synthesizing import map: %w", err)
 	}
 	if opts.VitestDir != "" && im.Imports["vitest"] == "" {
-		im.Imports["vitest"] = "npm:vitest"
+		spec, err := vitestSpecifier(opts.VitestDir)
+		if err != nil {
+			return err
+		}
+		im.Imports["vitest"] = spec
 	}
 	if err := im.WriteToFile(importMapPath); err != nil {
 		return fmt.Errorf("failed writing import map: %w", err)
@@ -83,9 +93,9 @@ func Run(opts Options) error {
 		"--import-map", importMapPath,
 	}
 	// npm packages come from the merged cache only: a ts_npm_module missing from the
-	// target's deps must fail here, not be downloaded. (The shared Vitest cache is a
+	// target's deps must fail here, not be downloaded. (The shared Vitest cache alone is a
 	// different mechanism and keeps its own behaviour.)
-	if opts.VitestDir == "" && im.HasNpmSpecifiers() {
+	if usesNpmSlices || (opts.VitestDir == "" && im.HasNpmSpecifiers()) {
 		args = append(args, "--cached-only")
 	}
 	args = append(args, opts.Flags...)
@@ -108,6 +118,20 @@ func Run(opts Options) error {
 	}
 
 	return nil
+}
+
+// vitestSpecifier is the npm: specifier of the vitest in the Vitest cache at dir: pinned to the
+// cached version, because an unversioned one resolves to the registry's latest release, which
+// Deno would then download into that (read-only) cache.
+func vitestSpecifier(dir string) (string, error) {
+	version, err := npmcache.CachedVersion(dir, "vitest")
+	if err != nil {
+		return "", err
+	}
+	if version == "" {
+		return "npm:vitest", nil
+	}
+	return "npm:vitest@" + version, nil
 }
 
 func emitOutput(opts Options, im *importmap.ImportMap) error {
