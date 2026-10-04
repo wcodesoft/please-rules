@@ -293,7 +293,6 @@ jobs:
           merge-multiple: true
 
       - name: Compute SHA-256 Checksums
-        id: checksums
         env:
           TOOL: ${{ needs.validate.outputs.tool }}
           VERSION: ${{ needs.validate.outputs.version }}
@@ -303,47 +302,21 @@ jobs:
           echo "Generated checksums.txt:"
           cat checksums.txt
 
-          echo "linux_amd64=$(sha256sum ${TOOL}-${VERSION}-linux_amd64 | awk '{print $1}')" >> "$GITHUB_OUTPUT"
-          echo "linux_arm64=$(sha256sum ${TOOL}-${VERSION}-linux_arm64 | awk '{print $1}')" >> "$GITHUB_OUTPUT"
-          echo "darwin_amd64=$(sha256sum ${TOOL}-${VERSION}-darwin_amd64 | awk '{print $1}')" >> "$GITHUB_OUTPUT"
-          echo "darwin_arm64=$(sha256sum ${TOOL}-${VERSION}-darwin_arm64 | awk '{print $1}')" >> "$GITHUB_OUTPUT"
-
       - name:
           Update VERSION and tools/BUILD with real hashes (workflow_dispatch)
         if: github.event_name == 'workflow_dispatch'
         env:
+          TOOL: ${{ needs.validate.outputs.tool }}
           VERSION: ${{ needs.validate.outputs.version }}
-          LINUX_AMD64: ${{ steps.checksums.outputs.linux_amd64 }}
-          LINUX_ARM64: ${{ steps.checksums.outputs.linux_arm64 }}
-          DARWIN_AMD64: ${{ steps.checksums.outputs.darwin_amd64 }}
-          DARWIN_ARM64: ${{ steps.checksums.outputs.darwin_arm64 }}
         run: |
           echo "${VERSION}" > VERSION
 
-          python3 -c '
-          import os, re
-          version = os.environ["VERSION"]
-          linux_amd64 = os.environ["LINUX_AMD64"]
-          linux_arm64 = os.environ["LINUX_ARM64"]
-          darwin_amd64 = os.environ["DARWIN_AMD64"]
-          darwin_arm64 = os.environ["DARWIN_ARM64"]
-
-          file_path = "tools/BUILD"
-          with open(file_path, "r") as f:
-              content = f.read()
-
-          content = re.sub(r"_VERSION\s*=\s*\"[^\"]+\"", f"_VERSION = \"{version}\"", content)
-          hashes_block = f"""hashes = [
-              "{linux_amd64}",  # linux_amd64
-              "{linux_arm64}",  # linux_arm64
-              "{darwin_amd64}",  # darwin_amd64
-              "{darwin_arm64}",  # darwin_arm64
-          ],"""
-          content = re.sub(r"hashes\s*=\s*\[[^\]]+\]\s*,?", hashes_block, content)
-
-          with open(file_path, "w") as f:
-              f.write(content)
-          '
+          # Rewrites _VERSION and the hashes of the tool's remote_file in tools/BUILD, computing
+          # them from the binaries, and fails if tools/BUILD is not shaped as expected.
+          python3 scripts/update_release_pins.py \
+            --build tools/BUILD \
+            --version "${VERSION}" \
+            --target "${TOOL}=dist/${TOOL}-${VERSION}"
 
           echo "Diff of updated release files:"
           git diff VERSION tools/BUILD
