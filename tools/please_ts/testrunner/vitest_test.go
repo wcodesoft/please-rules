@@ -1,12 +1,14 @@
 package testrunner
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"tools/please_ts/importmap"
+	"tools/please_ts/npmcache"
 )
 
 func TestBuildVitestAliasesMatrix(t *testing.T) {
@@ -186,4 +188,164 @@ func TestConvertVitestCoverageExportsRawLcov(t *testing.T) {
 			t.Errorf("raw lcov missing %q:\n%s", want, got)
 		}
 	}
+}
+
+func TestBuildVitestNpmDependencies(t *testing.T) {
+	im := importmap.New()
+	im.Imports = map[string]string{
+		"debug":                     "npm:debug@4.3.7",
+		"debug/":                    "npm:/debug@4.3.7/",
+		"@codemirror/legacy-modes":  "npm:@codemirror/legacy-modes@6.5.1",
+		"@codemirror/legacy-modes/": "npm:/@codemirror/legacy-modes@6.5.1/",
+		"@test/lib":                 "/abs/lib.ts",
+	}
+	got := buildVitestNpmDependencies(im)
+	want := map[string]string{"debug": "4.3.7", "@codemirror/legacy-modes": "6.5.1"}
+	if len(got) != len(want) || got["debug"] != want["debug"] || got["@codemirror/legacy-modes"] != want["@codemirror/legacy-modes"] {
+		t.Errorf("got %v, want %v", got, want)
+	}
+	if len(buildVitestNpmDependencies(nil)) != 0 || len(buildVitestNpmDependencies(importmap.New())) != 0 {
+		t.Error("expected no dependencies")
+	}
+}
+
+func TestBuildVitestAliasesLeavesNpmPackagesToTheirNodeModules(t *testing.T) {
+	im := importmap.New()
+	im.Imports = map[string]string{"debug": "npm:debug@4.3.7", "@test/lib": "lib/lib.ts"}
+	aliases := buildVitestAliases(im)
+	if _, ok := aliases["debug"]; ok {
+		t.Errorf("an npm: target became a file alias: %v", aliases)
+	}
+	if _, ok := aliases["@test/lib"]; !ok {
+		t.Errorf("first-party alias missing: %v", aliases)
+	}
+}
+
+func inTempDir(t *testing.T) {
+	t.Helper()
+	old, _ := os.Getwd()
+	if err := os.Chdir(t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(old) })
+}
+
+func cachedPackage(t *testing.T, denoDir, name, version string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(denoDir, "npm", "registry.npmjs.org", filepath.FromSlash(name), version), 0755); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestWriteVitestPackageJSON(t *testing.T) {
+	cache := t.TempDir()
+	cachedPackage(t, cache, "vitest", "5.0.1")
+	cachedPackage(t, cache, "@vitest/coverage-v8", "5.0.1")
+
+	read := func() map[string]map[string]string {
+		data, err := os.ReadFile("package.json")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var p map[string]map[string]string
+		if err := json.Unmarshal(data, &p); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+
+	t.Run("nothing to declare writes nothing", func(t *testing.T) {
+		inTempDir(t)
+		if err := writeVitestPackageJSON(cache, false, nil); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := os.Stat("package.json"); err == nil {
+			t.Error("package.json was written")
+		}
+	})
+
+	t.Run("coverage declares the cached versions, not latest", func(t *testing.T) {
+		inTempDir(t)
+		if err := writeVitestPackageJSON(cache, true, nil); err != nil {
+			t.Fatal(err)
+		}
+		deps := read()["dependencies"]
+		if deps["vitest"] != "5.0.1" || deps["@vitest/coverage-v8"] != "5.0.1" || len(deps) != 2 {
+			t.Errorf("deps = %v", deps)
+		}
+	})
+
+	t.Run("npm packages are declared with their exact version", func(t *testing.T) {
+		inTempDir(t)
+		if err := writeVitestPackageJSON(cache, true, map[string]string{"debug": "4.3.7"}); err != nil {
+			t.Fatal(err)
+		}
+		deps := read()["dependencies"]
+		if deps["debug"] != "4.3.7" || deps["vitest"] != "5.0.1" || len(deps) != 3 {
+			t.Errorf("deps = %v", deps)
+		}
+	})
+
+	t.Run("a package.json the target ships is kept", func(t *testing.T) {
+		inTempDir(t)
+		_ = os.WriteFile("package.json", []byte(`{"name":"mine"}`), 0644)
+		if err := writeVitestPackageJSON(cache, true, map[string]string{"debug": "4.3.7"}); err != nil {
+			t.Fatal(err)
+		}
+		if data, _ := os.ReadFile("package.json"); string(data) != `{"name":"mine"}` {
+			t.Errorf("package.json = %s", data)
+		}
+	})
+
+	t.Run("several cached versions are an error", func(t *testing.T) {
+		inTempDir(t)
+		two := t.TempDir()
+		cachedPackage(t, two, "vitest", "5.0.1")
+		cachedPackage(t, two, "vitest", "5.0.3")
+		if err := writeVitestPackageJSON(two, true, nil); err == nil || !strings.Contains(err.Error(), "several versions") {
+			t.Errorf("err = %v", err)
+		}
+	})
+}
+
+func TestVitestDenoDir(t *testing.T) {
+	shared := t.TempDir()
+	cachedPackage(t, shared, "vitest", "5.0.1")
+	opts := RunOptions{VitestDir: shared}
+
+	t.Run("without npm packages it is the shared cache", func(t *testing.T) {
+		got, err := opts.vitestDenoDir(t.TempDir(), false)
+		if err != nil || got != shared {
+			t.Errorf("got %q, %v; want %q", got, err, shared)
+		}
+	})
+
+	t.Run("with npm packages it is a per-run copy that also holds the slices", func(t *testing.T) {
+		dir := t.TempDir()
+		old, _ := os.Getwd()
+		_ = os.Chdir(dir)
+		t.Cleanup(func() { _ = os.Chdir(old) })
+		slice := filepath.Join(dir, "third_party", "debug")
+		cachedPackage(t, slice, "debug", "4.3.7")
+		if err := npmcache.Write(slice, npmcache.Slice{Name: "debug", Version: "4.3.7", Specifier: "npm:debug@4.3.7"}); err != nil {
+			t.Fatal(err)
+		}
+
+		tmp := t.TempDir()
+		got, err := opts.vitestDenoDir(tmp, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got == shared {
+			t.Fatal("the shared cache would be written to")
+		}
+		for _, pkg := range []string{"vitest/5.0.1", "debug/4.3.7"} {
+			if _, err := os.Stat(filepath.Join(got, "npm", "registry.npmjs.org", filepath.FromSlash(pkg))); err != nil {
+				t.Errorf("the per-run cache lacks %s: %v", pkg, err)
+			}
+		}
+		if _, err := os.Stat(filepath.Join(shared, "npm", "registry.npmjs.org", "debug")); err == nil {
+			t.Error("the slice was merged into the shared cache")
+		}
+	})
 }

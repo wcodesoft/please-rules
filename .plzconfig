@@ -14,6 +14,7 @@ PleaseTsTool = //tools/please_ts:please_ts
 DenoTool = //tools/ts_toolchain:toolchain|deno
 BrowserTool = //tools/browser_toolchain:toolchain|chromium
 VitestTool = //tools/vitest_toolchain:toolchain
+EsbuildTool = //tools/esbuild_toolchain:toolchain|esbuild
 
 [cover]
 fileextension = .ts
@@ -43,6 +44,12 @@ Inherit = true
 ConfigKey = VitestTool
 DefaultValue = //tools/vitest_toolchain:toolchain
 Help = Path to the hermetic Vitest cache or toolchain target to use
+Inherit = true
+
+[PluginConfig "esbuild_tool"]
+ConfigKey = EsbuildTool
+DefaultValue = //tools/esbuild_toolchain:toolchain|esbuild
+Help = Path to the pinned esbuild binary or toolchain target that bundles npm packages
 Inherit = true
 
 [PluginConfig "coverage"]

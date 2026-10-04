@@ -24,6 +24,31 @@ DENO_PLATFORM_MAP = {
     },
 }
 
+# The esbuild that `deno bundle` runs, as the npm package that carries its binary. Deno looks for
+# it under DENO_DIR/dl/esbuild-<version> and downloads its own otherwise: the version here must be
+# the one the default Deno version (above) uses, and tools/please_ts/bundle/denobundle.go maps
+# the Deno version to the directory name.
+DEFAULT_ESBUILD_VERSION = "0.25.5"
+
+ESBUILD_PLATFORM_MAP = {
+    "linux_amd64": {
+        "url": "https://registry.npmjs.org/@esbuild/linux-x64/-/linux-x64-0.25.5.tgz",
+        "hash": "95a928d8187c6f7ad632a3f3bbf01f66dfd5b5adb724b8bfeec5fff73ff2d91a",
+    },
+    "linux_arm64": {
+        "url": "https://registry.npmjs.org/@esbuild/linux-arm64/-/linux-arm64-0.25.5.tgz",
+        "hash": "ae5a580130af1a7c7b8760466c9ae85a25782e63330b8c2855cc15ed007dd30d",
+    },
+    "darwin_arm64": {
+        "url": "https://registry.npmjs.org/@esbuild/darwin-arm64/-/darwin-arm64-0.25.5.tgz",
+        "hash": "61a312bcb8249d058639c405cf6378dd3107de5535a9974973c48a6dd0d2d062",
+    },
+    "darwin_amd64": {
+        "url": "https://registry.npmjs.org/@esbuild/darwin-x64/-/darwin-x64-0.25.5.tgz",
+        "hash": "d2890be89bd7e322cd83e1665516d3c71b0ac3952655cb27076eddb621a4af24",
+    },
+}
+
 DEFAULT_CHROMIUM_VERSION = "154.0.8037.57"
 
 CHROMIUM_PLATFORM_MAP = {

@@ -45,6 +45,8 @@ func (opts RunOptions) runBrowserTest(resultsFile string) error {
 		Deps:       opts.Deps,
 		ModuleName: opts.ModuleName,
 		Format:     "iife",
+
+		EsbuildBinary: opts.EsbuildBinary,
 	}
 	if err := bundle.Run(bundleOpts); err != nil {
 		_ = writeFallbackJUnit(resultsFile, opts.Srcs, err)

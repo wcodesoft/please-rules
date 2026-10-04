@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -31,6 +32,34 @@ func makeSlice(t *testing.T, root, name, version string, deps map[string]string)
 		t.Fatal(err)
 	}
 	return dir
+}
+
+func TestCachedVersion(t *testing.T) {
+	root := t.TempDir()
+	mk := func(name, version string) {
+		if err := os.MkdirAll(filepath.Join(root, "npm", "registry.npmjs.org", filepath.FromSlash(name), version), 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mk("vitest", "5.0.1")
+	mk("@vitest/coverage-v8", "5.0.1")
+	mk("debug", "4.3.7")
+	mk("debug", "2.6.9")
+	// a packument next to the version directories is not a version
+	_ = os.WriteFile(filepath.Join(root, "npm", "registry.npmjs.org", "vitest", "registry.json"), []byte("{}"), 0644)
+
+	if v, err := CachedVersion(root, "vitest"); err != nil || v != "5.0.1" {
+		t.Errorf("vitest = %q, %v", v, err)
+	}
+	if v, err := CachedVersion(root, "@vitest/coverage-v8"); err != nil || v != "5.0.1" {
+		t.Errorf("scoped = %q, %v", v, err)
+	}
+	if v, err := CachedVersion(root, "absent"); err != nil || v != "" {
+		t.Errorf("absent = %q, %v", v, err)
+	}
+	if _, err := CachedVersion(root, "debug"); err == nil || !strings.Contains(err.Error(), "2.6.9, 4.3.7") {
+		t.Errorf("several versions: err = %v", err)
+	}
 }
 
 func TestWriteReadRoundTrip(t *testing.T) {

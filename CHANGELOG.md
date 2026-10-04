@@ -28,12 +28,25 @@ and this project adheres to
   fixes the result and nothing needs configuring.
 - `please_ts unpack --npm-cache`, and the `npmcache`, `registry` and `semver`
   packages behind it.
+- npm packages (`ts_npm_module`) work in `ts_bundle`, `ts_binary`, the Vitest
+  runner and `ts_browser_test`, not only in type checks and Deno tests. Bundles
+  are built by `deno bundle` with the pinned esbuild of the new
+  `esbuild_toolchain` (`EsbuildTool`; Deno would otherwise download its own, and
+  the build fails if it did). `ts_binary` embeds the packages and runs without a
+  cache or network. Vitest gets them as a `node_modules` directory that Deno
+  materializes offline from the merged cache in the test's working directory
+  (under `plz-out/tmp` only).
 - Fixtures for `debug` (CommonJS, transitive dependency), `highlight.js`
   (CommonJS, subpaths) and `@codemirror/legacy-modes` (exports map only),
   automatic and fully pinned.
 
 ### Fixed
 
+- Targets that use the Vitest runner no longer write into the shared
+  `vitest_toolchain` output. Vitest and the type check of a `ts_test` ran the
+  unversioned `npm:vitest`, which resolves to the registry's latest release
+  rather than the cached one and was downloaded into that cache at run time;
+  they now use the cached version, and the `package.json` for coverage does too.
 - `ts_module`'s automatic dependency resolution (`resolve_transitive`) is now
   strict and verified. It used to fall back to the `latest` version when no
   version satisfied a range, verify no download against the registry's integrity

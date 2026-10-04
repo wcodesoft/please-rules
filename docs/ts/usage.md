@@ -197,8 +197,9 @@ The Deno runner (the default) uses `deno test --coverage`; the Vitest runner
   from lcov. Vitest writes its lcov report to a scratch directory (Vitest
   empties its reports directory, so it cannot be the test working directory).
 - **Vitest note**: when coverage is active the runner writes a `package.json`
-  declaring `vitest` and `@vitest/coverage-v8` in the test working directory (if
-  none exists) so Deno can resolve the provider.
+  declaring `vitest` and `@vitest/coverage-v8`, at the versions in the Vitest
+  cache, in the test working directory (if none exists) so Deno can resolve the
+  provider.
 
 ### Raw lcov export (functions and branches)
 
@@ -287,10 +288,46 @@ import createDebug from "debug"; // CommonJS, and it needs the package "ms"
 - **Resolution is Deno's**: `exports` maps, CommonJS, subpaths and a package's
   own types work as they do for `npm:` specifiers. Imports use the plain package
   name.
-- **Not wired yet**: `ts_bundle` and `ts_binary`, the Vitest and browser
-  runners, and a helper that prints pinned declarations. The cache layout
+- **Where it works**: `ts_library` (type checks), `ts_test` with the Deno and
+  the Vitest runner, `ts_browser_test`, `ts_bundle` and `ts_binary`. Not done
+  yet: a helper that prints pinned declarations. The cache layout
   (`registry.json`, including its `_deno.packumentFormat` key) is internal to
   Deno, so it is tied to the Deno version the plugin pins.
+
+### Bundling and compiling
+
+`ts_bundle` (and the bundle `ts_browser_test` builds for the browser) runs
+`deno bundle` when the target depends on npm packages, so Deno resolves them
+exactly as it does for `ts_test`. `deno bundle` runs esbuild, which Deno would
+download itself; the plugin puts the pinned binary of `esbuild_toolchain`
+(`EsbuildTool`, `//tools/esbuild_toolchain:toolchain|esbuild` by default, hash
+pinned per platform) in the cache where Deno looks for it, and fails the build
+if Deno downloaded one anyway. The bundle names its inputs relative to the
+working directory, so the same sources give the same bundle. Targets without npm
+packages bundle through esbuild with import map aliases, as before.
+
+`ts_binary` merges the slices and runs `deno compile --cached-only`; the
+executable embeds the packages and runs without a cache or network.
+(`deno compile` fetches its own `denort` runtime from `dl.deno.land` on every
+build, with or without npm packages: not pinned yet.)
+
+Two limits: `deno bundle` is marked experimental by Deno, and the directory it
+looks in for esbuild is internal to Deno, so the plugin knows it per Deno
+version (`esbuildCacheVersions` in `tools/please_ts/bundle/denobundle.go`, and
+`--esbuild-cache-version` for a version it does not know). The bundles and the
+binary in `test/ts/npm_cache` fail on a Deno bump until that is updated.
+
+### Vitest
+
+Vitest cannot import `npm:` specifiers (nor can Vite resolve them), so for a
+target with npm packages the Vitest runner declares them, at their exact
+versions, in a `package.json` and lets
+`deno run --node-modules-dir=auto --cached-only` materialize them in a
+`node_modules` directory, offline, from the merged cache. Both exist only in the
+test's working directory under `plz-out/tmp`, which Please deletes after the
+run; nothing is written to the source tree. The Vitest cache of
+`vitest_toolchain` is copied for such a target, so the slices never end up in
+that shared output, and Vitest itself is pinned to the version in that cache.
 
 `ts_module` resolves its dependencies by the same rules (strictly, verified, as
 of the root's publish day), with the limit of one version per package: two
