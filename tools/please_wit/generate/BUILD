@@ -15,7 +15,7 @@ go_library(
     ],
     visibility = ["//tools/please_wit/..."],
     deps = [
-        "//tools/please_wit/ast",
+        "//tools/common/wit/ast",
     ],
 )
 
@@ -33,7 +33,7 @@ go_test(
     ],
     deps = [
         ":generate",
-        "//tools/please_wit/ast",
+        "//tools/common/wit/ast",
     ],
 )
 

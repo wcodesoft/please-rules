@@ -3,7 +3,7 @@ package generate
 import (
 	"fmt"
 	"strings"
-	"tools/please_wit/ast"
+	"tools/common/wit/ast"
 )
 
 // KotlinGenerator generates idiomatic Kotlin interfaces and models from WIT AST.

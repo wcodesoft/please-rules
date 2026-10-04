@@ -3,7 +3,7 @@ package generate
 import (
 	"fmt"
 	"strings"
-	"tools/please_wit/ast"
+	"tools/common/wit/ast"
 )
 
 // GoGenerator generates Go interfaces, structs, and enums from WIT AST.

@@ -3,7 +3,7 @@ package generate
 import (
 	"fmt"
 	"strings"
-	"tools/please_wit/ast"
+	"tools/common/wit/ast"
 )
 
 // PythonGenerator generates Python protocols, dataclasses, enums, and .pyi stubs from WIT AST.

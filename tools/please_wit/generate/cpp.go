@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
-	"tools/please_wit/ast"
+	"tools/common/wit/ast"
 )
 
 // CppGenerator generates C++ headers and companion source files from WIT AST.

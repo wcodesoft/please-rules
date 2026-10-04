@@ -2,7 +2,7 @@ package generate
 
 import (
 	"testing"
-	"tools/please_wit/ast"
+	"tools/common/wit/ast"
 )
 
 func TestSwiftGenerator_MapWitType(t *testing.T) {

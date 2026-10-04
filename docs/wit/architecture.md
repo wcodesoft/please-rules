@@ -30,7 +30,7 @@ access.
 
 ## 2. Standalone Go AST Parser Architecture
 
-`please_wit` embeds a lightweight lexer and parser in `tools/please_wit/ast`:
+`please_wit` embeds a lightweight lexer and parser in `tools/common/wit/ast`:
 
 ```mermaid
 flowchart LR

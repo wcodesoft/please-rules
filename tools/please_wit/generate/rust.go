@@ -3,7 +3,7 @@ package generate
 import (
 	"fmt"
 	"strings"
-	"tools/please_wit/ast"
+	"tools/common/wit/ast"
 )
 
 // RustGenerator generates Rust traits, structs, and enums from WIT AST.

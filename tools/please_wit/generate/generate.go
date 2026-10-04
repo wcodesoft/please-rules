@@ -1,14 +1,11 @@
 package generate
 
 import (
-	"bufio"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
-	"tools/please_wit/ast"
+	"tools/common/wit/ast"
 )
 
 type Options struct {
@@ -21,9 +18,6 @@ type Options struct {
 	CompanionFilename string
 	ModuleName        string
 }
-
-var worldRegex = regexp.MustCompile(`^\s*world\s+([a-zA-Z0-9_-]+)`)
-var packageRegex = regexp.MustCompile(`(?m)^\s*package\s+([a-zA-Z0-9_:-]+);`)
 
 // resolveWitFiles returns a slice of .wit file paths from a directory or single file path.
 func resolveWitFiles(witPath string) ([]string, error) {
@@ -49,7 +43,8 @@ func resolveWitFiles(witPath string) ([]string, error) {
 	return files, nil
 }
 
-// DiscoverWorlds scans all .wit files in a directory or file list and returns declared world names.
+// DiscoverWorlds scans all .wit files in a directory or file list and returns declared world names,
+// each once, in the order they are first declared.
 func DiscoverWorlds(witPath string) ([]string, error) {
 	files, err := resolveWitFiles(witPath)
 	if err != nil {
@@ -59,39 +54,23 @@ func DiscoverWorlds(witPath string) ([]string, error) {
 	var worlds []string
 	seen := make(map[string]bool)
 	for _, file := range files {
-		extracted := parseWorldsFromFile(file, seen)
-		worlds = append(worlds, extracted...)
+		pkg, err := ast.ParseFileLenient(file)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", file, err)
+		}
+		for _, w := range pkg.Worlds {
+			if !seen[w.Name] {
+				seen[w.Name] = true
+				worlds = append(worlds, w.Name)
+			}
+		}
 	}
 
 	return worlds, nil
 }
 
-func parseWorldsFromFile(file string, seen map[string]bool) []string {
-	f, err := os.Open(file)
-	if err != nil {
-		return nil
-	}
-	defer f.Close()
-	return parseWorldsFromReader(f, seen)
-}
-
-func parseWorldsFromReader(r io.Reader, seen map[string]bool) []string {
-	var worlds []string
-	scanner := bufio.NewScanner(r)
-	for scanner.Scan() {
-		matches := worldRegex.FindStringSubmatch(scanner.Text())
-		if len(matches) > 1 {
-			name := matches[1]
-			if !seen[name] {
-				seen[name] = true
-				worlds = append(worlds, name)
-			}
-		}
-	}
-	return worlds
-}
-
-// DiscoverPackage scans all .wit files in a directory or file list and returns the declared package name if found.
+// DiscoverPackage scans all .wit files in a directory or file list and returns the declared package name
+// ("namespace:name", without the version) if found.
 func DiscoverPackage(witPath string) (string, error) {
 	files, err := resolveWitFiles(witPath)
 	if err != nil {
@@ -99,28 +78,16 @@ func DiscoverPackage(witPath string) (string, error) {
 	}
 
 	for _, file := range files {
-		if pkg := parsePackageFromFile(file); pkg != "" {
-			return pkg, nil
+		pkg, err := ast.ParseFileLenient(file)
+		if err != nil {
+			return "", fmt.Errorf("%s: %w", file, err)
+		}
+		if name := pkg.FullName(); name != "" {
+			return name, nil
 		}
 	}
 
 	return "", nil
-}
-
-func parsePackageFromFile(file string) string {
-	data, err := os.ReadFile(file)
-	if err != nil {
-		return ""
-	}
-	return parsePackageFromContent(data)
-}
-
-func parsePackageFromContent(data []byte) string {
-	matches := packageRegex.FindSubmatch(data)
-	if len(matches) > 1 {
-		return string(matches[1])
-	}
-	return ""
 }
 
 // splitIdentifier splits identifiers by common delimiters (_, -, :, .).

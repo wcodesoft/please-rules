@@ -7,6 +7,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- World and package discovery (`DiscoverWorlds`, `DiscoverPackage`) read the
+  WIT with the AST parser instead of line-based regular expressions, so
+  versioned packages (`package wasi:cli@0.2.0;`), commented-out declarations,
+  several declarations on one line and `use`, `variant` or `flags` declarations
+  are handled. A file that does not parse is now an error naming the file
+  instead of being skipped silently.
+- The AST parser moved to `tools/common/wit/ast` (shared on `main`, so other
+  language plugins can use it).
+
 ## [0.3.1] - 2026-09-20
 
 ### Added

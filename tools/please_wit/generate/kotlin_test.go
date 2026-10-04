@@ -2,7 +2,7 @@ package generate
 
 import (
 	"testing"
-	"tools/please_wit/ast"
+	"tools/common/wit/ast"
 )
 
 func TestKotlinGenerator_MapWitType(t *testing.T) {
@@ -160,7 +160,7 @@ public interface DataService {
 						Name: "disjoint-set",
 						Resources: []ast.Resource{
 							{
-								Name: "disjoint-set",
+								Name:        "disjoint-set",
 								Constructor: &ast.Function{Name: "constructor"},
 								Methods: []ast.Function{
 									{

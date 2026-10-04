@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"tools/please_wit/ast"
+	"tools/common/wit/ast"
 )
 
 func TestDiscoverWorlds(t *testing.T) {
@@ -692,24 +692,6 @@ func TestInternalHelpers(t *testing.T) {
 		}
 	})
 
-	t.Run("parsePackageFromContent_various_forms", func(t *testing.T) {
-		cases := []struct {
-			content string
-			want    string
-		}{
-			{"package foo:bar;", "foo:bar"},
-			{"   package    foo:bar-baz;   ", "foo:bar-baz"},
-			{"// package commented:out;\npackage actual:pkg;", "actual:pkg"},
-			{"no package here", ""},
-		}
-		for _, c := range cases {
-			got := parsePackageFromContent([]byte(c.content))
-			if got != c.want {
-				t.Errorf("parsePackageFromContent(%q) = %q, want %q", c.content, got, c.want)
-			}
-		}
-	})
-
 	t.Run("applyPackageOverride", func(t *testing.T) {
 		pkg := &ast.Package{}
 		applyPackageOverride(pkg, "ns:name")
@@ -752,20 +734,6 @@ func TestInternalHelpers(t *testing.T) {
 		}
 	})
 
-	t.Run("parseWorldsFromFile_nonexistent", func(t *testing.T) {
-		res := parseWorldsFromFile(filepath.Join(t.TempDir(), "missing.wit"), make(map[string]bool))
-		if len(res) != 0 {
-			t.Errorf("expected empty result, got %v", res)
-		}
-	})
-
-	t.Run("parsePackageFromFile_nonexistent", func(t *testing.T) {
-		res := parsePackageFromFile(filepath.Join(t.TempDir(), "missing.wit"))
-		if res != "" {
-			t.Errorf("expected empty result, got %v", res)
-		}
-	})
-
 	t.Run("writeOutputFiles_file_write_error", func(t *testing.T) {
 		dir := t.TempDir()
 		subDir := filepath.Join(dir, "output.txt")
@@ -788,6 +756,58 @@ func TestInternalHelpers(t *testing.T) {
 		err := copyWitDirEntries(srcDir, destDir)
 		if err == nil {
 			t.Errorf("expected error when copy fails, got nil")
+		}
+	})
+}
+
+// TestDiscoveryReadsWitStructure covers inputs a line-based regex scan got wrong.
+func TestDiscoveryReadsWitStructure(t *testing.T) {
+	write := func(t *testing.T, content string) string {
+		t.Helper()
+		file := filepath.Join(t.TempDir(), "x.wit")
+		if err := os.WriteFile(file, []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+		return file
+	}
+
+	t.Run("versioned_package", func(t *testing.T) {
+		pkg, err := DiscoverPackage(write(t, "package wasi:cli@0.2.0;\nworld command {}\n"))
+		if err != nil || pkg != "wasi:cli" {
+			t.Errorf("pkg = %q, err = %v", pkg, err)
+		}
+	})
+
+	t.Run("commented_out_declarations_are_ignored", func(t *testing.T) {
+		file := write(t, "// package fake:one;\n/* world hidden {} */\npackage real:two;\n// world also-hidden {}\nworld shown {}\n")
+		pkg, _ := DiscoverPackage(file)
+		worlds, err := DiscoverWorlds(file)
+		if pkg != "real:two" || err != nil || len(worlds) != 1 || worlds[0] != "shown" {
+			t.Errorf("pkg = %q, worlds = %v, err = %v", pkg, worlds, err)
+		}
+	})
+
+	t.Run("two_worlds_on_one_line", func(t *testing.T) {
+		worlds, err := DiscoverWorlds(write(t, "package a:b;\nworld one {} world two {}\n"))
+		if err != nil || len(worlds) != 2 || worlds[0] != "one" || worlds[1] != "two" {
+			t.Errorf("worlds = %v, err = %v", worlds, err)
+		}
+	})
+
+	t.Run("declarations_the_ast_does_not_model", func(t *testing.T) {
+		src := "package a:b;\ninterface i {\n  use other.{t};\n  variant v { x, y(u32) }\n  flags f { r, w }\n}\nworld first { use i.{t}; export i; }\nworld second {}\n"
+		file := write(t, src)
+		worlds, err := DiscoverWorlds(file)
+		if err != nil || len(worlds) != 2 || worlds[0] != "first" || worlds[1] != "second" {
+			t.Errorf("worlds = %v, err = %v", worlds, err)
+		}
+	})
+
+	t.Run("syntax_error_names_the_file", func(t *testing.T) {
+		file := write(t, "world {\n")
+		_, err := DiscoverWorlds(file)
+		if err == nil || !strings.Contains(err.Error(), file) {
+			t.Errorf("err = %v, want one naming %s", err, file)
 		}
 	})
 }
