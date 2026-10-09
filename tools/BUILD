@@ -12,16 +12,3 @@ remote_file(
     binary = True,
     visibility = ["PUBLIC"],
 )
-
-remote_file(
-    name = "please_kotlin_wasm",
-    url = f"https://github.com/wcodesoft/please-rules/releases/download/kotlin-v{_VERSION}/please_kotlin_wasm-{_VERSION}-{CONFIG.OS}_{CONFIG.ARCH}",
-    hashes = [
-    "59db999a1be7f7c0f725cdce7e778b7bd9a046f9e7eb14a4a660cb3353d17d8c",  # linux_amd64
-    "a14f016b3f82c705e1b28aa117eeb42adb12c3564c59ded126cec75d261e6e9c",  # linux_arm64
-    "8b72ab7d5c77dc49fc7c2d1f41adfea8aa10fc327b4e4075d6e5307e35ce0b0d",  # darwin_amd64
-    "8e4b249d160423ef4d8404fc5169122f0ff3a6ae348807201a48af20b484d759",  # darwin_arm64
-          ],
-    binary = True,
-    visibility = ["PUBLIC"],
-)
