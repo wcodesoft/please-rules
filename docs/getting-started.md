@@ -46,14 +46,6 @@ plugin_repo(
     plugin = "please-rules",
     revision = "ts-v0.1.2",  # or revision = "ts"
 )
-
-# WebAssembly Interface Types (WIT) plugin
-plugin_repo(
-    name = "wit",
-    owner = "wcodesoft",
-    plugin = "please-rules",
-    revision = "wit-v0.2.0",  # or revision = "wit"
-)
 ```
 
 ---
@@ -98,15 +90,6 @@ Target = //plugins:ts
 DenoTool = ///ts//tools/ts_toolchain:toolchain|deno
 ```
 
-### WebAssembly Interface Types (WIT)
-
-```ini
-[Plugin "wit"]
-Target = //plugins:wit
-WitBindgenTool = ///wit//tools/wit_toolchain:toolchain|wit-bindgen
-WasmToolsTool = ///wit//tools/wit_toolchain:toolchain|wasm-tools
-```
-
 ---
 
 ## 3. Subincluding Rules in `BUILD` Files
@@ -125,9 +108,6 @@ subinclude("///swift//build_defs:swift")
 
 # TypeScript targets
 subinclude("///ts//build_defs:ts")
-
-# WIT targets
-subinclude("///wit//build_defs:wit")
 ```
 
 Alternatively, you can preload build definitions globally in `.plzconfig` under
@@ -135,7 +115,7 @@ Alternatively, you can preload build definitions globally in `.plzconfig` under
 
 ```ini
 [parse]
-preloadsubincludes = ///rust//build_defs:rust, ///kotlin//build_defs:kotlin, ///swift//build_defs:swift, ///ts//build_defs:ts, ///wit//build_defs:wit
+preloadsubincludes = ///rust//build_defs:rust, ///kotlin//build_defs:kotlin, ///swift//build_defs:swift, ///ts//build_defs:ts
 ```
 
 ---
