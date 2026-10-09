@@ -165,9 +165,6 @@ jobs:
             printf "module tools\n\ngo 1.23\n" > go.mod
           fi
           go test -v ./${TOOL}/...
-          if [ "${{ steps.meta.outputs.language }}" = "kotlin" ]; then
-            go test -v ./please_kotlin_wasm/...
-          fi
 
       - name: Pre-build test suite (Please tests)
         if: steps.meta.outputs.skip != 'true'
@@ -201,9 +198,6 @@ jobs:
             "${TOOL_BIN}" compile --help 2>&1 | grep -iq "crate-name" || { echo "::error::please_rust compile --help failed"; exit 1; }
           elif [ "${LANG}" = "kotlin" ]; then
             "${TOOL_BIN}" testrunner --help 2>&1 | grep -iq "test-class" || { echo "::error::please_kotlin testrunner --help failed"; exit 1; }
-            ./pleasew --plain_output build //tools/please_kotlin_wasm:please_kotlin_wasm
-            WASM_BIN="plz-out/bin/tools/please_kotlin_wasm/please_kotlin_wasm"
-            "${WASM_BIN}" --help 2>&1 | grep -iq "kotlinc-wasm" || { echo "::error::please_kotlin_wasm --help failed"; exit 1; }
           elif [ "${LANG}" = "swift" ]; then
             "${TOOL_BIN}" compile --help 2>&1 | grep -iq "sources" || { echo "::error::please_swift compile --help failed"; exit 1; }
           elif [ "${LANG}" = "ts" ]; then
@@ -263,11 +257,6 @@ jobs:
             printf "module tools\n\ngo 1.23\n" > go.mod
           fi
           go build -trimpath -ldflags="-s -w" -o "../dist/${BINARY_NAME}" "./${TOOL}"
-          if [ "${{ needs.validate.outputs.language }}" = "kotlin" ]; then
-            WASM_BINARY_NAME="please_kotlin_wasm-${VERSION}-${{ matrix.os }}_${{ matrix.arch }}"
-            go build -trimpath -ldflags="-s -w" -o "../dist/${WASM_BINARY_NAME}" "./please_kotlin_wasm"
-            chmod +x "../dist/${WASM_BINARY_NAME}"
-          fi
           cd ..
           chmod +x "dist/${BINARY_NAME}"
           ls -lh "dist/${BINARY_NAME}"
@@ -319,13 +308,9 @@ jobs:
         run: |
           echo "${VERSION}" > VERSION
 
-          # Rewrites _VERSION and the hashes of the tools' remote_file in tools/BUILD, computing
-          # them from the binaries, and fails if tools/BUILD is not shaped as expected. The
-          # Kotlin rules ship a second tool, please_kotlin_wasm.
+          # Rewrites _VERSION and the hashes of the tool's remote_file in tools/BUILD, computing
+          # them from the binaries, and fails if tools/BUILD is not shaped as expected.
           TARGETS=(--target "${TOOL}=dist/${TOOL}-${VERSION}")
-          if [ -f "dist/please_kotlin_wasm-${VERSION}-linux_amd64" ]; then
-            TARGETS+=(--target "please_kotlin_wasm=dist/please_kotlin_wasm-${VERSION}")
-          fi
           python3 scripts/update_release_pins.py \
             --build tools/BUILD \
             --version "${VERSION}" \

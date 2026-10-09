@@ -9,6 +9,13 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Removed
+
+- WebAssembly support: `kt_wasm_binary`, `kt_wasm_library` (and their `kotlin_*`
+  aliases), the `please_kotlin_wasm` tool, the `PleaseKotlinWasmTool` and
+  `KotlincWasmTool` plugin config keys, and the `kotlinc-wasm` toolchain entry
+  point.
+
 ### Fixed
 
 - `kotlin_test` now reads the test results from every JUnit report the launcher
