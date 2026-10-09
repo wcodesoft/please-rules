@@ -1,8 +1,10 @@
 package testrunner
 
 import (
+	"archive/zip"
 	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -26,6 +28,7 @@ type RunOptions struct {
 	ResultsFile    string
 	CoverageActive bool
 	CoverageFile   string
+	LcovFile       string // raw lcov export (functions and branches), written empty without coverage
 	JacocoAgent    string
 	JacocoCli      string
 	SourceFiles    []string
@@ -112,6 +115,17 @@ func Run(opts RunOptions) error {
 	}
 	defer os.RemoveAll(tmpDir)
 
+	// The raw lcov export is a declared test output: create it up front so it exists
+	// (empty) when coverage is off or the report cannot be produced.
+	if opts.LcovFile != "" {
+		if err := os.MkdirAll(filepath.Dir(opts.LcovFile), 0755); err != nil {
+			return err
+		}
+		if err := os.WriteFile(opts.LcovFile, nil, 0644); err != nil {
+			return fmt.Errorf("failed to reset lcov file: %w", err)
+		}
+	}
+
 	jacocoExec := ""
 	if activeCov && opts.JacocoAgent != "" {
 		jacocoExec = filepath.Join(tmpDir, "jacoco.exec")
@@ -137,26 +151,25 @@ func Run(opts RunOptions) error {
 		resultsFile = DefaultResultsFile
 	}
 
-	written := false
-	entries, _ := os.ReadDir(tmpDir)
-	for _, e := range entries {
-		if strings.HasSuffix(e.Name(), ".xml") {
-			xmlBytes, err := os.ReadFile(filepath.Join(tmpDir, e.Name()))
-			if err == nil && len(xmlBytes) > 0 {
-				_ = os.WriteFile(resultsFile, xmlBytes, 0644)
-				written = true
-				break
-			}
-		}
+	suites, err := ReadJUnitReports(tmpDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: unreadable JUnit report: %v\n", err)
 	}
-
-	if !written {
-		suite := ParseTestOutput(output, opts.TestClass, opts.TestClass, duration, runErr == nil)
-		_ = WriteJUnitResults(resultsFile, suite)
+	// Without a report, or when the process failed but no test case did (the JVM crashed
+	// at exit, no test was found), say so with a test case of its own.
+	if len(suites) == 0 {
+		suites = []JUnitTestSuite{ProcessSuite(opts.TestClass, output, duration, runErr == nil)}
+	} else if runErr != nil && !Failed(suites) {
+		suites = append(suites, ProcessSuite(opts.TestClass+" (process)", output, duration, false))
+	}
+	if err := WriteJUnitResults(resultsFile, suites...); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to write test results: %v\n", err)
 	}
 
 	if activeCov && jacocoExec != "" {
-		_ = processJacocoCoverage(javaBin, opts, tmpDir, jacocoExec, covFile)
+		if err := processJacocoCoverage(javaBin, opts, tmpDir, jacocoExec, covFile); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to process coverage: %v\n", err)
+		}
 	}
 
 	return runErr
@@ -164,25 +177,32 @@ func Run(opts RunOptions) error {
 
 func processJacocoCoverage(javaBin string, opts RunOptions, tmpDir, jacocoExec, covFile string) error {
 	if _, err := os.Stat(jacocoExec); os.IsNotExist(err) {
-		return nil
+		return fmt.Errorf("JaCoCo agent wrote no execution data to %s", jacocoExec)
 	}
 	if opts.JacocoCli == "" {
-		return nil
+		return fmt.Errorf("no JaCoCo CLI configured (set JacocoCli)")
 	}
 
 	classTarget := opts.ClassFiles
 	if classTarget == "" {
 		classTarget = opts.TestJar
+		// The test jar bundles third-party classes that JaCoCo cannot analyze (and
+		// that do not belong in the report); restrict it to the project's classes.
+		if projectDir, err := extractProjectClasses(opts.TestJar, filepath.Join(tmpDir, "project-classes")); err != nil {
+			return err
+		} else if projectDir != "" {
+			classTarget = projectDir
+		}
 	}
 	if classTarget == "" {
-		return nil
+		return fmt.Errorf("no class files to report coverage on")
 	}
 
 	reportXml := filepath.Join(tmpDir, "jacoco_report.xml")
 	repCmd := exec.Command(javaBin, "-jar", opts.JacocoCli, "report", jacocoExec,
 		"--classfiles", classTarget, "--xml", reportXml)
-	if err := repCmd.Run(); err != nil {
-		return err
+	if out, err := repCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("jacococli report: %w: %s", err, strings.TrimSpace(string(out)))
 	}
 
 	xmlData, err := os.ReadFile(reportXml)
@@ -201,5 +221,67 @@ func processJacocoCoverage(javaBin string, opts RunOptions, tmpDir, jacocoExec, 
 	if err := os.MkdirAll(filepath.Dir(covFile), 0755); err != nil {
 		return err
 	}
-	return os.WriteFile(covFile, gcovData, 0644)
+	if err := os.WriteFile(covFile, gcovData, 0644); err != nil {
+		return err
+	}
+	return writeLcovFile(opts.LcovFile, xmlData, opts.RepoRoot, opts.SourceFiles)
+}
+
+// writeLcovFile exports the JaCoCo report as lcov. An empty path disables the export.
+func writeLcovFile(path string, jacocoXML []byte, repoRoot string, knownSrcs []string) error {
+	if path == "" {
+		return nil
+	}
+	report, err := JacocoToLcov(jacocoXML, repoRoot, knownSrcs)
+	if err != nil {
+		return err
+	}
+	var buf bytes.Buffer
+	if err := report.Write(&buf); err != nil {
+		return err
+	}
+	return os.WriteFile(path, buf.Bytes(), 0644)
+}
+
+// extractProjectClasses unpacks the project classes listed in jar into dir and
+// returns dir, or "" if the jar does not list its project classes.
+func extractProjectClasses(jar, dir string) (string, error) {
+	names := compile.ReadProjectClasses(jar)
+	if len(names) == 0 {
+		return "", nil
+	}
+	r, err := zip.OpenReader(jar)
+	if err != nil {
+		return "", err
+	}
+	defer r.Close()
+	wanted := make(map[string]bool, len(names))
+	for _, n := range names {
+		wanted[n] = true
+	}
+	for _, f := range r.File {
+		if !wanted[f.Name] || !strings.HasSuffix(f.Name, ".class") {
+			continue
+		}
+		dest := filepath.Join(dir, filepath.FromSlash(f.Name))
+		if !strings.HasPrefix(dest, filepath.Clean(dir)+string(os.PathSeparator)) {
+			continue
+		}
+		if err := os.MkdirAll(filepath.Dir(dest), 0755); err != nil {
+			return "", err
+		}
+		rc, err := f.Open()
+		if err != nil {
+			return "", err
+		}
+		data, err := io.ReadAll(rc)
+		rc.Close()
+		if err != nil {
+			return "", err
+		}
+		if err := os.WriteFile(dest, data, 0644); err != nil {
+			return "", err
+		}
+	}
+	return dir, nil
 }

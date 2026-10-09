@@ -78,6 +78,7 @@ func handleTestRunner(args []string) error {
 	junitRunner := cmd.String("junit-runner", "", "Path to junit-platform-console-standalone.jar")
 	resultsFile := cmd.String("results-file", "test.results", "Path to write JUnit results XML")
 	coverageFile := cmd.String("coverage-file", "", "Path to write coverage output")
+	lcovFile := cmd.String("lcov-file", "", "Path to write the raw lcov report (functions and branches)")
 	coverageActive := cmd.Bool("coverage", false, "Whether coverage is active")
 	jacocoAgent := cmd.String("jacoco-agent", "", "Path to jacocoagent.jar")
 	jacocoCli := cmd.String("jacoco-cli", "", "Path to jacococli.jar")
@@ -106,6 +107,7 @@ func handleTestRunner(args []string) error {
 		ResultsFile:    *resultsFile,
 		CoverageActive: *coverageActive,
 		CoverageFile:   *coverageFile,
+		LcovFile:       *lcovFile,
 		JacocoAgent:    *jacocoAgent,
 		JacocoCli:      *jacocoCli,
 		SourceFiles:    srcs,

@@ -3,9 +3,11 @@ package compile
 import (
 	"bytes"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"tools/please_kotlin/toolchain"
 )
@@ -136,6 +138,7 @@ func Run(opts Options) error {
 	}
 
 	jarOpts := JarOptions{
+		ExtraEntries:   projectClassesEntry(tmpDir, opts),
 		SourceDir:      tmpDir,
 		OutJar:         opts.Out,
 		MainClass:      mainClass,
@@ -187,4 +190,35 @@ func ExpandCommaSeparated(items []string) []string {
 		}
 	}
 	return result
+}
+
+// projectClassesEntry records the project classes that end up in the jar: those
+// compiled from the project's own libraries (listed in their jars) and, unless the
+// jar is a test bundle, those compiled here.
+func projectClassesEntry(classesDir string, opts Options) map[string][]byte {
+	seen := make(map[string]bool)
+	var classes []string
+	add := func(name string) {
+		if !seen[name] {
+			seen[name] = true
+			classes = append(classes, name)
+		}
+	}
+	for _, jar := range DiscoverJars(opts.Deps, opts.Out) {
+		for _, c := range ReadProjectClasses(jar) {
+			add(c)
+		}
+	}
+	if !opts.MergeDeps {
+		_ = filepath.WalkDir(classesDir, func(path string, d fs.DirEntry, err error) error {
+			if err == nil && !d.IsDir() && strings.HasSuffix(path, ".class") {
+				if rel, err := filepath.Rel(classesDir, path); err == nil {
+					add(filepath.ToSlash(rel))
+				}
+			}
+			return nil
+		})
+	}
+	sort.Strings(classes)
+	return map[string][]byte{ProjectClassesEntry: []byte(strings.Join(classes, "\n") + "\n")}
 }

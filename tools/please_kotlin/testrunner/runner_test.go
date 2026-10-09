@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"tools/please_kotlin/compile"
 )
 
 func TestBuildJvmArgs(t *testing.T) {
@@ -73,5 +74,42 @@ func TestRunMockJava(t *testing.T) {
 
 	if _, err := os.Stat(resultsFile); os.IsNotExist(err) {
 		t.Errorf("expected %s to be created", resultsFile)
+	}
+}
+
+func TestExtractProjectClasses(t *testing.T) {
+	tmp := t.TempDir()
+	src := filepath.Join(tmp, "src")
+	if err := os.MkdirAll(filepath.Join(src, "pkg"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(filepath.Join(src, "pkg", "Mine.class"), []byte("mine"), 0644)
+	os.WriteFile(filepath.Join(src, "pkg", "Theirs.class"), []byte("theirs"), 0644)
+
+	jar := filepath.Join(tmp, "test.jar")
+	entries := map[string][]byte{compile.ProjectClassesEntry: []byte("pkg/Mine.class\n")}
+	if err := compile.CreateJar(compile.JarOptions{SourceDir: src, OutJar: jar, ExtraEntries: entries}); err != nil {
+		t.Fatal(err)
+	}
+
+	dir, err := extractProjectClasses(jar, filepath.Join(tmp, "out"))
+	if err != nil || dir == "" {
+		t.Fatalf("extractProjectClasses = %q, %v", dir, err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "pkg", "Mine.class")); err != nil {
+		t.Errorf("project class not extracted: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "pkg", "Theirs.class")); err == nil {
+		t.Error("third-party class must not be extracted")
+	}
+}
+
+func TestExtractProjectClassesWithoutList(t *testing.T) {
+	jar := filepath.Join(t.TempDir(), "plain.jar")
+	if err := compile.CreateJar(compile.JarOptions{SourceDir: t.TempDir(), OutJar: jar}); err != nil {
+		t.Fatal(err)
+	}
+	if dir, err := extractProjectClasses(jar, t.TempDir()); err != nil || dir != "" {
+		t.Errorf("extractProjectClasses = %q, %v; want empty", dir, err)
 	}
 }
