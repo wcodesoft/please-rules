@@ -36,6 +36,12 @@ agents operating in this codebase MUST strictly adhere to the following rules:
    - GitHub Release names / titles MUST always follow the standardized format:
      `[<Language>] v<semver>` (e.g. `[Rust] v0.4.0`, `[Kotlin] v0.1.0`).
 
+5. **Shared CI is edited on `main` only**:
+   - `.github/workflows/release.yml` and `.github/actions/*` are shared: never
+     edit them on a language branch, change them on `main` and let the sync
+     bring them down. Each language branch owns its `ci-<lang>.yml`; `main` does
+     not carry one. See [docs/ci.md](docs/ci.md).
+
 ---
 
 ## 2. Plugin & Configuration Rules
