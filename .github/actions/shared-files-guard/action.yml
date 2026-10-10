@@ -1,0 +1,17 @@
+name: Shared files guard
+description: >-
+  Fails a pull request into a language branch that edits a file main owns
+  (release.yml, the composite actions, scripts/ and the other shared paths listed
+  in scripts/check_shared_files.py). A sync of main passes, because its shared files
+  are identical to main's. Check the repository out with fetch-depth 0 first.
+
+runs:
+  using: composite
+  steps:
+    - name: Verify shared files are not edited on this branch
+      shell: bash
+      env:
+        BASE_REF: ${{ github.base_ref }}
+      run: |
+        git fetch --quiet origin main "${BASE_REF}"
+        python3 scripts/check_shared_files.py --base "origin/${BASE_REF}" --main origin/main
