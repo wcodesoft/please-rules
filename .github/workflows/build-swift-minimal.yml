@@ -45,7 +45,7 @@ jobs:
       - name: Build stripped minimal Swift toolchain
         id: build
         run: |
-          python3 scripts/strip_swift_toolchain.py \
+          python3 tools/swift_toolchain/strip_swift_toolchain.py \
             --version "${{ inputs.swift_version }}" \
             --platform "${{ matrix.platform }}" \
             --output-dir "./dist"
