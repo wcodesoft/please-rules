@@ -1,0 +1,30 @@
+name: Please build and test
+description: >-
+  Builds the given targets with Please and then runs every test. Run it after the
+  repository is checked out; a language branch puts its own setup before it (a
+  toolchain, say) and its own smoke tests after it.
+
+inputs:
+  build-targets:
+    description: Please targets to build before the tests.
+    required: false
+    default: //...
+  test-targets:
+    description: Please targets to test.
+    required: false
+    default: //...
+
+runs:
+  using: composite
+  steps:
+    - name: Build targets
+      shell: bash
+      env:
+        BUILD_TARGETS: ${{ inputs.build-targets }}
+      run: ./pleasew --plain_output build ${BUILD_TARGETS}
+
+    - name: Run tests
+      shell: bash
+      env:
+        TEST_TARGETS: ${{ inputs.test-targets }}
+      run: ./pleasew --plain_output test ${TEST_TARGETS}
