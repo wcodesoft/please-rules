@@ -13,6 +13,7 @@ conflict.
 | `.github/workflows/release.yml`         | `main`              | `main` only         |
 | `.github/workflows/sync-downstream.yml` | `main`              | `main`              |
 | `.github/actions/*`                     | `main`              | `main` only         |
+| `scripts/*`, `tools/common/*`           | `main`              | `main` only         |
 | `.github/workflows/ci-<lang>.yml`       | its language branch | its language branch |
 
 `main` does not carry `ci-<lang>.yml`: its triggers only fire for its own
@@ -31,6 +32,8 @@ A language's `ci-<lang>.yml` calls these after checking the repository out:
   Markdown.
 - `.github/actions/please-build-test`: builds `build-targets` with Please and
   runs `test-targets` (both default to `//...`).
+- `.github/actions/shared-files-guard`: fails a pull request into a language
+  branch that edits a file `main` owns (see below).
 
 Anything specific to a language stays in its own file: a formatter (`rustfmt`),
 a toolchain to set up (Swift), caches, and the coverage smoke tests.
@@ -50,6 +53,19 @@ on:
     branches: ["python", "release/python*"]
 
 jobs:
+  guard:
+    name: Shared Files Guard
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Check shared files
+        uses: ./.github/actions/shared-files-guard
+
   fmt:
     name: Python & Docs Formatting
     runs-on: ubuntu-latest
@@ -75,6 +91,22 @@ jobs:
 
 Add the language to the matrix of `sync-downstream.yml` and to the tag patterns
 and options of `release.yml` on `main`.
+
+## The shared files guard
+
+A pull request into a language branch fails the `Shared Files Guard` job when it
+changes a file under a path `main` owns (`release.yml`, `ci-main.yml`,
+`sync-downstream.yml`, `.github/actions/`, `scripts/`, `tools/common/`,
+`.agents/`, `AGENTS.md`, `.prettierrc` and `.markdownlint.json`) and the result
+differs from `main`'s version. A sync of `main` passes, because those files are
+identical to `main`'s. The list and the rule are in
+`scripts/check_shared_files.py`, which has its own tests.
+
+Some files exist on `main` and also hold a block per language: `.plzconfig`,
+`plugins/BUILD` and `docs/README.md`. A branch appends its block, so they are
+not guarded, and `main` should avoid editing them (it has not since the split).
+A language's own scripts and tools go in its own directories, such as
+`tools/<lang>_toolchain/`, not in `scripts/`.
 
 ## The downstream sync
 
