@@ -38,3 +38,5 @@ gentest(
     no_test_output = True,
     test_cmd = "python3 scripts/check_shared_files_test.py",
 )
+
+# throwaway: a rust-only edit of a file main owns, to see the guard fail
