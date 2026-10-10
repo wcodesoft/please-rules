@@ -111,6 +111,9 @@ please-rules/
 
 ## Tooling & Code Quality
 
+- **[CI layout](ci.md)**: which workflow files `main` owns and which a language
+  branch owns, the shared composite actions, a template for a new language
+  branch, and how the downstream sync works.
 - **[Raw lcov Coverage Reports](coverage-lcov.md)**: where each test rule keeps
   its function and branch coverage, the format, per-language limits, and how to
   classify covered, uncovered and partly covered lines.
