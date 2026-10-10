@@ -1,0 +1,35 @@
+name: Format check
+description: >-
+  The formatting checks every branch shares: gofmt on the Go tools and prettier on
+  the Markdown. Run it after the repository is checked out. A language branch adds
+  its own formatters (rustfmt, for example) as further steps of its own job.
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Go
+      uses: actions/setup-go@v6
+      with:
+        go-version: "1.23"
+
+    - name: Check Go formatting
+      shell: bash
+      run: |
+        if [ -d tools ]; then
+          UNFORMATTED=$(gofmt -l tools/)
+          if [ -n "$UNFORMATTED" ]; then
+            echo "The following Go files are not formatted:"
+            echo "$UNFORMATTED"
+            echo "Run 'gofmt -w tools/' to fix."
+            exit 1
+          fi
+        fi
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v5
+      with:
+        node-version: "20"
+
+    - name: Check Markdown formatting
+      shell: bash
+      run: npx prettier --check "**/*.md"
