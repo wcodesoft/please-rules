@@ -48,29 +48,21 @@ jobs:
 
       - name: Build targets
         run: ./pleasew --plain_output build //tools/please_ts/... //tools/ts_toolchain/... //test/ts/...
-        env:
-          VERITAS_NO_HOOK: "1"
 
       - name: Run all tests
         run: ./pleasew --plain_output test //...
-        env:
-          VERITAS_NO_HOOK: "1"
 
       - name: Coverage smoke test (calculator_test)
         run: |
           ./pleasew --plain_output build //tools/common/lcovcheck
           ./pleasew --plain_output cover //test/ts/lib:calculator_test
           plz-out/bin/tools/common/lcovcheck/lcovcheck -coverage-json plz-out/log/coverage.json -covered test/ts/lib/calculator.ts
-        env:
-          VERITAS_NO_HOOK: "1"
 
       - name: Coverage smoke test (calculator_vitest_test)
         run: |
           ./pleasew --plain_output build //tools/common/lcovcheck
           ./pleasew --plain_output cover //test/ts/lib:calculator_vitest_test
           plz-out/bin/tools/common/lcovcheck/lcovcheck -coverage-json plz-out/log/coverage.json -covered test/ts/lib/calculator.ts
-        env:
-          VERITAS_NO_HOOK: "1"
 
       - name: Raw lcov export smoke test (functions and branches)
         run: |
@@ -84,5 +76,3 @@ jobs:
               -line 4=partial -line 5=uncovered \
               -function unused=missed -function classify=2
           done
-        env:
-          VERITAS_NO_HOOK: "1"
