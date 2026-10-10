@@ -48,8 +48,6 @@ jobs:
       - name: Verify build & tests on ${{ matrix.language }}
         run: |
           ./pleasew --plain_output test //...
-        env:
-          VERITAS_NO_HOOK: "1"
 
       - name: Push to ${{ matrix.language }}
         run: |
