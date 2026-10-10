@@ -7,6 +7,19 @@ on:
     branches: ["ts", "release/ts*"]
 
 jobs:
+  guard:
+    name: Shared Files Guard
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Check shared files
+        uses: ./.github/actions/shared-files-guard
+
   fmt:
     name: TypeScript, Go & Docs Formatting
     runs-on: ubuntu-latest
