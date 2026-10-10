@@ -16,8 +16,8 @@ Modern, 100% hermetic build rules and toolchain management for Kotlin on the
   (`aarch64`, `x86_64`).
 - **First-Class Rules**: `kotlin_library`, `kotlin_binary`, `kotlin_test`, and
   `kotlin_jvm_import`.
-- **Automated Testing & Telemetry**: Generates standard `test.results` JUnit XML
-  compatible with Please test logs and Veritas.
+- **Automated Testing**: Generates standard `test.results` JUnit XML compatible
+  with Please test logs.
 - **Code Coverage (`plz cover`)**: Automated JaCoCo agent instrumentation,
   report parsing, and Please-compatible GCOV/LCOV generation.
 

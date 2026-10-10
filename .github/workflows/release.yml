@@ -169,8 +169,6 @@ jobs:
           TOOL="${{ steps.meta.outputs.tool }}"
           echo "Running Please tests for //tools/${TOOL}/..."
           ./pleasew --plain_output test //tools/${TOOL}/...
-        env:
-          VERITAS_NO_HOOK: "1"
 
       - name: Binary smoke test & sanity check (runner-native linux_amd64)
         if: steps.meta.outputs.skip != 'true'
@@ -200,8 +198,6 @@ jobs:
           elif [ "${LANG}" = "ts" ]; then
             "${TOOL_BIN}" compile --help 2>&1 | grep -iq "sources" || { echo "::error::please_ts compile --help failed"; exit 1; }
           fi
-        env:
-          VERITAS_NO_HOOK: "1"
 
       - name: End-to-end compile validation
         if: steps.meta.outputs.skip != 'true'
@@ -213,8 +209,6 @@ jobs:
           else
             echo "No test/${LANG} directory found; skipping end-to-end target build."
           fi
-        env:
-          VERITAS_NO_HOOK: "1"
 
   build:
     name: Build (${{ matrix.os }}_${{ matrix.arch }})

@@ -81,10 +81,6 @@ jobs:
 
       - name: Build all targets
         run: ./pleasew --plain_output build //...
-        env:
-          VERITAS_NO_HOOK: "1"
 
       - name: Run all tests
         run: ./pleasew --plain_output test //...
-        env:
-          VERITAS_NO_HOOK: "1"
