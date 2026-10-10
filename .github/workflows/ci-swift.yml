@@ -63,21 +63,15 @@ jobs:
 
       - name: Build all targets
         run: ./pleasew --plain_output build //tools/please_swift/... //tools/swift_toolchain/... //test/swift/...
-        env:
-          VERITAS_NO_HOOK: "1"
 
       - name: Run all tests
         run: ./pleasew --plain_output test //...
-        env:
-          VERITAS_NO_HOOK: "1"
 
       - name: Coverage smoke test (math_test)
         run: |
           ./pleasew --plain_output build //tools/common/lcovcheck
           ./pleasew --plain_output cover //test/swift/lib:math_test
           plz-out/bin/tools/common/lcovcheck/lcovcheck -coverage-json plz-out/log/coverage.json -covered test/swift/lib/Math.swift
-        env:
-          VERITAS_NO_HOOK: "1"
 
       - name: Coverage smoke test (mid_test, transitive dependencies)
         run: |
@@ -85,8 +79,6 @@ jobs:
           ./pleasew --plain_output cover //test/swift/chain:mid_test
           plz-out/bin/tools/common/lcovcheck/lcovcheck -coverage-json plz-out/log/coverage.json \
             -covered test/swift/chain/Mid.swift -covered test/swift/chain/Base.swift
-        env:
-          VERITAS_NO_HOOK: "1"
 
       - name: Raw lcov export smoke test (functions and branches)
         run: |
@@ -97,5 +89,3 @@ jobs:
             -path test/swift/branches/Branches.swift \
             -line 4=partial -line 12=partial -line 5=uncovered \
             -function unused=missed -function classify=2
-        env:
-          VERITAS_NO_HOOK: "1"
