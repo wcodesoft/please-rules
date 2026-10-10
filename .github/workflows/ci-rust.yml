@@ -14,22 +14,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
-      - name: Set up Go
-        uses: actions/setup-go@v6
-        with:
-          go-version: "1.23"
-
-      - name: Check Go formatting
-        run: |
-          if [ -d tools ]; then
-            UNFORMATTED=$(gofmt -l tools/)
-            if [ -n "$UNFORMATTED" ]; then
-              echo "The following Go files are not formatted:"
-              echo "$UNFORMATTED"
-              echo "Run 'gofmt -w tools/' to fix."
-              exit 1
-            fi
-          fi
+      - name: Check formatting
+        uses: ./.github/actions/format-check
 
       - name: Install rustfmt
         uses: dtolnay/rust-toolchain@stable
@@ -42,14 +28,6 @@ jobs:
             find test -name "*.rs" -exec rustfmt --check {} +
           fi
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v5
-        with:
-          node-version: "20"
-
-      - name: Check Markdown formatting
-        run: npx prettier --check "**/*.md"
-
   test:
     name: Please Build & Test (Rust)
     runs-on: ubuntu-latest
@@ -57,11 +35,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
-      - name: Build all targets
-        run: ./pleasew --plain_output build //tools/please_rust/... //tools/rust_toolchain/... //test/rust/...
-
-      - name: Run all tests
-        run: ./pleasew --plain_output test //...
+      - name: Build and test
+        uses: ./.github/actions/please-build-test
+        with:
+          build-targets: //tools/please_rust/... //tools/rust_toolchain/... //test/rust/...
 
       - name: Coverage smoke test (lib_test)
         run: |
