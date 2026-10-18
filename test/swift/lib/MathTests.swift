@@ -13,3 +13,12 @@ import Math
 @Test func testMultiply() {
     #expect(Math.multiply(4, 3) == 12)
 }
+
+@Test("Parameterized test", arguments: [
+    (2, 2, 4),
+    (3, 5, 8),
+    (10, -5, 5),
+])
+func parameterizedAdd(a: Int, b: Int, expected: Int) {
+    #expect(Math.add(a, b) == expected)
+}
