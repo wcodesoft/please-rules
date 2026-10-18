@@ -23,14 +23,51 @@ import (
 type StreamRecord struct {
 	Kind    string          `json:"kind"`
 	Payload json.RawMessage `json:"payload"`
-	Version int             `json:"version"`
+	Version any             `json:"version"`
 }
 
 type TestMetadata struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	DisplayName string `json:"displayName"`
-	Kind        string `json:"kind"`
+	ID              string `json:"id"`
+	Name            string `json:"name"`
+	DisplayName     string `json:"displayName"`
+	Kind            string `json:"kind"`
+	IsParameterized bool   `json:"isParameterized"`
+}
+
+type paramCaseInfo struct {
+	args      string
+	startTime float64
+	endTime   float64
+	issues    []string
+}
+
+var testCasePassingRe = regexp.MustCompile(`^Test case passing (?:\d+\s+arguments?\s+)?(.+?)\s+to\s+(?:\"[^\"]+\"|.+?)\s+started\.$`)
+
+func extractTestCaseArgs(msg string) string {
+	if m := testCasePassingRe.FindStringSubmatch(msg); len(m) > 1 {
+		return strings.TrimSpace(m[1])
+	}
+	idx := strings.Index(msg, "passing ")
+	if idx != -1 {
+		rest := msg[idx+len("passing "):]
+		if toIdx := strings.LastIndex(rest, " to "); toIdx != -1 {
+			args := rest[:toIdx]
+			args = regexp.MustCompile(`^\d+\s+arguments?\s+`).ReplaceAllString(args, "")
+			return strings.TrimSpace(args)
+		}
+	}
+	return ""
+}
+
+func formatSubtestName(testName, args string) string {
+	cleanArgs := strings.TrimSpace(args)
+	if cleanArgs == "" {
+		return testName
+	}
+	if strings.HasPrefix(cleanArgs, "(") && strings.HasSuffix(cleanArgs, ")") {
+		return fmt.Sprintf("%s %s", testName, cleanArgs)
+	}
+	return fmt.Sprintf("%s (%s)", testName, cleanArgs)
 }
 
 type EventPayload struct {
@@ -306,7 +343,7 @@ struct __PleaseTestRunner {
 	// 4. Parse test results from JSON event stream (or fall back to output parser)
 	var cases []ParsedTestCase
 	if info, err := os.Stat(eventsPath); err == nil && info.Size() > 0 {
-		if parsed, err := parseEventStream(eventsPath); err == nil && len(parsed) > 0 {
+		if parsed, err := parseEventStream(eventsPath, fullOutput); err == nil && len(parsed) > 0 {
 			cases = parsed
 		}
 	}
@@ -353,7 +390,7 @@ struct __PleaseTestRunner {
 	return nil
 }
 
-func parseEventStream(path string) ([]ParsedTestCase, error) {
+func parseEventStream(path string, output ...string) ([]ParsedTestCase, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -364,7 +401,20 @@ func parseEventStream(path string) ([]ParsedTestCase, error) {
 	suitesByID := make(map[string]TestMetadata)
 	startTimes := make(map[string]float64)
 	issuesByID := make(map[string][]string)
+	paramCasesByID := make(map[string][]*paramCaseInfo)
 	var results []ParsedTestCase
+
+	// Parse issues from output if available
+	issuesByNameAndArgs := make(map[string][]string)
+	if len(output) > 0 && output[0] != "" {
+		paramIssueRe := regexp.MustCompile(`✘\s+Test\s+(.+?)\s+recorded an issue with\s+(?:(?:\d+)\s+arguments?\s+)?(.+?)\s+at\s+(.*)`)
+		for _, m := range paramIssueRe.FindAllStringSubmatch(output[0], -1) {
+			tName := cleanSwiftTestName(m[1])
+			args := strings.TrimSpace(m[2])
+			detail := strings.TrimSpace(m[3])
+			issuesByNameAndArgs[tName+"||"+args] = append(issuesByNameAndArgs[tName+"||"+args], detail)
+		}
+	}
 
 	resolveSuiteName := func(meta TestMetadata) string {
 		for suiteID, sMeta := range suitesByID {
@@ -414,6 +464,33 @@ func parseEventStream(path string) ([]ParsedTestCase, error) {
 			case "testStarted":
 				startTimes[ev.TestID] = ev.Instant.Absolute
 
+			case "testCaseStarted":
+				args := ""
+				for _, m := range ev.Messages {
+					if m.Text != "" {
+						if a := extractTestCaseArgs(m.Text); a != "" {
+							args = a
+							break
+						}
+					}
+				}
+				if args == "" {
+					args = fmt.Sprintf("case %d", len(paramCasesByID[ev.TestID])+1)
+				}
+				paramCasesByID[ev.TestID] = append(paramCasesByID[ev.TestID], &paramCaseInfo{
+					args:      args,
+					startTime: ev.Instant.Absolute,
+				})
+
+			case "testCaseEnded":
+				cases := paramCasesByID[ev.TestID]
+				for _, c := range cases {
+					if c.endTime == 0 {
+						c.endTime = ev.Instant.Absolute
+						break
+					}
+				}
+
 			case "issueRecorded":
 				var parts []string
 				for _, m := range ev.Messages {
@@ -436,7 +513,22 @@ func parseEventStream(path string) ([]ParsedTestCase, error) {
 					}
 				}
 				if len(parts) > 0 {
-					issuesByID[ev.TestID] = append(issuesByID[ev.TestID], strings.Join(parts, " - "))
+					issueText := strings.Join(parts, " - ")
+					issuesByID[ev.TestID] = append(issuesByID[ev.TestID], issueText)
+					cases := paramCasesByID[ev.TestID]
+					if len(cases) > 0 {
+						matched := false
+						for _, c := range cases {
+							if strings.Contains(issueText, c.args) {
+								c.issues = append(c.issues, issueText)
+								matched = true
+								break
+							}
+						}
+						if !matched {
+							cases[len(cases)-1].issues = append(cases[len(cases)-1].issues, issueText)
+						}
+					}
 				}
 
 			case "testSkipped":
@@ -446,14 +538,27 @@ func parseEventStream(path string) ([]ParsedTestCase, error) {
 					if len(ev.Comments) > 0 {
 						reason = strings.Join(ev.Comments, "; ")
 					}
-					results = append(results, ParsedTestCase{
-						Suite:    resolveSuiteName(meta),
-						Name:     resolveTestName(meta),
-						Duration: 0.0,
-						Passed:   true,
-						Skipped:  true,
-						Failure:  reason,
-					})
+					if meta.IsParameterized && len(paramCasesByID[ev.TestID]) > 0 {
+						for _, c := range paramCasesByID[ev.TestID] {
+							results = append(results, ParsedTestCase{
+								Suite:    resolveSuiteName(meta),
+								Name:     formatSubtestName(resolveTestName(meta), c.args),
+								Duration: 0.0,
+								Passed:   true,
+								Skipped:  true,
+								Failure:  reason,
+							})
+						}
+					} else {
+						results = append(results, ParsedTestCase{
+							Suite:    resolveSuiteName(meta),
+							Name:     resolveTestName(meta),
+							Duration: 0.0,
+							Passed:   true,
+							Skipped:  true,
+							Failure:  reason,
+						})
+					}
 				}
 
 			case "testEnded":
@@ -462,37 +567,85 @@ func parseEventStream(path string) ([]ParsedTestCase, error) {
 					continue
 				}
 
-				duration := 0.0
-				if start, ok := startTimes[ev.TestID]; ok && ev.Instant.Absolute >= start {
-					duration = ev.Instant.Absolute - start
-				}
+				cases := paramCasesByID[ev.TestID]
+				if meta.IsParameterized && len(cases) > 0 {
+					testName := resolveTestName(meta)
+					for _, c := range cases {
+						duration := 0.0
+						if c.endTime >= c.startTime && c.startTime > 0 {
+							duration = c.endTime - c.startTime
+						} else if start, ok := startTimes[ev.TestID]; ok && ev.Instant.Absolute >= start {
+							duration = (ev.Instant.Absolute - start) / float64(len(cases))
+						}
 
-				issues := issuesByID[ev.TestID]
-				hasFailed := len(issues) > 0
-				for _, m := range ev.Messages {
-					if m.Symbol == "fail" {
-						hasFailed = true
-						if len(issues) == 0 {
-							issues = append(issues, m.Text)
+						var caseIssues []string
+						if issues, ok := issuesByNameAndArgs[testName+"||"+c.args]; ok && len(issues) > 0 {
+							caseIssues = append(caseIssues, issues...)
+						}
+						if len(caseIssues) == 0 && len(c.issues) > 0 {
+							caseIssues = append(caseIssues, c.issues...)
+						}
+
+						if len(caseIssues) == 0 && len(issuesByID[ev.TestID]) > 0 {
+							anyMatched := false
+							for _, other := range cases {
+								if len(other.issues) > 0 || len(issuesByNameAndArgs[testName+"||"+other.args]) > 0 {
+									anyMatched = true
+									break
+								}
+							}
+							if !anyMatched {
+								caseIssues = append(caseIssues, issuesByID[ev.TestID]...)
+							}
+						}
+
+						hasFailed := len(caseIssues) > 0
+						failMsg := ""
+						if hasFailed {
+							failMsg = strings.Join(caseIssues, "\n")
+						}
+
+						results = append(results, ParsedTestCase{
+							Suite:    resolveSuiteName(meta),
+							Name:     formatSubtestName(testName, c.args),
+							Duration: duration,
+							Passed:   !hasFailed,
+							Failure:  failMsg,
+						})
+					}
+				} else {
+					duration := 0.0
+					if start, ok := startTimes[ev.TestID]; ok && ev.Instant.Absolute >= start {
+						duration = ev.Instant.Absolute - start
+					}
+
+					issues := issuesByID[ev.TestID]
+					hasFailed := len(issues) > 0
+					for _, m := range ev.Messages {
+						if m.Symbol == "fail" {
+							hasFailed = true
+							if len(issues) == 0 {
+								issues = append(issues, m.Text)
+							}
 						}
 					}
-				}
 
-				failMsg := ""
-				if hasFailed {
-					failMsg = strings.Join(issues, "\n")
-					if failMsg == "" {
-						failMsg = "Test failed"
+					failMsg := ""
+					if hasFailed {
+						failMsg = strings.Join(issues, "\n")
+						if failMsg == "" {
+							failMsg = "Test failed"
+						}
 					}
-				}
 
-				results = append(results, ParsedTestCase{
-					Suite:    resolveSuiteName(meta),
-					Name:     resolveTestName(meta),
-					Duration: duration,
-					Passed:   !hasFailed,
-					Failure:  failMsg,
-				})
+					results = append(results, ParsedTestCase{
+						Suite:    resolveSuiteName(meta),
+						Name:     resolveTestName(meta),
+						Duration: duration,
+						Passed:   !hasFailed,
+						Failure:  failMsg,
+					})
+				}
 			}
 		}
 	}
@@ -548,6 +701,30 @@ func parseTestOutput(output, framework string) []ParsedTestCase {
 	swiftTestingIssueRe := regexp.MustCompile(`✘\s+Test\s+(.+?)\s+recorded an issue at\s+(.*)`)
 	swiftTestingSkippedRe := regexp.MustCompile(`➜\s+Test\s+(.+?)\s+skipped(?::\s*(.*))?`)
 
+	swiftTestingParamCaseRe := regexp.MustCompile(`◇\s+Test case passing\s+(?:(?:\d+)\s+arguments?\s+)?(.+?)\s+to\s+(.+?)\s+started\.`)
+	swiftTestingParamIssueRe := regexp.MustCompile(`✘\s+Test\s+(.+?)\s+recorded an issue with\s+(?:(?:\d+)\s+arguments?\s+)?(.+?)\s+at\s+(.*)`)
+	swiftTestingParamPassedRe := regexp.MustCompile(`✔\s+Test\s+(.+?)\s+with\s+(\d+)\s+test cases\s+passed after\s+([0-9.]+)\s+seconds`)
+	swiftTestingParamFailedRe := regexp.MustCompile(`✘\s+Test\s+(.+?)\s+with\s+(\d+)\s+test cases\s+failed after\s+([0-9.]+)\s+seconds`)
+
+	type paramCase struct {
+		args string
+	}
+	paramCasesByTest := make(map[string][]paramCase)
+	for _, match := range swiftTestingParamCaseRe.FindAllStringSubmatch(cleanOutput, -1) {
+		args := strings.TrimSpace(match[1])
+		testName := cleanSwiftTestName(match[2])
+		paramCasesByTest[testName] = append(paramCasesByTest[testName], paramCase{args: args})
+	}
+
+	issuesByTestAndArgs := make(map[string][]string)
+	for _, match := range swiftTestingParamIssueRe.FindAllStringSubmatch(cleanOutput, -1) {
+		testName := cleanSwiftTestName(match[1])
+		args := strings.TrimSpace(match[2])
+		detail := strings.TrimSpace(match[3])
+		key := testName + "||" + args
+		issuesByTestAndArgs[key] = append(issuesByTestAndArgs[key], detail)
+	}
+
 	issuesByTest := make(map[string][]string)
 	for _, match := range swiftTestingIssueRe.FindAllStringSubmatch(cleanOutput, -1) {
 		if isTestRunSummary(match[1]) {
@@ -557,11 +734,86 @@ func parseTestOutput(output, framework string) []ParsedTestCase {
 		issuesByTest[testName] = append(issuesByTest[testName], match[2])
 	}
 
+	// Parameterized passed
+	paramHandledTests := make(map[string]bool)
+	for _, match := range swiftTestingParamPassedRe.FindAllStringSubmatch(cleanOutput, -1) {
+		testName := cleanSwiftTestName(match[1])
+		count, _ := strconv.Atoi(match[2])
+		duration, _ := strconv.ParseFloat(match[3], 64)
+		paramHandledTests[testName] = true
+
+		cases := paramCasesByTest[testName]
+		if len(cases) > 0 {
+			subDuration := duration / float64(len(cases))
+			for _, c := range cases {
+				results = append(results, ParsedTestCase{
+					Suite:    suiteName,
+					Name:     formatSubtestName(testName, c.args),
+					Duration: subDuration,
+					Passed:   true,
+				})
+			}
+		} else if count > 0 {
+			subDuration := duration / float64(count)
+			for i := 1; i <= count; i++ {
+				results = append(results, ParsedTestCase{
+					Suite:    suiteName,
+					Name:     fmt.Sprintf("%s (case %d)", testName, i),
+					Duration: subDuration,
+					Passed:   true,
+				})
+			}
+		}
+	}
+
+	// Parameterized failed
+	for _, match := range swiftTestingParamFailedRe.FindAllStringSubmatch(cleanOutput, -1) {
+		testName := cleanSwiftTestName(match[1])
+		count, _ := strconv.Atoi(match[2])
+		duration, _ := strconv.ParseFloat(match[3], 64)
+		paramHandledTests[testName] = true
+
+		cases := paramCasesByTest[testName]
+		if len(cases) > 0 {
+			subDuration := duration / float64(len(cases))
+			for _, c := range cases {
+				issues := issuesByTestAndArgs[testName+"||"+c.args]
+				passed := len(issues) == 0
+				failMsg := ""
+				if !passed {
+					failMsg = strings.Join(issues, "\n")
+				}
+				results = append(results, ParsedTestCase{
+					Suite:    suiteName,
+					Name:     formatSubtestName(testName, c.args),
+					Duration: subDuration,
+					Passed:   passed,
+					Failure:  failMsg,
+				})
+			}
+		} else if count > 0 {
+			subDuration := duration / float64(count)
+			generalIssues := strings.Join(issuesByTest[testName], "\n")
+			for i := 1; i <= count; i++ {
+				results = append(results, ParsedTestCase{
+					Suite:    suiteName,
+					Name:     fmt.Sprintf("%s (case %d)", testName, i),
+					Duration: subDuration,
+					Passed:   false,
+					Failure:  generalIssues,
+				})
+			}
+		}
+	}
+
 	for _, match := range swiftTestingPassedRe.FindAllStringSubmatch(cleanOutput, -1) {
-		if isTestRunSummary(match[1]) {
+		if isTestRunSummary(match[1]) || (strings.Contains(match[1], " with ") && strings.Contains(match[1], " test cases")) {
 			continue
 		}
 		name := cleanSwiftTestName(match[1])
+		if paramHandledTests[name] {
+			continue
+		}
 		duration, _ := strconv.ParseFloat(match[2], 64)
 		results = append(results, ParsedTestCase{
 			Suite:    suiteName,
@@ -572,10 +824,13 @@ func parseTestOutput(output, framework string) []ParsedTestCase {
 	}
 
 	for _, match := range swiftTestingFailedRe.FindAllStringSubmatch(cleanOutput, -1) {
-		if isTestRunSummary(match[1]) {
+		if isTestRunSummary(match[1]) || (strings.Contains(match[1], " with ") && strings.Contains(match[1], " test cases")) {
 			continue
 		}
 		name := cleanSwiftTestName(match[1])
+		if paramHandledTests[name] {
+			continue
+		}
 		duration, _ := strconv.ParseFloat(match[2], 64)
 		issueDetails := strings.Join(issuesByTest[name], "\n")
 		if issueDetails == "" {

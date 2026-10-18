@@ -140,6 +140,97 @@ func TestParseEventStream(t *testing.T) {
 	}
 }
 
+func TestParseTestOutputSwiftTestingParameterized(t *testing.T) {
+	output := `
+◇ Test run started.
+↳ Testing Library Version: 6.3.3
+↳ Target Platform: x86_64-unknown-linux-gnu
+◇ Suite MathTests started.
+◇ Test testAdd() started.
+✔ Test testAdd() passed after 0.001 seconds.
+◇ Test "Parameterized test" started.
+◇ Test case passing 3 arguments a → 2, b → 2, expected → 4 to "Parameterized test" started.
+◇ Test case passing 3 arguments a → 3, b → 5, expected → 8 to "Parameterized test" started.
+◇ Test case passing 3 arguments a → 10, b → -5, expected → 5 to "Parameterized test" started.
+✔ Test "Parameterized test" with 3 test cases passed after 0.003 seconds.
+◇ Test testIsPositive(n:s:) started.
+◇ Test case passing 2 arguments n → 1, s → "a" to testIsPositive(n:s:) started.
+◇ Test case passing 2 arguments n → 2, s → "b" to testIsPositive(n:s:) started.
+✘ Test testIsPositive(n:s:) recorded an issue with 2 arguments n → 1, s → "a" at MathTests.swift:19:5: Expectation failed: (n → 1) > 1
+✘ Test testIsPositive(n:s:) with 2 test cases failed after 0.004 seconds with 1 issue.
+✔ Suite MathTests passed after 0.010 seconds.
+✔ Test run with 3 tests in 1 suite passed after 0.012 seconds.
+`
+	cases := parseTestOutput(output, "swift-testing")
+	if len(cases) != 6 {
+		t.Fatalf("expected 6 test cases, got %d: %+v", len(cases), cases)
+	}
+
+	expected := []struct {
+		name   string
+		passed bool
+		failed bool
+	}{
+		{name: "Parameterized test (a → 2, b → 2, expected → 4)", passed: true},
+		{name: "Parameterized test (a → 3, b → 5, expected → 8)", passed: true},
+		{name: "Parameterized test (a → 10, b → -5, expected → 5)", passed: true},
+		{name: "testIsPositive(n:s:) (n → 1, s → \"a\")", passed: false, failed: true},
+		{name: "testIsPositive(n:s:) (n → 2, s → \"b\")", passed: true},
+		{name: "testAdd", passed: true},
+	}
+
+	for i, exp := range expected {
+		if cases[i].Name != exp.name {
+			t.Errorf("case %d: expected name %q, got %q", i, exp.name, cases[i].Name)
+		}
+		if cases[i].Passed != exp.passed {
+			t.Errorf("case %d (%s): expected passed=%v, got passed=%v", i, exp.name, exp.passed, cases[i].Passed)
+		}
+		if exp.failed && !strings.Contains(cases[i].Failure, "Expectation failed") {
+			t.Errorf("case %d: expected failure details, got %q", i, cases[i].Failure)
+		}
+	}
+}
+
+func TestParseEventStreamParameterized(t *testing.T) {
+	ndjson := `{"kind":"test","payload":{"displayName":"MathSuite","id":"test_bin.MathSuite","kind":"suite","name":"MathSuite"},"version":"6.3.0"}
+{"kind":"test","payload":{"displayName":"Parameterized test","id":"test_bin.MathSuite/paramTest/MathTests.swift:10:6","isParameterized":true,"kind":"function","name":"paramTest(a:b:expected:)"},"version":"6.3.0"}
+{"kind":"event","payload":{"instant":{"absolute":100.0},"kind":"testStarted"},"version":"6.3.0"}
+{"kind":"event","payload":{"instant":{"absolute":100.1},"kind":"testStarted","testID":"test_bin.MathSuite/paramTest/MathTests.swift:10:6"},"version":"6.3.0"}
+{"kind":"event","payload":{"instant":{"absolute":100.12},"kind":"testCaseStarted","messages":[{"symbol":"default","text":"Test case passing 3 arguments a → 2, b → 2, expected → 4 to \"Parameterized test\" started."}],"testID":"test_bin.MathSuite/paramTest/MathTests.swift:10:6"},"version":"6.3.0"}
+{"kind":"event","payload":{"instant":{"absolute":100.15},"kind":"testCaseEnded","messages":[],"testID":"test_bin.MathSuite/paramTest/MathTests.swift:10:6"},"version":"6.3.0"}
+{"kind":"event","payload":{"instant":{"absolute":100.16},"kind":"testCaseStarted","messages":[{"symbol":"default","text":"Test case passing 3 arguments a → 3, b → 5, expected → 99 to \"Parameterized test\" started."}],"testID":"test_bin.MathSuite/paramTest/MathTests.swift:10:6"},"version":"6.3.0"}
+{"kind":"event","payload":{"_comments":["Math mismatch"],"instant":{"absolute":100.18},"kind":"issueRecorded","messages":[{"symbol":"fail","text":"Expectation failed: (a + b → 8) == (expected → 99)"}],"testID":"test_bin.MathSuite/paramTest/MathTests.swift:10:6"},"version":"6.3.0"}
+{"kind":"event","payload":{"instant":{"absolute":100.19},"kind":"testCaseEnded","messages":[],"testID":"test_bin.MathSuite/paramTest/MathTests.swift:10:6"},"version":"6.3.0"}
+{"kind":"event","payload":{"instant":{"absolute":100.20},"kind":"testEnded","messages":[{"symbol":"fail","text":"Test \"Parameterized test\" with 2 test cases failed after 0.08 seconds with 1 issue."}],"testID":"test_bin.MathSuite/paramTest/MathTests.swift:10:6"},"version":"6.3.0"}
+`
+	tmpFile, err := os.CreateTemp("", "events_param_test_*.ndjson")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(tmpFile.Name())
+	if _, err := tmpFile.WriteString(ndjson); err != nil {
+		t.Fatal(err)
+	}
+	tmpFile.Close()
+
+	cases, err := parseEventStream(tmpFile.Name())
+	if err != nil {
+		t.Fatalf("unexpected error parsing parameterized event stream: %v", err)
+	}
+
+	if len(cases) != 2 {
+		t.Fatalf("expected 2 test cases, got %d: %+v", len(cases), cases)
+	}
+
+	if cases[0].Name != "Parameterized test (a → 2, b → 2, expected → 4)" || !cases[0].Passed || cases[0].Suite != "MathSuite" {
+		t.Errorf("unexpected first test case: %+v", cases[0])
+	}
+	if cases[1].Name != "Parameterized test (a → 3, b → 5, expected → 99)" || cases[1].Passed || cases[1].Suite != "MathSuite" || !strings.Contains(cases[1].Failure, "Expectation failed") {
+		t.Errorf("unexpected second test case: %+v", cases[1])
+	}
+}
+
 func TestParseTestOutputXCTest(t *testing.T) {
 	output := `
 Test Suite 'All tests' started at 2026-09-14 20:00:00.000
