@@ -200,8 +200,16 @@ def vitest_toolchain(
         version: str = DEFAULT_VITEST_VERSION,
         labels: list = None,
         visibility: list = None):
-    """Assembles a hermetic Vitest cache using Deno cache."""
-    tools = {}
+    """Assembles a hermetic Vitest cache using Deno cache.
+
+    The versions of the cache's packages are chosen when it is built, by a window of time that
+    ends then, and Deno keeps the registry's whole list of versions beside them. Used on a later
+    day, Deno chooses again, sees newer versions in that list and fetches them into the cache while
+    a build runs (racing with the targets that copy it), or stops with `npm package not found in
+    cache` in a test run. So the lists are cut to the versions that are cached (`please_ts
+    freeze-cache`), and what Deno can choose is what is there, on any day.
+    """
+    tools = {"TOOL": [_ts_tool()]}
     _deno_tool_arg(tools)
     deno_cmd = "$TOOLS_DENO" if "DENO" in tools else "deno"
 
@@ -209,6 +217,7 @@ def vitest_toolchain(
 mkdir -p "$OUT"
 export DENO_DIR="$OUT"
 {deno_cmd} cache npm:vitest@{version} npm:@vitest/coverage-v8@{version}
+$TOOLS_TOOL freeze-cache --deno-dir "$OUT"
 """
     return build_rule(
         name = name,

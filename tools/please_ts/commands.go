@@ -10,6 +10,7 @@ import (
 	"tools/please_ts/binary"
 	"tools/please_ts/bundle"
 	"tools/please_ts/compile"
+	"tools/please_ts/npmcache"
 	"tools/please_ts/testrunner"
 	"tools/please_ts/unpack"
 )
@@ -227,6 +228,29 @@ func handleUnpack(args []string) error {
 	return unpack.Run(opts)
 }
 
+// handleFreezeCache cuts the version lists of a Deno cache to the versions it holds, so that it
+// works on any day (see npmcache.Freeze).
+func handleFreezeCache(args []string) error {
+	cmd := flag.NewFlagSet("freeze-cache", flag.ContinueOnError)
+	cmd.Usage = func() {
+		fmt.Fprintf(cmd.Output(), "Usage:\n  please_ts freeze-cache --deno-dir <DENO_DIR>\n\nOptions:\n")
+		cmd.PrintDefaults()
+	}
+	denoDir := cmd.String("deno-dir", "", "Deno cache directory (DENO_DIR) to freeze")
+	if err := cmd.Parse(args); err != nil {
+		return err
+	}
+	if *denoDir == "" {
+		return fmt.Errorf("--deno-dir is required")
+	}
+	result, err := npmcache.Freeze(*denoDir)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("froze the Deno cache: %d package lists lost %d versions newer than the ones cached\n", result.Packages, result.Versions)
+	return nil
+}
+
 func printUsage(w io.Writer) {
 	fmt.Fprintf(w, "please_ts - Orchestrator tool for Please TypeScript/Deno rules\n\n")
 	fmt.Fprintf(w, "Usage:\n")
@@ -235,6 +259,7 @@ func printUsage(w io.Writer) {
 	fmt.Fprintf(w, "  please_ts binary [options]\n")
 	fmt.Fprintf(w, "  please_ts testrunner [options] [-- sources...]\n")
 	fmt.Fprintf(w, "  please_ts unpack [options]\n")
+	fmt.Fprintf(w, "  please_ts freeze-cache --deno-dir <DENO_DIR>\n")
 }
 
 func runCommand(args []string) error {
@@ -254,6 +279,8 @@ func runCommand(args []string) error {
 		return handleTestRunner(args[1:])
 	case "unpack":
 		return handleUnpack(args[1:])
+	case "freeze-cache":
+		return handleFreezeCache(args[1:])
 	case "help", "--help", "-h":
 		printUsage(os.Stdout)
 		return nil

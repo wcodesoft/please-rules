@@ -206,6 +206,17 @@ ts_test(
 
 Assembles a hermetic Vitest toolchain using Deno cache.
 
+The versions of the cache's packages are chosen when it is built, by a window of
+time that ends then, and Deno keeps the registry's whole list of versions beside
+them. Used on a later day, Deno chooses again, sees newer versions in that list,
+and either fetches them into the cache while a build runs (racing with the
+targets that copy it) or, in a test run (`--cached-only`), stops with
+`npm package not found in cache`. So after `deno cache` the rule runs
+`please_ts freeze-cache`, which takes from each package's list the versions
+newer than the newest one cached: Deno can then choose only what is there, on
+any day. A package with nothing cached (an optional one for another platform)
+keeps its list.
+
 ```starlark
 vitest_toolchain(
     name = "toolchain",
