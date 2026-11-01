@@ -133,18 +133,23 @@ func (opts RunOptions) runVitest(resultsFile string) error {
 	return testErr
 }
 
-// vitestDenoDir returns the DENO_DIR Vitest runs with. It is the shared Vitest cache itself,
-// unless the target uses npm packages: then it is a per-run copy of that cache holding the cache
-// slices of the target's ts_npm_module dependencies as well, so the shared cache is never written.
+// vitestDenoDir returns the DENO_DIR Vitest runs with, always a private one so that the shared
+// Vitest cache is never written: Deno writes to its DENO_DIR on every run, and targets run in
+// parallel. Without npm packages it reads the shared cache (see npmcache.Private); with them it
+// is a per-run copy of that cache holding the cache slices of the target's ts_npm_module
+// dependencies as well.
 func (opts RunOptions) vitestDenoDir(tmpDir string, withNpm bool) (string, error) {
 	shared, err := filepath.Abs(opts.VitestDir)
 	if err != nil {
 		shared = opts.VitestDir
 	}
-	if !withNpm {
-		return shared, nil
-	}
 	denoDir := filepath.Join(tmpDir, ".deno_cache")
+	if !withNpm {
+		if err := npmcache.Private(shared, denoDir); err != nil {
+			return "", err
+		}
+		return denoDir, nil
+	}
 	if err := os.MkdirAll(denoDir, 0755); err != nil {
 		return "", fmt.Errorf("failed creating DENO_DIR: %w", err)
 	}

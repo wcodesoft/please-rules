@@ -313,10 +313,16 @@ func TestVitestDenoDir(t *testing.T) {
 	cachedPackage(t, shared, "vitest", "5.0.1")
 	opts := RunOptions{VitestDir: shared}
 
-	t.Run("without npm packages it is the shared cache", func(t *testing.T) {
+	t.Run("without npm packages it is a private directory that reads the shared cache", func(t *testing.T) {
 		got, err := opts.vitestDenoDir(t.TempDir(), false)
-		if err != nil || got != shared {
-			t.Errorf("got %q, %v; want %q", got, err, shared)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got == shared {
+			t.Fatal("the shared cache would be written to: Deno writes to its DENO_DIR on every run")
+		}
+		if _, err := os.Stat(filepath.Join(got, "npm", "registry.npmjs.org", "vitest", "5.0.1")); err != nil {
+			t.Errorf("the private directory cannot read the shared packages: %v", err)
 		}
 	})
 

@@ -47,11 +47,10 @@ func Run(opts Options) error {
 	usesNpmSlices := len(npmcache.Discover(".")) > 0
 	switch {
 	case opts.VitestDir != "" && !usesNpmSlices:
-		// The shared Vitest cache is used as it is, and never written to by this target.
-		if absV, err := filepath.Abs(opts.VitestDir); err == nil {
-			denoCacheDir = absV
-		} else {
-			denoCacheDir = opts.VitestDir
+		// The shared Vitest cache is read, and Deno writes to a private directory: it writes to
+		// its DENO_DIR even with everything cached, and targets run in parallel.
+		if err := npmcache.Private(opts.VitestDir, denoCacheDir); err != nil {
+			return fmt.Errorf("failed preparing the Vitest cache: %w", err)
 		}
 	default:
 		if err := os.MkdirAll(denoCacheDir, 0755); err != nil {

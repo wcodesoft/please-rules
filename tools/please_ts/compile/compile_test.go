@@ -135,15 +135,19 @@ func TestRunVitestTargetWithNpmSlicesUsesAPerRunCacheAndNeverTheNetwork(t *testi
 	}
 }
 
-func TestRunVitestTargetWithoutNpmSlicesStillUsesTheSharedCache(t *testing.T) {
+func TestRunVitestTargetWithoutNpmSlicesReadsTheSharedCacheFromAPrivateDirectory(t *testing.T) {
 	inWorkDir(t, false)
 	shared := t.TempDir()
+	writePackage(t, shared, "vitest", "5.0.3")
 	deno, log := fakeDeno(t)
 	if err := Run(Options{Deno: deno, Srcs: []string{"a.ts"}, VitestDir: shared}); err != nil {
 		t.Fatal(err)
 	}
 	data, _ := os.ReadFile(log)
-	if !strings.Contains(string(data), "DENO_DIR="+shared+"\n") || strings.Contains(string(data), "--cached-only") {
+	if strings.Contains(string(data), "DENO_DIR="+shared+"\n") {
+		t.Errorf("deno wrote into the shared Vitest cache, which it does on every run:\n%s", data)
+	}
+	if !strings.Contains(string(data), "DENO_DIR=") || strings.Contains(string(data), "--cached-only") {
 		t.Errorf("unexpected invocation:\n%s", data)
 	}
 }
