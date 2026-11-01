@@ -22,6 +22,11 @@ Compilations and tests explicitly set `DENO_DIR="$TMP_DIR/.deno_cache"` and run
 with `--no-remote`. Deno never connects to the internet or modifies host caches
 during build execution.
 
+When the Vitest cache of `vitest_toolchain` is used, that directory is a private
+one that links the cache's `npm/` tree and holds its own copy of Deno's SQLite
+databases, because Deno writes to its `DENO_DIR` on every run and targets run in
+parallel (see `npmcache.Private`).
+
 ---
 
 ## 2. CLI Helper (`tools/please_ts`)

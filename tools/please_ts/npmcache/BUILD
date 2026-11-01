@@ -5,6 +5,7 @@ go_library(
     srcs = [
         "freeze.go",
         "npmcache.go",
+        "private.go",
     ],
     visibility = ["//tools/please_ts/..."],
     deps = ["//tools/please_ts/semver"],
@@ -17,6 +18,8 @@ go_test(
         "freeze_test.go",
         "npmcache.go",
         "npmcache_test.go",
+        "private.go",
+        "private_test.go",
     ],
     deps = ["//tools/please_ts/semver"],
 )

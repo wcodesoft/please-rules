@@ -329,6 +329,14 @@ run; nothing is written to the source tree. The Vitest cache of
 `vitest_toolchain` is copied for such a target, so the slices never end up in
 that shared output, and Vitest itself is pinned to the version in that cache.
 
+A target with no npm packages gets a private `DENO_DIR` too, and not the shared
+cache itself: Deno writes to its `DENO_DIR` on every run, even with everything
+cached (the SQLite databases it keeps next to the packages, and the transpiled
+files), and targets run in parallel. The private directory links the `npm/` tree
+of the shared cache, which is only read, and holds its own copy of the small
+SQLite databases (a few MB), so the shared output is never written to by a test
+or a compilation.
+
 `ts_module` resolves its dependencies by the same rules (strictly, verified, as
 of the root's publish day), with the limit of one version per package: two
 dependents that need incompatible versions fail the build and name each other.
