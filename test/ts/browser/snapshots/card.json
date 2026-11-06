@@ -1,0 +1,20 @@
+[
+  {
+    "selector": ".card",
+    "index": 0,
+    "styles": {
+      "color": "rgb(200, 0, 0)",
+      "display": "flex",
+      "padding-top": "8px"
+    }
+  },
+  {
+    "selector": ".card",
+    "index": 1,
+    "styles": {
+      "color": "rgb(0, 0, 200)",
+      "display": "flex",
+      "padding-top": "8px"
+    }
+  }
+]

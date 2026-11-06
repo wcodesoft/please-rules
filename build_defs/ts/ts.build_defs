@@ -596,13 +596,22 @@ def ts_browser_test(
         deps: list = None,
         data: list = None,
         module_name: str = "",
+        viewport: str = "",
+        snapshots: list = None,
         flags: list = None,
         visibility: list = None,
         labels: list = None):
-    """Runs hermetic in-browser tests with headless browser binaries."""
+    """Runs hermetic in-browser tests with headless browser binaries.
+
+    `snapshots` are golden JSON files for `expectComputedStyles(name, selector, props)`; the file
+    `<name>.json` is the golden of the snapshot `<name>`. Every recording is written to the
+    `<target>.snapshots` test output, so accepting a change means copying that file over the golden.
+    `viewport` ("WIDTHxHEIGHT") fixes the window size so media queries resolve the same everywhere.
+    """
     deps = deps or []
     flags = flags or []
-    data = (data or []) + srcs + deps
+    snapshots = snapshots or []
+    data = (data or []) + srcs + deps + snapshots
 
     tools = {"TOOL": [_ts_tool()]}
     deno_arg = _deno_tool_arg(tools)
@@ -626,12 +635,17 @@ def ts_browser_test(
     pkg = package_name()
     full_srcs = [f"{pkg}/{s}" if not s.startswith(pkg) else s for s in srcs]
     srcs_list = ",".join(full_srcs)
+    full_snapshots = [f"{pkg}/{s}" if not s.startswith(pkg) else s for s in snapshots]
+    snapshots_list = ",".join(full_snapshots)
     testrunner_args = [
         f'--runner "{runner}"',
         f'--browser "{browser}"',
         browser_arg,
         esbuild_arg,
         f'--srcs "{srcs_list}"',
+        f'--viewport "{viewport}"' if viewport else "",
+        f'--snapshots "{snapshots_list}"' if snapshots else "",
+        f'--snapshots-out "{name}.snapshots"',
         '--deps "${DEPS:-}"',
         f'--module-name "{resolved_module}"' if resolved_module else "",
         '--results-file "test.results"',
@@ -651,6 +665,7 @@ def ts_browser_test(
         outs = [name],
         cmd = compile_cmd,
         test_cmd = test_cmd,
+        test_outputs = [f"{name}.snapshots"],
         needs_transitive_deps = True,
         tools = tools,
         test_tools = tools,

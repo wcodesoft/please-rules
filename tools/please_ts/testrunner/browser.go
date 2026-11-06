@@ -157,8 +157,25 @@ func (opts RunOptions) runBrowserTest(resultsFile string) error {
 	}
 	defer client.Close()
 
+	viewportW, viewportH, err := parseViewport(opts.Viewport)
+	if err != nil {
+		_ = writeFallbackJUnit(resultsFile, opts.Srcs, err)
+		return err
+	}
+
 	_, _ = client.Send("Runtime.enable", nil)
 	_, _ = client.Send("Page.enable", nil)
+	if viewportW > 0 {
+		if _, err := client.Send("Emulation.setDeviceMetricsOverride", map[string]interface{}{
+			"width":             viewportW,
+			"height":            viewportH,
+			"deviceScaleFactor": 1,
+			"mobile":            false,
+		}); err != nil {
+			_ = writeFallbackJUnit(resultsFile, opts.Srcs, err)
+			return fmt.Errorf("failed setting viewport %s: %w", opts.Viewport, err)
+		}
+	}
 	targetURL := "file://" + htmlPath
 	_, _ = client.Send("Page.navigate", map[string]interface{}{"url": targetURL})
 
@@ -228,6 +245,11 @@ func (opts RunOptions) runBrowserTest(resultsFile string) error {
 		return fmt.Errorf("failed injecting test harness: %w", err)
 	}
 
+	if _, err := client.Evaluate(snapshotHelperJS); err != nil {
+		_ = writeFallbackJUnit(resultsFile, opts.Srcs, err)
+		return fmt.Errorf("failed injecting snapshot helper: %w", err)
+	}
+
 	// 4. Inject bundled test script
 	if _, err := client.Evaluate(string(bundleBytes)); err != nil {
 		_ = writeFallbackJUnit(resultsFile, opts.Srcs, err)
@@ -254,7 +276,7 @@ func (opts RunOptions) runBrowserTest(resultsFile string) error {
 			const duration = (performance.now() - start) / 1000;
 			results.push({ name: t.name, duration: duration, error: err || "" });
 		}
-		return results;
+		return { tests: results, snapshots: window.__SNAPSHOTS__ };
 	})()`
 
 	evalRes, err := client.Evaluate(runnerJS)
@@ -265,7 +287,10 @@ func (opts RunOptions) runBrowserTest(resultsFile string) error {
 
 	var resPayload struct {
 		Result struct {
-			Value []browserTestResult `json:"value"`
+			Value struct {
+				Tests     []browserTestResult          `json:"tests"`
+				Snapshots map[string][]snapshotElement `json:"snapshots"`
+			} `json:"value"`
 		} `json:"result"`
 	}
 	if err := json.Unmarshal(evalRes, &resPayload); err != nil {
@@ -273,7 +298,13 @@ func (opts RunOptions) runBrowserTest(resultsFile string) error {
 		return fmt.Errorf("failed parsing browser test results: %w", err)
 	}
 
-	results := resPayload.Result.Value
+	results := resPayload.Result.Value.Tests
+	snapshotResults, err := checkSnapshots(opts.Snapshots, opts.SnapshotsOut, resPayload.Result.Value.Snapshots)
+	if err != nil {
+		_ = writeFallbackJUnit(resultsFile, opts.Srcs, err)
+		return fmt.Errorf("failed checking snapshots: %w", err)
+	}
+	results = append(results, snapshotResults...)
 	return writeBrowserJUnit(resultsFile, opts.Srcs, results)
 }
 
