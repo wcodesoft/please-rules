@@ -167,12 +167,17 @@ func handleTestRunner(args []string) error {
 	vitestDir := cmd.String("vitest-dir", "", "Path to hermetic Vitest cache directory")
 	esbuildBinary := cmd.String("esbuild-binary", "", "Pinned esbuild executable, used to bundle npm packages for browser tests")
 
+	viewport := cmd.String("viewport", "", "Browser tests: emulated viewport as WIDTHxHEIGHT")
+	snapshotsFlag := cmd.String("snapshots", "", "Browser tests: comma-separated golden JSON files for expectComputedStyles")
+	snapshotsOut := cmd.String("snapshots-out", "", "Browser tests: directory that receives every recorded snapshot")
+
 	if err := cmd.Parse(args); err != nil {
 		return err
 	}
 
 	srcs := compile.ExpandCommaSeparated([]string{*srcsFlag})
 	srcs = append(srcs, cmd.Args()...)
+	snapshots := compile.ExpandCommaSeparated([]string{*snapshotsFlag})
 	deps := compile.ExpandCommaSeparated([]string{*depsFlag})
 
 	opts := testrunner.RunOptions{
@@ -189,6 +194,9 @@ func handleTestRunner(args []string) error {
 		Browser:       *browser,
 		BrowserBinary: *browserBinary,
 		VitestDir:     *vitestDir,
+		Viewport:      *viewport,
+		Snapshots:     snapshots,
+		SnapshotsOut:  *snapshotsOut,
 	}
 	return testrunner.Run(opts)
 }

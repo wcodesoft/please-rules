@@ -310,3 +310,43 @@ ts_browser_test(
 | `data`           | `list` | `[]`         | Runtime test data.                                                                          |
 | `module_name`    | `str`  | `""`         | Optional module name override.                                                              |
 | `flags`          | `list` | `[]`         | Additional flags.                                                                           |
+| `viewport`       | `str`  | `""`         | Emulated window size as `"WIDTHxHEIGHT"`, so media queries resolve the same everywhere.     |
+| `snapshots`      | `list` | `[]`         | Golden JSON files for `expectComputedStyles` (see below).                                   |
+
+### Computed-style snapshots
+
+A browser test can pin how the page is styled, so a CSS change that alters the
+rendering fails the build instead of slipping through review. Inside a test:
+
+```ts
+declare const expectComputedStyles: (
+  name: string,
+  selector: string,
+  props: string[],
+) => void;
+
+expectComputedStyles("card", ".card", ["display", "padding-top", "color"]);
+```
+
+This records `getComputedStyle` for every element matching `.card`. Once the
+tests finish, the recording is compared with the golden `card.json` (the file
+name is the snapshot name; use letters, digits, `_`, `.` and `-`). Each snapshot
+is its own test case: a difference fails it and lists the element, property,
+golden value and actual value.
+
+A snapshot fails when there is no golden for it, and a golden that no test
+recorded fails as stale. Every recording is written to the `<target>.snapshots`
+test output (`plz-out/bin/<package>/<target>.snapshots/`), so to accept a
+change, copy the file from there over the golden and review the diff.
+
+```starlark
+ts_browser_test(
+    name = "card_test",
+    srcs = ["card_test.ts"],
+    snapshots = ["snapshots/card.json"],
+    viewport = "800x600",
+)
+```
+
+Computed styles are deterministic across machines. Pixel screenshots (layout,
+stacking, clipping) are not covered yet; see issue #103.

@@ -9,6 +9,20 @@ and this project adheres to
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-06
+
+### Added
+
+- Computed-style snapshots for `ts_browser_test`:
+  `expectComputedStyles(name, selector, props)` records the computed style of
+  every matching element, and the build compares it with a golden `<name>.json`
+  passed as `snapshots`. A difference fails with the element, property, golden
+  and actual value; a missing golden and a golden no test recorded both fail.
+  Every recording is written to the `<target>.snapshots` test output, so
+  accepting a change is a reviewed file copy. See issue #103.
+- `viewport = "WIDTHxHEIGHT"` on `ts_browser_test` fixes the emulated window
+  size, so media queries resolve the same on every machine.
+
 ## [0.7.0] - 2026-10-04
 
 ### Added

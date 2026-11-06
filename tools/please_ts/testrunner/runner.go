@@ -20,7 +20,10 @@ type RunOptions struct {
 	Browser       string
 	BrowserBinary string
 	VitestDir     string
-	EsbuildBinary string // pinned esbuild, to bundle npm packages for browser tests
+	EsbuildBinary string   // pinned esbuild, to bundle npm packages for browser tests
+	Viewport      string   // browser tests: "WIDTHxHEIGHT" emulated viewport, empty for the browser default
+	Snapshots     []string // browser tests: golden JSON files for expectComputedStyles
+	SnapshotsOut  string   // browser tests: directory receiving every recorded snapshot
 	ExtraArgs     []string
 }
 
@@ -47,6 +50,14 @@ func (opts RunOptions) Run() error {
 	// (empty) when coverage is off or the tool produces nothing.
 	if err := opts.prepareLcovFile(); err != nil {
 		return err
+	}
+
+	// The snapshot recordings are a declared test output: create the directory up front so it
+	// exists (empty) when no test records anything.
+	if opts.SnapshotsOut != "" {
+		if err := os.MkdirAll(opts.SnapshotsOut, 0755); err != nil {
+			return err
+		}
 	}
 
 	if opts.Browser != "" && opts.Runner != "vitest" {
