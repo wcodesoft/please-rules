@@ -237,3 +237,61 @@ func TestSynthesizeSingletonHoistingMatrix(t *testing.T) {
 		})
 	}
 }
+
+func TestResolveImportPathFindsEmbeddedDependencyAbove(t *testing.T) {
+	work := t.TempDir()
+	prev, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(work); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(prev) })
+
+	// A test directory holds a library (components) and, flat next to it, the modules it needs:
+	// lib, which in turn needs base. Neither sits under the directory of the module importing it.
+	mustTouch(t, filepath.Join(work, "out", "test", "x", "lib", "lib", "greeting.ts"))
+	mustTouch(t, filepath.Join(work, "out", "test", "x", "base", "base", "prefix.ts"))
+	libDir := filepath.Join(work, "out", "test", "x", "lib", "lib")
+
+	tests := []struct {
+		name, v, baseDir, want string
+	}{
+		{
+			name:    "a dependency next to the library",
+			v:       "./test/x/lib/lib/greeting.ts",
+			baseDir: filepath.Join(work, "out", "test", "x", "components", "components"),
+			want:    "./out/test/x/lib/lib/greeting.ts",
+		},
+		{
+			name:    "a dependency of a dependency, found from the nested library upwards",
+			v:       "./test/x/base/base/prefix.ts",
+			baseDir: libDir,
+			want:    "./out/test/x/base/base/prefix.ts",
+		},
+		{
+			name:    "nothing found: relative to the base directory, as before",
+			v:       "./test/x/missing/missing/m.ts",
+			baseDir: libDir,
+			want:    "./out/test/x/lib/lib/test/x/missing/missing/m.ts",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := resolveImportPath(tt.v, tt.baseDir, work); got != tt.want {
+				t.Errorf("resolveImportPath(%q) = %q, want %q", tt.v, got, tt.want)
+			}
+		})
+	}
+}
+
+func mustTouch(t *testing.T, path string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, nil, 0644); err != nil {
+		t.Fatal(err)
+	}
+}

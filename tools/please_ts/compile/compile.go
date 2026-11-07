@@ -202,9 +202,14 @@ func emitOutput(opts Options, im *importmap.ImportMap) error {
 // embedDependencies copies every module found under root (outside outDir) into outDir, keeping
 // its path relative to root. The metadata of a library names its dependencies by those
 // build-output paths, and the importmap loader resolves a path that does not exist in the working
-// directory against the library's own directory: with the dependencies embedded there, it finds
-// them. A module that sits inside another one is an embedded copy of that module's own
-// dependencies and travels with it, so only the outermost modules are copied.
+// directory against the directories above the library, so the dependencies only have to be
+// somewhere in the output.
+//
+// Each module is copied once. The output of a library already embeds its own dependencies, but
+// they are also in root as modules of their own, so a library is copied shallowly (its own files
+// and metadata) and a module nested inside another one is skipped; copying whole outputs would
+// repeat every module once per path that reaches it, doubling the size at each level of the graph.
+// An npm module is copied whole: its .deps directory holds the packages it needs.
 func embedDependencies(root, outDir string) error {
 	absOut, err := filepath.Abs(outDir)
 	if err != nil {
@@ -246,8 +251,33 @@ func embedDependencies(root, outDir string) error {
 		if err != nil {
 			return err
 		}
-		if err := copyTree(dir, filepath.Join(outDir, rel)); err != nil {
+		dst := filepath.Join(outDir, rel)
+		if _, err := os.Stat(filepath.Join(dir, "ts_metadata.json")); err == nil {
+			err = copyLibraryFiles(dir, dst)
+		} else {
+			err = copyTree(dir, dst)
+		}
+		if err != nil {
 			return fmt.Errorf("failed embedding dependency %s: %w", dir, err)
+		}
+	}
+	return nil
+}
+
+// copyLibraryFiles copies the metadata and the own files (the "files" of the metadata) of the
+// library output in src, leaving out the dependencies embedded in it.
+func copyLibraryFiles(src, dst string) error {
+	data, err := os.ReadFile(filepath.Join(src, "ts_metadata.json"))
+	if err != nil {
+		return err
+	}
+	var meta importmap.ModuleMetadata
+	if err := json.Unmarshal(data, &meta); err != nil {
+		return err
+	}
+	for _, name := range append([]string{"ts_metadata.json"}, meta.Files...) {
+		if err := copyFile(filepath.Join(src, name), filepath.Join(dst, name)); err != nil {
+			return err
 		}
 	}
 	return nil

@@ -167,13 +167,16 @@ func TestEmbedDependencies(t *testing.T) {
 	out := filepath.Join(root, "pkg", "out")
 
 	// Two sibling libraries, one npm module, and a library that already embeds a dependency of its
-	// own (a nested module, as every library output now does).
-	writeTestFile(t, filepath.Join(root, "a", "a", "ts_metadata.json"), "{}")
+	// own (a nested module, as every library output has).
+	writeTestFile(t, filepath.Join(root, "a", "a", "ts_metadata.json"), `{"files":["a.ts"]}`)
 	writeTestFile(t, filepath.Join(root, "a", "a", "a.ts"), "a")
-	writeTestFile(t, filepath.Join(root, "b", "b", "ts_metadata.json"), "{}")
+	writeTestFile(t, filepath.Join(root, "b", "b", "ts_metadata.json"), `{"files":["b.ts"]}`)
 	writeTestFile(t, filepath.Join(root, "b", "b", "b.ts"), "b")
-	writeTestFile(t, filepath.Join(root, "b", "b", "c", "c", "ts_metadata.json"), "{}")
+	writeTestFile(t, filepath.Join(root, "b", "b", "c", "c", "ts_metadata.json"), `{"files":["c.ts"]}`)
 	writeTestFile(t, filepath.Join(root, "b", "b", "c", "c", "c.ts"), "c")
+	// c is also a module of its own in the sandbox, as every dependency is.
+	writeTestFile(t, filepath.Join(root, "c", "c", "ts_metadata.json"), `{"files":["c.ts"]}`)
+	writeTestFile(t, filepath.Join(root, "c", "c", "c.ts"), "c")
 	writeTestFile(t, filepath.Join(root, "npm", "clsx", "ts_module.json"), "{}")
 	writeTestFile(t, filepath.Join(root, "npm", "clsx", "dist", "clsx.mjs"), "clsx")
 	writeTestFile(t, filepath.Join(root, "npm", "clsx", ".deps", "ms", "index.js"), "ms")
@@ -192,8 +195,9 @@ func TestEmbedDependencies(t *testing.T) {
 
 	for _, want := range []string{
 		"a/a/a.ts", "a/a/ts_metadata.json",
-		"b/b/b.ts", "b/b/c/c/c.ts", "b/b/c/c/ts_metadata.json",
-		"npm/clsx/dist/clsx.mjs", "npm/clsx/ts_module.json",
+		"b/b/b.ts", "b/b/ts_metadata.json",
+		"c/c/c.ts", "c/c/ts_metadata.json", // once, at its own path
+		"npm/clsx/dist/clsx.mjs", "npm/clsx/ts_module.json", "npm/clsx/.deps/ms/index.js",
 		"own.ts",
 	} {
 		if _, err := os.Stat(filepath.Join(out, want)); err != nil {
@@ -208,12 +212,24 @@ func TestEmbedDependencies(t *testing.T) {
 	}
 	for _, unwanted := range []string{
 		"unrelated", // not a module
-		"c",         // the nested module travels inside b, not as a sibling
+		"b/b/c",     // the copy of c nested in b is not repeated: c is already there once
 		"pkg/out",   // the output is not copied into itself
 		"out/pkg/out",
 	} {
 		if _, err := os.Stat(filepath.Join(out, unwanted)); err == nil {
 			t.Errorf("%s was copied into the output", unwanted)
 		}
+	}
+
+	// Counting the copies of c.ts is the point: one per module, however many paths reach it.
+	copies := 0
+	_ = filepath.WalkDir(out, func(path string, d os.DirEntry, err error) error {
+		if err == nil && !d.IsDir() && d.Name() == "c.ts" {
+			copies++
+		}
+		return nil
+	})
+	if copies != 1 {
+		t.Errorf("c.ts was copied %d times, want 1", copies)
 	}
 }

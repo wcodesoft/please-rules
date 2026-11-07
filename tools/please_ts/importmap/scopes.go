@@ -128,10 +128,37 @@ func resolveImportPath(v, baseDir, workingDir string) string {
 			return rel
 		}
 	} else {
-		fullPath := filepath.Join(baseDir, v)
+		fullPath := findAboveBaseDir(cleanV, baseDir, workingDir)
 		if rel, err := relativeTo(workingDir, fullPath); err == nil {
 			return rel
 		}
 	}
 	return v
+}
+
+// findAboveBaseDir resolves a build-output path (such as test/ts/lib/lib/a.ts) that is not in the
+// working directory. A library's output embeds its dependencies at such paths, next to the
+// library or further up, so the nearest directory from baseDir upwards that holds the path wins.
+// When none does, the path is taken relative to baseDir.
+func findAboveBaseDir(path, baseDir, workingDir string) string {
+	root, err := filepath.Abs(workingDir)
+	if err != nil {
+		return filepath.Join(baseDir, path)
+	}
+	dir, err := filepath.Abs(baseDir)
+	if err != nil {
+		return filepath.Join(baseDir, path)
+	}
+	for {
+		candidate := filepath.Join(dir, path)
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
+		parent := filepath.Dir(dir)
+		if dir == root || parent == dir || !strings.HasPrefix(dir, root) {
+			break
+		}
+		dir = parent
+	}
+	return filepath.Join(baseDir, path)
 }

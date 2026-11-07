@@ -103,8 +103,10 @@ at their build-output paths. A test, binary or bundle that depends on the
 library therefore needs to list **only the library**, not the libraries and
 modules the library imports. Listing them as well is harmless.
 
-The price is disk: each library output holds a copy of its dependency closure,
-so a library close to the top of a large graph is bigger than its own sources.
+The price is disk: each library output holds one copy of every module in its
+dependency closure (never one per path that reaches it), so a library close to
+the top of a large graph is bigger than its own sources, and the total grows
+with the size of the closures.
 
 #### Subpath Imports & Package Mapping
 
