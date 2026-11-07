@@ -95,6 +95,17 @@ ts_library(
 | `module_name` | `str`  | `""`       | Optional module alias for bare specifiers. If omitted, automatically derived from `[plugin "ts"] ModulePrefix` and the Please package path. |
 | `flags`       | `list` | `[]`       | Additional flags passed to `deno check`.                                                                                                    |
 
+#### Transitive dependencies
+
+A library's output carries its own dependencies: the `ts_library` and
+`ts_module` targets it depends on, directly or not, are copied into the output
+at their build-output paths. A test, binary or bundle that depends on the
+library therefore needs to list **only the library**, not the libraries and
+modules the library imports. Listing them as well is harmless.
+
+The price is disk: each library output holds a copy of its dependency closure,
+so a library close to the top of a large graph is bigger than its own sources.
+
 #### Subpath Imports & Package Mapping
 
 When a `ts_library` contains multiple files, `please_ts` automatically generates

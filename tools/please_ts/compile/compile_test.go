@@ -151,3 +151,69 @@ func TestRunVitestTargetWithoutNpmSlicesReadsTheSharedCacheFromAPrivateDirectory
 		t.Errorf("unexpected invocation:\n%s", data)
 	}
 }
+
+func writeTestFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestEmbedDependencies(t *testing.T) {
+	root := t.TempDir()
+	out := filepath.Join(root, "pkg", "out")
+
+	// Two sibling libraries, one npm module, and a library that already embeds a dependency of its
+	// own (a nested module, as every library output now does).
+	writeTestFile(t, filepath.Join(root, "a", "a", "ts_metadata.json"), "{}")
+	writeTestFile(t, filepath.Join(root, "a", "a", "a.ts"), "a")
+	writeTestFile(t, filepath.Join(root, "b", "b", "ts_metadata.json"), "{}")
+	writeTestFile(t, filepath.Join(root, "b", "b", "b.ts"), "b")
+	writeTestFile(t, filepath.Join(root, "b", "b", "c", "c", "ts_metadata.json"), "{}")
+	writeTestFile(t, filepath.Join(root, "b", "b", "c", "c", "c.ts"), "c")
+	writeTestFile(t, filepath.Join(root, "npm", "clsx", "ts_module.json"), "{}")
+	writeTestFile(t, filepath.Join(root, "npm", "clsx", "dist", "clsx.mjs"), "clsx")
+	writeTestFile(t, filepath.Join(root, "npm", "clsx", ".deps", "ms", "index.js"), "ms")
+	if err := os.Symlink(".deps", filepath.Join(root, "npm", "clsx", "node_modules")); err != nil {
+		t.Fatal(err)
+	}
+	// A stray file that is not part of any module must not be copied.
+	writeTestFile(t, filepath.Join(root, "unrelated", "notes.txt"), "x")
+	// The target's own output, with its own metadata, must not be copied into itself.
+	writeTestFile(t, filepath.Join(out, "ts_metadata.json"), "{}")
+	writeTestFile(t, filepath.Join(out, "own.ts"), "own")
+
+	if err := embedDependencies(root, out); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, want := range []string{
+		"a/a/a.ts", "a/a/ts_metadata.json",
+		"b/b/b.ts", "b/b/c/c/c.ts", "b/b/c/c/ts_metadata.json",
+		"npm/clsx/dist/clsx.mjs", "npm/clsx/ts_module.json",
+		"own.ts",
+	} {
+		if _, err := os.Stat(filepath.Join(out, want)); err != nil {
+			t.Errorf("%s missing from the output: %v", want, err)
+		}
+	}
+	if link, err := os.Readlink(filepath.Join(out, "npm", "clsx", "node_modules")); err != nil || link != ".deps" {
+		t.Errorf("node_modules link = %q, %v, want a relative link to .deps", link, err)
+	}
+	if _, err := os.Stat(filepath.Join(out, "npm", "clsx", "node_modules", "ms", "index.js")); err != nil {
+		t.Errorf("a dependency is not reachable through the copied node_modules link: %v", err)
+	}
+	for _, unwanted := range []string{
+		"unrelated", // not a module
+		"c",         // the nested module travels inside b, not as a sibling
+		"pkg/out",   // the output is not copied into itself
+		"out/pkg/out",
+	} {
+		if _, err := os.Stat(filepath.Join(out, unwanted)); err == nil {
+			t.Errorf("%s was copied into the output", unwanted)
+		}
+	}
+}

@@ -9,6 +9,15 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Fixed
+
+- A test that depends on a library no longer has to list the libraries and
+  `ts_module` targets that library imports. `ts_test` and `ts_browser_test`
+  failed with `Cannot find module` (Deno) or `Could not resolve` (browser
+  bundle) because only the direct dependencies were staged. A `ts_library`
+  output now embeds its transitive dependencies at their build-output paths,
+  where the import map loader already looks. See issue #107.
+
 ## [0.9.0] - 2026-11-07
 
 ### Added

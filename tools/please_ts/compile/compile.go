@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"tools/please_ts/importmap"
@@ -22,6 +23,10 @@ type Options struct {
 	ModuleName string
 	Flags      []string
 	VitestDir  string
+	// EmbedDeps copies the modules the build sandbox holds (the target's transitive dependencies)
+	// into the output, at their build-output paths, so a consumer that only stages this output
+	// still finds them.
+	EmbedDeps bool
 }
 
 // Run executes the type-checking and packages the library output.
@@ -185,7 +190,96 @@ func emitOutput(opts Options, im *importmap.ImportMap) error {
 		return err
 	}
 
-	return os.WriteFile(filepath.Join(outDir, "ts_metadata.json"), metaData, 0644)
+	if err := os.WriteFile(filepath.Join(outDir, "ts_metadata.json"), metaData, 0644); err != nil {
+		return err
+	}
+	if opts.EmbedDeps {
+		return embedDependencies(".", outDir)
+	}
+	return nil
+}
+
+// embedDependencies copies every module found under root (outside outDir) into outDir, keeping
+// its path relative to root. The metadata of a library names its dependencies by those
+// build-output paths, and the importmap loader resolves a path that does not exist in the working
+// directory against the library's own directory: with the dependencies embedded there, it finds
+// them. A module that sits inside another one is an embedded copy of that module's own
+// dependencies and travels with it, so only the outermost modules are copied.
+func embedDependencies(root, outDir string) error {
+	absOut, err := filepath.Abs(outDir)
+	if err != nil {
+		return err
+	}
+
+	var moduleDirs []string
+	err = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		abs, absErr := filepath.Abs(path)
+		if absErr != nil {
+			return nil
+		}
+		if d.IsDir() && abs == absOut {
+			return filepath.SkipDir
+		}
+		if !d.IsDir() && (d.Name() == "ts_metadata.json" || d.Name() == "ts_module.json") {
+			moduleDirs = append(moduleDirs, filepath.Dir(path))
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	sort.Strings(moduleDirs)
+	var outermost []string
+	for _, dir := range moduleDirs {
+		if n := len(outermost); n > 0 && strings.HasPrefix(dir+string(filepath.Separator), outermost[n-1]+string(filepath.Separator)) {
+			continue
+		}
+		outermost = append(outermost, dir)
+	}
+
+	for _, dir := range outermost {
+		rel, err := filepath.Rel(root, dir)
+		if err != nil {
+			return err
+		}
+		if err := copyTree(dir, filepath.Join(outDir, rel)); err != nil {
+			return fmt.Errorf("failed embedding dependency %s: %w", dir, err)
+		}
+	}
+	return nil
+}
+
+func copyTree(src, dst string) error {
+	return filepath.WalkDir(src, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(dst, rel)
+		if d.IsDir() {
+			return os.MkdirAll(target, 0755)
+		}
+		// An npm module links node_modules to the directory holding its own dependencies; the
+		// link is relative, so recreating it keeps it valid in the copy.
+		if d.Type()&os.ModeSymlink != 0 {
+			link, err := os.Readlink(path)
+			if err != nil {
+				return err
+			}
+			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+				return err
+			}
+			return os.Symlink(link, target)
+		}
+		return copyFile(path, target)
+	})
 }
 
 func copyFile(src, dst string) error {
