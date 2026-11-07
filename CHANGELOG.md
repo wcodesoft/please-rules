@@ -9,6 +9,8 @@ and this project adheres to
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-07
+
 ### Added
 
 - Pixel screenshots for `ts_browser_test`:
