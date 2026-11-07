@@ -12,6 +12,8 @@ import (
 	"io"
 	"os"
 	"strings"
+
+	"tools/common/mutate/runner"
 )
 
 type multiFlag []string
@@ -52,7 +54,7 @@ func runCLI(args []string, stdout, stderr io.Writer) error {
 		srcs = append(srcs, fs.Args()...)
 	}
 
-	opts := Options{
+	opts := runner.Options{
 		Srcs:              srcs,
 		Lang:              *lang,
 		Target:            *target,
@@ -70,6 +72,6 @@ func runCLI(args []string, stdout, stderr io.Writer) error {
 		Stderr:            stderr,
 	}
 
-	_, err := Run(context.Background(), opts)
+	_, err := runner.Run(context.Background(), opts)
 	return err
 }
