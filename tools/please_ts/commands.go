@@ -171,6 +171,11 @@ func handleTestRunner(args []string) error {
 	snapshotsFlag := cmd.String("snapshots", "", "Browser tests: comma-separated golden JSON files for expectComputedStyles")
 	snapshotsOut := cmd.String("snapshots-out", "", "Browser tests: directory that receives every recorded snapshot")
 
+	screenshotsFlag := cmd.String("screenshots", "", "Browser tests: comma-separated golden PNG files for expectScreenshot")
+	screenshotsOn := cmd.Bool("screenshots-enabled", false, "Browser tests: enable expectScreenshot and deterministic rendering flags")
+	pixelChannel := cmd.Int("pixel-channel-tolerance", 0, "Screenshots: per-channel difference (0-255) tolerated for a pixel to match")
+	maxDiffRatio := cmd.Float64("max-diff-ratio", 0, "Screenshots: share (0-1) of pixels allowed to differ")
+
 	if err := cmd.Parse(args); err != nil {
 		return err
 	}
@@ -197,6 +202,10 @@ func handleTestRunner(args []string) error {
 		Viewport:      *viewport,
 		Snapshots:     snapshots,
 		SnapshotsOut:  *snapshotsOut,
+		Screenshots:   compile.ExpandCommaSeparated([]string{*screenshotsFlag}),
+		ScreenshotsOn: *screenshotsOn,
+		PixelChannel:  *pixelChannel,
+		MaxDiffRatio:  *maxDiffRatio,
 	}
 	return testrunner.Run(opts)
 }

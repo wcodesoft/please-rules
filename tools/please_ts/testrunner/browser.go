@@ -66,17 +66,20 @@ func (opts RunOptions) runBrowserTest(resultsFile string) error {
 	_ = os.WriteFile(htmlPath, []byte("<!DOCTYPE html><html><head><meta charset=\"utf-8\"></head><body></body></html>"), 0644)
 
 	// 2. Launch headless Chromium
-	browserCmd := exec.Command(browserBin,
+	browserArgs := []string{
 		"--headless",
 		"--no-sandbox",
 		"--disable-gpu",
 		"--disable-dev-shm-usage",
 		"--remote-debugging-port=0",
-		"--user-data-dir="+profileDir,
+		"--user-data-dir=" + profileDir,
 		"--allow-file-access-from-files",
 		"--disable-web-security",
-		"file://"+htmlPath,
-	)
+	}
+	if opts.ScreenshotsOn {
+		browserArgs = append(browserArgs, chromiumRenderingFlags...)
+	}
+	browserCmd := exec.Command(browserBin, append(browserArgs, "file://"+htmlPath)...)
 	stderr, err := browserCmd.StderrPipe()
 	if err != nil {
 		_ = writeFallbackJUnit(resultsFile, opts.Srcs, err)
@@ -250,6 +253,20 @@ func (opts RunOptions) runBrowserTest(resultsFile string) error {
 		return fmt.Errorf("failed injecting snapshot helper: %w", err)
 	}
 
+	var shots *screenshotCollector
+	if opts.ScreenshotsOn {
+		shots = newScreenshotCollector(client)
+		client.OnEvent("Runtime.bindingCalled", shots.onBindingCalled)
+		if _, err := client.Send("Runtime.addBinding", map[string]interface{}{"name": screenshotBinding}); err != nil {
+			_ = writeFallbackJUnit(resultsFile, opts.Srcs, err)
+			return fmt.Errorf("failed adding the screenshot binding: %w", err)
+		}
+		if _, err := client.Evaluate(screenshotHelperJS); err != nil {
+			_ = writeFallbackJUnit(resultsFile, opts.Srcs, err)
+			return fmt.Errorf("failed injecting screenshot helper: %w", err)
+		}
+	}
+
 	// 4. Inject bundled test script
 	if _, err := client.Evaluate(string(bundleBytes)); err != nil {
 		_ = writeFallbackJUnit(resultsFile, opts.Srcs, err)
@@ -305,6 +322,15 @@ func (opts RunOptions) runBrowserTest(resultsFile string) error {
 		return fmt.Errorf("failed checking snapshots: %w", err)
 	}
 	results = append(results, snapshotResults...)
+	if shots != nil {
+		tol := pixelTolerance{Channel: opts.PixelChannel, Ratio: opts.MaxDiffRatio}
+		screenshotResults, err := checkScreenshots(opts.Screenshots, opts.SnapshotsOut, shots.results(), tol)
+		if err != nil {
+			_ = writeFallbackJUnit(resultsFile, opts.Srcs, err)
+			return fmt.Errorf("failed checking screenshots: %w", err)
+		}
+		results = append(results, screenshotResults...)
+	}
 	return writeBrowserJUnit(resultsFile, opts.Srcs, results)
 }
 

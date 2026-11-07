@@ -299,19 +299,22 @@ ts_browser_test(
 
 ### Arguments
 
-| Argument         | Type   | Default      | Description                                                                                 |
-| :--------------- | :----- | :----------- | :------------------------------------------------------------------------------------------ |
-| `name`           | `str`  | (required)   | Target name.                                                                                |
-| `srcs`           | `list` | (required)   | Test source files.                                                                          |
-| `browser`        | `str`  | `"chromium"` | Browser type (`"chromium"`).                                                                |
-| `browser_binary` | `str`  | `""`         | Path or build label for the browser executable (defaults to `BrowserTool` in `.plzconfig`). |
-| `runner`         | `str`  | `"browser"`  | Browser test runner (`"browser"` for hermetic CDP runner, or `"vitest"`).                   |
-| `deps`           | `list` | `[]`         | Dependent libraries.                                                                        |
-| `data`           | `list` | `[]`         | Runtime test data.                                                                          |
-| `module_name`    | `str`  | `""`         | Optional module name override.                                                              |
-| `flags`          | `list` | `[]`         | Additional flags.                                                                           |
-| `viewport`       | `str`  | `""`         | Emulated window size as `"WIDTHxHEIGHT"`, so media queries resolve the same everywhere.     |
-| `snapshots`      | `list` | `[]`         | Golden JSON files for `expectComputedStyles` (see below).                                   |
+| Argument                  | Type   | Default      | Description                                                                                 |
+| :------------------------ | :----- | :----------- | :------------------------------------------------------------------------------------------ |
+| `name`                    | `str`  | (required)   | Target name.                                                                                |
+| `srcs`                    | `list` | (required)   | Test source files.                                                                          |
+| `browser`                 | `str`  | `"chromium"` | Browser type (`"chromium"`).                                                                |
+| `browser_binary`          | `str`  | `""`         | Path or build label for the browser executable (defaults to `BrowserTool` in `.plzconfig`). |
+| `runner`                  | `str`  | `"browser"`  | Browser test runner (`"browser"` for hermetic CDP runner, or `"vitest"`).                   |
+| `deps`                    | `list` | `[]`         | Dependent libraries.                                                                        |
+| `data`                    | `list` | `[]`         | Runtime test data.                                                                          |
+| `module_name`             | `str`  | `""`         | Optional module name override.                                                              |
+| `flags`                   | `list` | `[]`         | Additional flags.                                                                           |
+| `viewport`                | `str`  | `""`         | Emulated window size as `"WIDTHxHEIGHT"`, so media queries resolve the same everywhere.     |
+| `snapshots`               | `list` | `[]`         | Golden JSON files for `expectComputedStyles` (see below).                                   |
+| `screenshots`             | `list` | `None`       | Golden PNG files for `expectScreenshot`. Passing it, even as `[]`, turns screenshots on.    |
+| `pixel_channel_tolerance` | `int`  | `0`          | Largest per-channel (0-255) difference at which two pixels still match.                     |
+| `max_diff_ratio`          | `str`  | `"0"`        | Share of pixels allowed to differ, as a string such as `"0.001"`.                           |
 
 ### Computed-style snapshots
 
@@ -348,5 +351,52 @@ ts_browser_test(
 )
 ```
 
-Computed styles are deterministic across machines. Pixel screenshots (layout,
-stacking, clipping) are not covered yet; see issue #103.
+Computed styles are deterministic across machines. For what they cannot see
+(layout, stacking, clipping, how things actually paint), use screenshots.
+
+### Screenshots
+
+```ts
+declare const expectScreenshot: (
+  name: string,
+  options?: { selector?: string; fullPage?: boolean },
+) => Promise<void>;
+
+await expectScreenshot("card", { selector: ".card" });
+await expectScreenshot("page", { fullPage: true });
+```
+
+`expectScreenshot` captures an element (`selector`), the whole scrollable page
+(`fullPage`) or, with no options, the viewport. **Always `await` it:** the
+capture happens while the promise is pending, so a test that goes on and changes
+the DOM would capture the wrong thing. It waits for web fonts
+(`document.fonts.ready`) and two animation frames first.
+
+Goldens are PNG files passed as `screenshots`, one `<name>.png` per screenshot.
+A screenshot fails when its size differs from the golden, when more than
+`max_diff_ratio` of the pixels differ by more than `pixel_channel_tolerance` in
+any channel, when there is no golden, or when a golden was never captured. Every
+capture is written to the `<target>.snapshots` test output as `<name>.png`, and
+a failing comparison also writes `<name>.diff.png` (differing pixels in red). To
+accept a change, copy the capture over the golden and review it.
+
+To record the first goldens, pass `screenshots = []`: the screenshots fail with
+"no golden", and the captures are in the test output.
+
+```starlark
+ts_browser_test(
+    name = "card_test",
+    srcs = ["card_test.ts"],
+    screenshots = ["screenshots/card.png"],
+    viewport = "800x600",
+    max_diff_ratio = "0.001",
+)
+```
+
+Passing `screenshots` also starts the browser with flags that make rendering
+reproducible (no font hinting or subpixel positioning, no LCD antialiasing, no
+scrollbars, sRGB, device scale 1). They are not used otherwise, so the layout of
+other browser tests does not change. Rendering text still depends on the fonts
+installed on the machine. For goldens that are stable on every machine and in
+CI, load the fonts the page uses with `@font-face` from files you ship, or keep
+pixel-checked pages free of text and use computed-style snapshots for the text.

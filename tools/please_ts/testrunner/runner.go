@@ -23,7 +23,11 @@ type RunOptions struct {
 	EsbuildBinary string   // pinned esbuild, to bundle npm packages for browser tests
 	Viewport      string   // browser tests: "WIDTHxHEIGHT" emulated viewport, empty for the browser default
 	Snapshots     []string // browser tests: golden JSON files for expectComputedStyles
-	SnapshotsOut  string   // browser tests: directory receiving every recorded snapshot
+	SnapshotsOut  string   // browser tests: directory receiving every recorded snapshot and screenshot
+	Screenshots   []string // browser tests: golden PNG files for expectScreenshot
+	ScreenshotsOn bool     // browser tests: enable expectScreenshot and the deterministic rendering flags
+	PixelChannel  int      // screenshots: per-channel difference (0-255) tolerated for a pixel to match
+	MaxDiffRatio  float64  // screenshots: share (0-1) of pixels allowed to differ
 	ExtraArgs     []string
 }
 

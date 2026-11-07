@@ -21,3 +21,14 @@ ts_browser_test(
     snapshots = ["snapshots/card.json"],
     viewport = "800x600",
 )
+
+# Colored boxes only, so the goldens do not depend on the fonts of the machine that renders them.
+ts_browser_test(
+    name = "screenshot_browser_test",
+    srcs = ["screenshot_browser_test.ts"],
+    screenshots = [
+        "screenshots/card.png",
+        "screenshots/page.png",
+    ],
+    viewport = "800x600",
+)

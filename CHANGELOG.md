@@ -9,6 +9,19 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Added
+
+- Pixel screenshots for `ts_browser_test`:
+  `await expectScreenshot(name, {selector?, fullPage?})` captures an element,
+  the full page or the viewport, and the build compares it with a golden
+  `<name>.png` passed as `screenshots`. `pixel_channel_tolerance` and
+  `max_diff_ratio` set how much may differ; a failure writes a `<name>.diff.png`
+  next to the capture in the `<target>.snapshots` test output. Passing
+  `screenshots` also starts the browser with flags that make rendering
+  reproducible. The CDP client now dispatches protocol events
+  (`CDPClient.OnEvent`), which the capture request uses (`Runtime.addBinding`).
+  Phase 2 of issue #103.
+
 ## [0.8.0] - 2026-11-06
 
 ### Added
