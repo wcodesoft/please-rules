@@ -28,6 +28,7 @@ func handleCompile(args []string) error {
 	moduleName := cmd.String("module-name", "", "Module name or package specifier alias")
 	flags := cmd.String("flags", "", "Additional deno check flags")
 	vitestDir := cmd.String("vitest-dir", "", "Path to hermetic Vitest cache directory")
+	embedDeps := cmd.Bool("embed-deps", false, "Copy the transitive dependencies into the output, so a consumer that stages only this output finds them")
 
 	if err := cmd.Parse(args); err != nil {
 		return err
@@ -48,6 +49,7 @@ func handleCompile(args []string) error {
 		Out:        *out,
 		Srcs:       srcs,
 		Deps:       deps,
+		EmbedDeps:  *embedDeps,
 		ModuleName: *moduleName,
 		Flags:      extraFlags,
 		VitestDir:  *vitestDir,

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"tools/please_ts/importmap"
@@ -22,6 +23,10 @@ type Options struct {
 	ModuleName string
 	Flags      []string
 	VitestDir  string
+	// EmbedDeps copies the modules the build sandbox holds (the target's transitive dependencies)
+	// into the output, at their build-output paths, so a consumer that only stages this output
+	// still finds them.
+	EmbedDeps bool
 }
 
 // Run executes the type-checking and packages the library output.
@@ -185,7 +190,126 @@ func emitOutput(opts Options, im *importmap.ImportMap) error {
 		return err
 	}
 
-	return os.WriteFile(filepath.Join(outDir, "ts_metadata.json"), metaData, 0644)
+	if err := os.WriteFile(filepath.Join(outDir, "ts_metadata.json"), metaData, 0644); err != nil {
+		return err
+	}
+	if opts.EmbedDeps {
+		return embedDependencies(".", outDir)
+	}
+	return nil
+}
+
+// embedDependencies copies every module found under root (outside outDir) into outDir, keeping
+// its path relative to root. The metadata of a library names its dependencies by those
+// build-output paths, and the importmap loader resolves a path that does not exist in the working
+// directory against the directories above the library, so the dependencies only have to be
+// somewhere in the output.
+//
+// Each module is copied once. The output of a library already embeds its own dependencies, but
+// they are also in root as modules of their own, so a library is copied shallowly (its own files
+// and metadata) and a module nested inside another one is skipped; copying whole outputs would
+// repeat every module once per path that reaches it, doubling the size at each level of the graph.
+// An npm module is copied whole: its .deps directory holds the packages it needs.
+func embedDependencies(root, outDir string) error {
+	absOut, err := filepath.Abs(outDir)
+	if err != nil {
+		return err
+	}
+
+	var moduleDirs []string
+	err = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		abs, absErr := filepath.Abs(path)
+		if absErr != nil {
+			return nil
+		}
+		if d.IsDir() && abs == absOut {
+			return filepath.SkipDir
+		}
+		if !d.IsDir() && (d.Name() == "ts_metadata.json" || d.Name() == "ts_module.json") {
+			moduleDirs = append(moduleDirs, filepath.Dir(path))
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	sort.Strings(moduleDirs)
+	var outermost []string
+	for _, dir := range moduleDirs {
+		if n := len(outermost); n > 0 && strings.HasPrefix(dir+string(filepath.Separator), outermost[n-1]+string(filepath.Separator)) {
+			continue
+		}
+		outermost = append(outermost, dir)
+	}
+
+	for _, dir := range outermost {
+		rel, err := filepath.Rel(root, dir)
+		if err != nil {
+			return err
+		}
+		dst := filepath.Join(outDir, rel)
+		if _, err := os.Stat(filepath.Join(dir, "ts_metadata.json")); err == nil {
+			err = copyLibraryFiles(dir, dst)
+		} else {
+			err = copyTree(dir, dst)
+		}
+		if err != nil {
+			return fmt.Errorf("failed embedding dependency %s: %w", dir, err)
+		}
+	}
+	return nil
+}
+
+// copyLibraryFiles copies the metadata and the own files (the "files" of the metadata) of the
+// library output in src, leaving out the dependencies embedded in it.
+func copyLibraryFiles(src, dst string) error {
+	data, err := os.ReadFile(filepath.Join(src, "ts_metadata.json"))
+	if err != nil {
+		return err
+	}
+	var meta importmap.ModuleMetadata
+	if err := json.Unmarshal(data, &meta); err != nil {
+		return err
+	}
+	for _, name := range append([]string{"ts_metadata.json"}, meta.Files...) {
+		if err := linkOrCopy(filepath.Join(src, name), filepath.Join(dst, name)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func copyTree(src, dst string) error {
+	return filepath.WalkDir(src, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(dst, rel)
+		if d.IsDir() {
+			return os.MkdirAll(target, 0755)
+		}
+		// An npm module links node_modules to the directory holding its own dependencies; the
+		// link is relative, so recreating it keeps it valid in the copy.
+		if d.Type()&os.ModeSymlink != 0 {
+			link, err := os.Readlink(path)
+			if err != nil {
+				return err
+			}
+			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+				return err
+			}
+			return os.Symlink(link, target)
+		}
+		return linkOrCopy(path, target)
+	})
 }
 
 func copyFile(src, dst string) error {
@@ -221,4 +345,17 @@ func ExpandCommaSeparated(items []string) []string {
 		}
 	}
 	return result
+}
+
+// linkOrCopy makes dst a hard link of src, so a dependency embedded in many outputs is stored once,
+// and falls back to a copy when the two are on different file systems or links are not allowed.
+// The outputs of a build are read-only, so a shared file cannot be changed through either name.
+func linkOrCopy(src, dst string) error {
+	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
+		return err
+	}
+	if err := os.Link(src, dst); err == nil {
+		return nil
+	}
+	return copyFile(src, dst)
 }

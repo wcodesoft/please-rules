@@ -151,3 +151,116 @@ func TestRunVitestTargetWithoutNpmSlicesReadsTheSharedCacheFromAPrivateDirectory
 		t.Errorf("unexpected invocation:\n%s", data)
 	}
 }
+
+func writeTestFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestEmbedDependencies(t *testing.T) {
+	root := t.TempDir()
+	out := filepath.Join(root, "pkg", "out")
+
+	// Two sibling libraries, one npm module, and a library that already embeds a dependency of its
+	// own (a nested module, as every library output has).
+	writeTestFile(t, filepath.Join(root, "a", "a", "ts_metadata.json"), `{"files":["a.ts"]}`)
+	writeTestFile(t, filepath.Join(root, "a", "a", "a.ts"), "a")
+	writeTestFile(t, filepath.Join(root, "b", "b", "ts_metadata.json"), `{"files":["b.ts"]}`)
+	writeTestFile(t, filepath.Join(root, "b", "b", "b.ts"), "b")
+	writeTestFile(t, filepath.Join(root, "b", "b", "c", "c", "ts_metadata.json"), `{"files":["c.ts"]}`)
+	writeTestFile(t, filepath.Join(root, "b", "b", "c", "c", "c.ts"), "c")
+	// c is also a module of its own in the sandbox, as every dependency is.
+	writeTestFile(t, filepath.Join(root, "c", "c", "ts_metadata.json"), `{"files":["c.ts"]}`)
+	writeTestFile(t, filepath.Join(root, "c", "c", "c.ts"), "c")
+	writeTestFile(t, filepath.Join(root, "npm", "clsx", "ts_module.json"), "{}")
+	writeTestFile(t, filepath.Join(root, "npm", "clsx", "dist", "clsx.mjs"), "clsx")
+	writeTestFile(t, filepath.Join(root, "npm", "clsx", ".deps", "ms", "index.js"), "ms")
+	if err := os.Symlink(".deps", filepath.Join(root, "npm", "clsx", "node_modules")); err != nil {
+		t.Fatal(err)
+	}
+	// A stray file that is not part of any module must not be copied.
+	writeTestFile(t, filepath.Join(root, "unrelated", "notes.txt"), "x")
+	// The target's own output, with its own metadata, must not be copied into itself.
+	writeTestFile(t, filepath.Join(out, "ts_metadata.json"), "{}")
+	writeTestFile(t, filepath.Join(out, "own.ts"), "own")
+
+	if err := embedDependencies(root, out); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, want := range []string{
+		"a/a/a.ts", "a/a/ts_metadata.json",
+		"b/b/b.ts", "b/b/ts_metadata.json",
+		"c/c/c.ts", "c/c/ts_metadata.json", // once, at its own path
+		"npm/clsx/dist/clsx.mjs", "npm/clsx/ts_module.json", "npm/clsx/.deps/ms/index.js",
+		"own.ts",
+	} {
+		if _, err := os.Stat(filepath.Join(out, want)); err != nil {
+			t.Errorf("%s missing from the output: %v", want, err)
+		}
+	}
+	if link, err := os.Readlink(filepath.Join(out, "npm", "clsx", "node_modules")); err != nil || link != ".deps" {
+		t.Errorf("node_modules link = %q, %v, want a relative link to .deps", link, err)
+	}
+	if _, err := os.Stat(filepath.Join(out, "npm", "clsx", "node_modules", "ms", "index.js")); err != nil {
+		t.Errorf("a dependency is not reachable through the copied node_modules link: %v", err)
+	}
+	for _, unwanted := range []string{
+		"unrelated", // not a module
+		"b/b/c",     // the copy of c nested in b is not repeated: c is already there once
+		"pkg/out",   // the output is not copied into itself
+		"out/pkg/out",
+	} {
+		if _, err := os.Stat(filepath.Join(out, unwanted)); err == nil {
+			t.Errorf("%s was copied into the output", unwanted)
+		}
+	}
+
+	// Embedding links files instead of copying them where it can, so a module held by many outputs
+	// is stored once.
+	srcInfo, err := os.Stat(filepath.Join(root, "a", "a", "a.ts"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dstInfo, err := os.Stat(filepath.Join(out, "a", "a", "a.ts"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !os.SameFile(srcInfo, dstInfo) {
+		t.Error("an embedded file is a copy, want a hard link to the original")
+	}
+
+	// Counting the copies of c.ts is the point: one per module, however many paths reach it.
+	copies := 0
+	_ = filepath.WalkDir(out, func(path string, d os.DirEntry, err error) error {
+		if err == nil && !d.IsDir() && d.Name() == "c.ts" {
+			copies++
+		}
+		return nil
+	})
+	if copies != 1 {
+		t.Errorf("c.ts was copied %d times, want 1", copies)
+	}
+}
+
+func TestLinkOrCopyFallsBackToCopy(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "src.ts")
+	writeTestFile(t, src, "content")
+
+	// The destination already exists, so the link fails and the file is copied over it.
+	dst := filepath.Join(dir, "out", "dst.ts")
+	writeTestFile(t, dst, "stale")
+	if err := linkOrCopy(src, dst); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(dst)
+	if err != nil || string(got) != "content" {
+		t.Errorf("dst = %q, %v, want the content of src", got, err)
+	}
+}

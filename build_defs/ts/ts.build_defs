@@ -390,6 +390,7 @@ def ts_library(
         '--out "$OUT"',
         '--srcs "${SRCS:-}"',
         '--deps "${DEPS:-}"',
+        "--embed-deps",
         f'--module-name "{resolved_module}"' if resolved_module else "",
         deno_arg,
         flags_str,
