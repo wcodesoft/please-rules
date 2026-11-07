@@ -117,3 +117,7 @@ please-rules/
 - **[Raw lcov Coverage Reports](coverage-lcov.md)**: where each test rule keeps
   its function and branch coverage, the format, per-language limits, and how to
   classify covered, uncovered and partly covered lines.
+- **[Hermetic Mutation Testing Reports](mutation-testing.md)**: how the shared
+  Tree-sitter mutator (`//tools/common/mutate`) discovers and evaluates mutants
+  across languages, the `.mutation.json` schema, and CI verification with
+  `//tools/common/mutationcheck`.
