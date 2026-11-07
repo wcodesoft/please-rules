@@ -607,6 +607,9 @@ def ts_browser_test(
         module_name: str = "",
         viewport: str = "",
         snapshots: list = None,
+        screenshots: list = None,
+        pixel_channel_tolerance: int = 0,
+        max_diff_ratio: str = "0",
         flags: list = None,
         visibility: list = None,
         labels: list = None):
@@ -616,11 +619,21 @@ def ts_browser_test(
     `<name>.json` is the golden of the snapshot `<name>`. Every recording is written to the
     `<target>.snapshots` test output, so accepting a change means copying that file over the golden.
     `viewport` ("WIDTHxHEIGHT") fixes the window size so media queries resolve the same everywhere.
+
+    `screenshots` are golden PNG files for `await expectScreenshot(name, {selector?, fullPage?})`;
+    the file `<name>.png` is the golden of the screenshot `<name>`. Passing the argument (even as
+    `[]`, to record the first goldens) turns screenshots on and makes the browser render
+    deterministically. A pixel matches when no channel differs by more than
+    `pixel_channel_tolerance` (0-255); the screenshot matches when at most `max_diff_ratio` (a
+    string such as "0.001", the share of pixels) differ. Captures and `<name>.diff.png` images of
+    failures land in the `<target>.snapshots` test output.
     """
     deps = deps or []
     flags = flags or []
     snapshots = snapshots or []
-    data = (data or []) + srcs + deps + snapshots
+    screenshots_on = screenshots != None
+    screenshots = screenshots or []
+    data = (data or []) + srcs + deps + snapshots + screenshots
 
     tools = {"TOOL": [_ts_tool()]}
     deno_arg = _deno_tool_arg(tools)
@@ -646,6 +659,8 @@ def ts_browser_test(
     srcs_list = ",".join(full_srcs)
     full_snapshots = [f"{pkg}/{s}" if not s.startswith(pkg) else s for s in snapshots]
     snapshots_list = ",".join(full_snapshots)
+    full_screenshots = [f"{pkg}/{s}" if not s.startswith(pkg) else s for s in screenshots]
+    screenshots_list = ",".join(full_screenshots)
     testrunner_args = [
         f'--runner "{runner}"',
         f'--browser "{browser}"',
@@ -654,6 +669,10 @@ def ts_browser_test(
         f'--srcs "{srcs_list}"',
         f'--viewport "{viewport}"' if viewport else "",
         f'--snapshots "{snapshots_list}"' if snapshots else "",
+        f'--screenshots "{screenshots_list}"' if screenshots else "",
+        "--screenshots-enabled" if screenshots_on else "",
+        f'--pixel-channel-tolerance {pixel_channel_tolerance}' if screenshots_on else "",
+        f'--max-diff-ratio {max_diff_ratio}' if screenshots_on else "",
         f'--snapshots-out "{name}.snapshots"',
         '--deps "${DEPS:-}"',
         f'--module-name "{resolved_module}"' if resolved_module else "",

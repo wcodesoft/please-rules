@@ -17,13 +17,15 @@ import (
 
 // CDPClient manages a WebSocket connection to Chrome DevTools Protocol.
 type CDPClient struct {
-	conn      net.Conn
-	reader    *bufio.Reader
-	writeMu   sync.Mutex
-	msgID     int64
-	pendingMu sync.Mutex
-	pending   map[int64]chan cdpResponse
-	closed    int32
+	conn       net.Conn
+	reader     *bufio.Reader
+	writeMu    sync.Mutex
+	msgID      int64
+	pendingMu  sync.Mutex
+	pending    map[int64]chan cdpResponse
+	handlersMu sync.RWMutex
+	handlers   map[string][]func(params json.RawMessage)
+	closed     int32
 }
 
 type cdpResponse struct {
@@ -119,31 +121,65 @@ func (c *CDPClient) readLoop() {
 			return
 		}
 
-		var msg struct {
-			ID     int64           `json:"id"`
-			Result json.RawMessage `json:"result"`
-			Error  *struct {
-				Message string `json:"message"`
-				Code    int    `json:"code"`
-			} `json:"error"`
-		}
+		c.dispatch(payload)
+	}
+}
 
-		if err := json.Unmarshal(payload, &msg); err == nil && msg.ID != 0 {
-			c.pendingMu.Lock()
-			ch, ok := c.pending[msg.ID]
-			if ok {
-				delete(c.pending, msg.ID)
-			}
-			c.pendingMu.Unlock()
+// OnEvent registers fn for the protocol event method (for example "Runtime.bindingCalled").
+// fn runs on the connection's read loop, so it must return quickly and must not call Send or
+// Evaluate itself: hand the work to a goroutine.
+func (c *CDPClient) OnEvent(method string, fn func(params json.RawMessage)) {
+	c.handlersMu.Lock()
+	defer c.handlersMu.Unlock()
+	if c.handlers == nil {
+		c.handlers = make(map[string][]func(params json.RawMessage))
+	}
+	c.handlers[method] = append(c.handlers[method], fn)
+}
 
-			if ok {
-				if msg.Error != nil {
-					ch <- cdpResponse{Error: fmt.Errorf("CDP error %d: %s", msg.Error.Code, msg.Error.Message)}
-				} else {
-					ch <- cdpResponse{Result: msg.Result}
-				}
-			}
+// dispatch routes one decoded frame: a response completes the pending command with its id, and an
+// event (a method with no id) goes to the handlers registered for it.
+func (c *CDPClient) dispatch(payload []byte) {
+	var msg struct {
+		ID     int64           `json:"id"`
+		Method string          `json:"method"`
+		Params json.RawMessage `json:"params"`
+		Result json.RawMessage `json:"result"`
+		Error  *struct {
+			Message string `json:"message"`
+			Code    int    `json:"code"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(payload, &msg); err != nil {
+		return
+	}
+
+	if msg.ID == 0 {
+		if msg.Method == "" {
+			return
 		}
+		c.handlersMu.RLock()
+		handlers := append([]func(json.RawMessage){}, c.handlers[msg.Method]...)
+		c.handlersMu.RUnlock()
+		for _, fn := range handlers {
+			fn(msg.Params)
+		}
+		return
+	}
+
+	c.pendingMu.Lock()
+	ch, ok := c.pending[msg.ID]
+	if ok {
+		delete(c.pending, msg.ID)
+	}
+	c.pendingMu.Unlock()
+	if !ok {
+		return
+	}
+	if msg.Error != nil {
+		ch <- cdpResponse{Error: fmt.Errorf("CDP error %d: %s", msg.Error.Code, msg.Error.Message)}
+	} else {
+		ch <- cdpResponse{Result: msg.Result}
 	}
 }
 
