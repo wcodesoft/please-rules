@@ -63,7 +63,7 @@ func TestJSONRoundTripJUnitXMLAndSummary(t *testing.T) {
 	if err := r.WriteSummary(&summaryBuf); err != nil {
 		t.Fatalf("WriteSummary: %v", err)
 	}
-	if !strings.Contains(summaryBuf.String(), "Surviving mutants:") {
+	if !strings.Contains(summaryBuf.String(), "Surviving mutants (code mutated, but no test failed") {
 		t.Fatalf("expected surviving mutants section in summary, got:\n%s", summaryBuf.String())
 	}
 }

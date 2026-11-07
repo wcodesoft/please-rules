@@ -89,10 +89,16 @@ func (r *Report) WriteJUnitXML(w io.Writer) error {
 		switch m.Status {
 		case Survived:
 			failures++
+			fnCtx := ""
+			if m.Function != "" {
+				fnCtx = fmt.Sprintf(" in %s", m.Function)
+			}
+			msg := fmt.Sprintf("condition at %s:%d:%d%s (%s) mutated %q -> %q and no test failed (no test covering this condition)",
+				m.File, m.Line, m.Col, fnCtx, m.Mutator, m.Original, m.Replacement)
 			tc.Failure = &junitFailure{
-				Message: fmt.Sprintf("mutant survived: %s -> %s at %s:%d:%d", m.Original, m.Replacement, m.File, m.Line, m.Col),
+				Message: msg,
 				Type:    "MutantSurvived",
-				Body:    fmt.Sprintf("File: %s:%d:%d\nMutator: %s\nFunction: %s\nOriginal: %s\nReplacement: %s", m.File, m.Line, m.Col, m.Mutator, m.Function, m.Original, m.Replacement),
+				Body:    fmt.Sprintf("%s\nFile: %s:%d:%d\nMutator: %s\nFunction: %s\nOriginal: %s\nReplacement: %s", msg, m.File, m.Line, m.Col, m.Mutator, m.Function, m.Original, m.Replacement),
 			}
 		case Unviable, Skipped:
 			skipped++
@@ -159,7 +165,7 @@ func (r *Report) WriteSummary(w io.Writer) error {
 	}
 
 	if r.Survived > 0 {
-		if _, err := fmt.Fprintln(w, "  Surviving mutants:"); err != nil {
+		if _, err := fmt.Fprintln(w, "  Surviving mutants (code mutated, but no test failed — missing test coverage):"); err != nil {
 			return err
 		}
 		for _, m := range r.Mutants {
@@ -170,7 +176,7 @@ func (r *Report) WriteSummary(w io.Writer) error {
 			if m.Function != "" {
 				fnInfo = fmt.Sprintf(" in %s", m.Function)
 			}
-			if _, err := fmt.Fprintf(w, "    - [%s] %s:%d:%d%s (%s): %q -> %q\n",
+			if _, err := fmt.Fprintf(w, "    - [%s] %s:%d:%d%s (%s): mutated %q -> %q and no test failed\n",
 				m.ID, m.File, m.Line, m.Col, fnInfo, m.Mutator, m.Original, m.Replacement); err != nil {
 				return err
 			}

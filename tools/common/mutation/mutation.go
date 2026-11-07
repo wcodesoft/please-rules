@@ -146,7 +146,7 @@ func (r *Report) Recompute() {
 // CheckSurvived returns an error if any evaluated mutant survived.
 func (r *Report) CheckSurvived() error {
 	if r.Survived > 0 {
-		return fmt.Errorf("%d mutant(s) survived out of %d evaluated (mutation score %.2f%%)",
+		return fmt.Errorf("%d mutated code condition(s) survived with no failing test out of %d evaluated (mutation score %.2f%%)",
 			r.Survived, r.Total, r.Score)
 	}
 	return nil

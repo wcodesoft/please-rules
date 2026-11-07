@@ -48,7 +48,7 @@ exit 0
 		Stdout:      &stdout,
 		Stderr:      &stderr,
 	})
-	if err == nil || !strings.Contains(err.Error(), "1 mutant(s) survived") {
+	if err == nil || !strings.Contains(err.Error(), "1 mutated code condition(s) survived with no failing test") {
 		t.Fatalf("expected surviving mutant error, got: %v", err)
 	}
 
