@@ -86,6 +86,9 @@ func finalizeReport(rep *mutation.Report, opts Options) (*mutation.Report, error
 	if err := rep.CheckThreshold(opts.MinScore); err != nil {
 		return rep, err
 	}
+	if err := rep.CheckSurvived(); err != nil {
+		return rep, err
+	}
 	return rep, nil
 }
 

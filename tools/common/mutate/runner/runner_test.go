@@ -45,12 +45,11 @@ exit 0
 		TestCmd:     "./check.sh",
 		OutReport:   reportPath,
 		ResultsFile: junitPath,
-		MinScore:    50,
 		Stdout:      &stdout,
 		Stderr:      &stderr,
 	})
-	if err != nil {
-		t.Fatalf("Run failed: %v\nstderr: %s", err, stderr.String())
+	if err == nil || !strings.Contains(err.Error(), "1 mutant(s) survived") {
+		t.Fatalf("expected surviving mutant error, got: %v", err)
 	}
 
 	afterBytes, err := os.ReadFile(srcPath)
@@ -78,15 +77,26 @@ exit 0
 		t.Fatalf("parsed Score = %.2f, want 66.67", parsed.Score)
 	}
 
-	_, err = Run(context.Background(), Options{
-		Srcs:     []string{"calc.py"},
-		WorkDir:  dir,
-		TestCmd:  "./check.sh",
-		MinScore: 80,
-		Stdout:   &stdout,
-		Stderr:   &stderr,
+	// When all mutants are killed, Run succeeds.
+	strictScript := `#!/bin/sh
+grep -q "return a + b" calc.py || exit 1
+grep -q "return x > 0" calc.py || exit 1
+exit 0
+`
+	if err := os.WriteFile(testScript, []byte(strictScript), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	repAllKilled, err := Run(context.Background(), Options{
+		Srcs:    []string{"calc.py"},
+		WorkDir: dir,
+		TestCmd: "./check.sh",
+		Stdout:  &stdout,
+		Stderr:  &stderr,
 	})
-	if err == nil || !strings.Contains(err.Error(), "below minimum threshold") {
-		t.Fatalf("expected min-score failure for 66.67 < 80, got: %v", err)
+	if err != nil {
+		t.Fatalf("expected Run to succeed when all mutants are killed, got: %v", err)
+	}
+	if repAllKilled.Survived != 0 || repAllKilled.Score != 100.0 {
+		t.Fatalf("unexpected all-killed report: %+v", repAllKilled)
 	}
 }

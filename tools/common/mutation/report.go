@@ -59,12 +59,7 @@ type junitSkipped struct {
 }
 
 // WriteJUnitXML writes a JUnit XML report suitable for Please's test.results.
-//
-// When EnforceEveryMutant is false (i.e. r.MinScore < 100), individual surviving
-// mutants are recorded as passing test cases unless the overall score falls below
-// r.MinScore, in which case a threshold testcase failure is emitted so Please's
-// test runner agrees with the process exit status. When r.MinScore >= 100, every
-// surviving mutant is emitted as an individual JUnit failure.
+// Every surviving mutant is emitted as an individual JUnit failure.
 func (r *Report) WriteJUnitXML(w io.Writer) error {
 	r.Recompute()
 
@@ -77,8 +72,6 @@ func (r *Report) WriteJUnitXML(w io.Writer) error {
 	var cases []junitTestCase
 	failures := 0
 	skipped := 0
-
-	failIndividual := r.MinScore >= 100.0 || (r.MinScore > 0 && r.Score+1e-9 < r.MinScore)
 
 	for _, m := range r.Mutants {
 		totalMs += m.DurationMs
@@ -95,13 +88,11 @@ func (r *Report) WriteJUnitXML(w io.Writer) error {
 
 		switch m.Status {
 		case Survived:
-			if failIndividual {
-				failures++
-				tc.Failure = &junitFailure{
-					Message: fmt.Sprintf("mutant survived: %s -> %s at %s:%d:%d", m.Original, m.Replacement, m.File, m.Line, m.Col),
-					Type:    "MutantSurvived",
-					Body:    fmt.Sprintf("File: %s:%d:%d\nMutator: %s\nFunction: %s\nOriginal: %s\nReplacement: %s", m.File, m.Line, m.Col, m.Mutator, m.Function, m.Original, m.Replacement),
-				}
+			failures++
+			tc.Failure = &junitFailure{
+				Message: fmt.Sprintf("mutant survived: %s -> %s at %s:%d:%d", m.Original, m.Replacement, m.File, m.Line, m.Col),
+				Type:    "MutantSurvived",
+				Body:    fmt.Sprintf("File: %s:%d:%d\nMutator: %s\nFunction: %s\nOriginal: %s\nReplacement: %s", m.File, m.Line, m.Col, m.Mutator, m.Function, m.Original, m.Replacement),
 			}
 		case Unviable, Skipped:
 			skipped++

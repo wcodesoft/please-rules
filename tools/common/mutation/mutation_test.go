@@ -80,6 +80,9 @@ func TestRecomputeAndScore(t *testing.T) {
 	if err := r.CheckThreshold(60.0); err != nil {
 		t.Fatalf("unexpected threshold error for 66.67%% >= 60.0%%: %v", err)
 	}
+	if err := r.CheckSurvived(); err == nil {
+		t.Fatal("expected CheckSurvived error when Survived > 0, got nil")
+	}
 }
 
 func TestMergeAndValidStatus(t *testing.T) {
