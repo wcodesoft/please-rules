@@ -221,6 +221,20 @@ func TestEmbedDependencies(t *testing.T) {
 		}
 	}
 
+	// Embedding links files instead of copying them where it can, so a module held by many outputs
+	// is stored once.
+	srcInfo, err := os.Stat(filepath.Join(root, "a", "a", "a.ts"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dstInfo, err := os.Stat(filepath.Join(out, "a", "a", "a.ts"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !os.SameFile(srcInfo, dstInfo) {
+		t.Error("an embedded file is a copy, want a hard link to the original")
+	}
+
 	// Counting the copies of c.ts is the point: one per module, however many paths reach it.
 	copies := 0
 	_ = filepath.WalkDir(out, func(path string, d os.DirEntry, err error) error {
@@ -231,5 +245,22 @@ func TestEmbedDependencies(t *testing.T) {
 	})
 	if copies != 1 {
 		t.Errorf("c.ts was copied %d times, want 1", copies)
+	}
+}
+
+func TestLinkOrCopyFallsBackToCopy(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "src.ts")
+	writeTestFile(t, src, "content")
+
+	// The destination already exists, so the link fails and the file is copied over it.
+	dst := filepath.Join(dir, "out", "dst.ts")
+	writeTestFile(t, dst, "stale")
+	if err := linkOrCopy(src, dst); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(dst)
+	if err != nil || string(got) != "content" {
+		t.Errorf("dst = %q, %v, want the content of src", got, err)
 	}
 }

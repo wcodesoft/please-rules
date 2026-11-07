@@ -276,7 +276,7 @@ func copyLibraryFiles(src, dst string) error {
 		return err
 	}
 	for _, name := range append([]string{"ts_metadata.json"}, meta.Files...) {
-		if err := copyFile(filepath.Join(src, name), filepath.Join(dst, name)); err != nil {
+		if err := linkOrCopy(filepath.Join(src, name), filepath.Join(dst, name)); err != nil {
 			return err
 		}
 	}
@@ -308,7 +308,7 @@ func copyTree(src, dst string) error {
 			}
 			return os.Symlink(link, target)
 		}
-		return copyFile(path, target)
+		return linkOrCopy(path, target)
 	})
 }
 
@@ -345,4 +345,17 @@ func ExpandCommaSeparated(items []string) []string {
 		}
 	}
 	return result
+}
+
+// linkOrCopy makes dst a hard link of src, so a dependency embedded in many outputs is stored once,
+// and falls back to a copy when the two are on different file systems or links are not allowed.
+// The outputs of a build are read-only, so a shared file cannot be changed through either name.
+func linkOrCopy(src, dst string) error {
+	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
+		return err
+	}
+	if err := os.Link(src, dst); err == nil {
+		return nil
+	}
+	return copyFile(src, dst)
 }

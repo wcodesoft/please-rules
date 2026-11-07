@@ -103,10 +103,10 @@ at their build-output paths. A test, binary or bundle that depends on the
 library therefore needs to list **only the library**, not the libraries and
 modules the library imports. Listing them as well is harmless.
 
-The price is disk: each library output holds one copy of every module in its
-dependency closure (never one per path that reaches it), so a library close to
-the top of a large graph is bigger than its own sources, and the total grows
-with the size of the closures.
+Embedded files are hard links to the dependency's own output where the file
+system allows it, so a module that many libraries depend on is stored once and
+the extra disk use is small; otherwise they are copies, and a library close to
+the top of a large graph is bigger than its own sources.
 
 #### Subpath Imports & Package Mapping
 
