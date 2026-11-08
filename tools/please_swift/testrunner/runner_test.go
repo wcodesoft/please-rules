@@ -190,6 +190,22 @@ func TestParseTestOutputSwiftTestingParameterized(t *testing.T) {
 			t.Errorf("case %d: expected failure details, got %q", i, cases[i].Failure)
 		}
 	}
+
+	// Arguments containing " to " and " at " should not be truncated by lazy matching.
+	tricky := `
+◇ Test "Route test" started.
+◇ Test case passing 1 argument route → "from A to B at noon" to "Route test" started.
+✘ Test "Route test" recorded an issue with 1 argument route → "from A to B at noon" at RouteTests.swift:12:5: Expectation failed
+✘ Test "Route test" with 1 test cases failed after 0.002 seconds with 1 issue.
+`
+	trickyCases := parseTestOutput(tricky, "swift-testing")
+	if len(trickyCases) != 1 {
+		t.Fatalf("expected 1 tricky case, got %d: %+v", len(trickyCases), trickyCases)
+	}
+	wantTrickyName := `Route test (route → "from A to B at noon")`
+	if trickyCases[0].Name != wantTrickyName || trickyCases[0].Passed || !strings.Contains(trickyCases[0].Failure, "RouteTests.swift:12:5") {
+		t.Errorf("unexpected tricky case: %+v", trickyCases[0])
+	}
 }
 
 func TestParseEventStreamParameterized(t *testing.T) {
