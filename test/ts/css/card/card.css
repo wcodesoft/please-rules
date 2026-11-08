@@ -1,0 +1,5 @@
+/* Card component styles */
+.card {
+  padding: var(--space-sm);
+  background-color: #000000;
+}

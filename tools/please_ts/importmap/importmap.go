@@ -29,6 +29,7 @@ type ModuleMetadata struct {
 	Types      string            `json:"types,omitempty"`
 	Imports    map[string]string `json:"imports,omitempty"`
 	Files      []string          `json:"files,omitempty"`
+	CSSFiles   []string          `json:"css_files,omitempty"`
 	SourcePath string            `json:"source_path,omitempty"`
 	Deps       map[string]string `json:"deps,omitempty"`
 	PeerDeps   map[string]string `json:"peer_deps,omitempty"`

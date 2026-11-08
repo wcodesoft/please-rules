@@ -1,0 +1,5 @@
+/* Design tokens shared across components */
+:root {
+  --color-brand: #ffffff;
+  --space-sm: 8px;
+}

@@ -8,6 +8,7 @@ go_library(
     ],
     visibility = ["//tools/please_ts/..."],
     deps = [
+        "//tools/please_ts/css",
         "//tools/please_ts/importmap",
         "//tools/please_ts/npmcache",
     ],
@@ -16,12 +17,12 @@ go_library(
 go_test(
     name = "bundle_test",
     srcs = [
-        "bundle.go",
         "bundle_test.go",
-        "denobundle.go",
         "denobundle_test.go",
     ],
     deps = [
+        ":bundle",
+        "//tools/please_ts/css",
         "//tools/please_ts/importmap",
         "//tools/please_ts/npmcache",
     ],

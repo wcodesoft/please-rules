@@ -74,14 +74,18 @@ an ephemeral W3C import map using `scopes`:
 
 ## `ts_library`
 
-Compiles and type-checks TypeScript / JavaScript files into a modular library.
+Compiles and type-checks TypeScript / JavaScript files and validates co-located
+CSS files into a modular library.
 
 ```starlark
 ts_library(
-    name = "calculator",
-    srcs = ["calculator.ts"],
-    module_name = "@domain/calculator",
-    deps = [":utils"],
+    name = "button",
+    srcs = [
+        "button.css",
+        "button.ts",
+    ],
+    module_name = "@domain/button",
+    deps = ["//ui/tokens"],
 )
 ```
 
@@ -90,10 +94,26 @@ ts_library(
 | Argument      | Type   | Default    | Description                                                                                                                                 |
 | :------------ | :----- | :--------- | :------------------------------------------------------------------------------------------------------------------------------------------ |
 | `name`        | `str`  | (required) | Target name.                                                                                                                                |
-| `srcs`        | `list` | (required) | List of `.ts`, `.tsx`, `.js`, or `.mjs` source files.                                                                                       |
+| `srcs`        | `list` | (required) | List of `.ts`, `.tsx`, `.js`, `.mjs`, or `.css` source files.                                                                               |
 | `deps`        | `list` | `[]`       | Dependent libraries or `ts_module` targets.                                                                                                 |
 | `module_name` | `str`  | `""`       | Optional module alias for bare specifiers. If omitted, automatically derived from `[plugin "ts"] ModulePrefix` and the Please package path. |
 | `flags`       | `list` | `[]`       | Additional flags passed to `deno check`.                                                                                                    |
+
+#### Co-located CSS & Validation
+
+A `ts_library` can include `.css` files directly in `srcs` alongside its `.ts` /
+`.tsx` files (or consist solely of `.css` files, such as a design-tokens
+library). During compilation:
+
+- All `.css` files are validated for balanced braces, strings, and comments, and
+  checked for intra-library selector, `@keyframes`, and `:root` custom property
+  collisions.
+- TypeScript / JavaScript sources are type-checked with `deno check` (skipped
+  automatically when `srcs` contains only `.css` files).
+- Both `.ts` and `.css` files are recorded in `ts_metadata.json` (`files` and
+  `css_files`) and embedded transitively via `deps`, so downstream `css_bundle`,
+  `ts_bundle`, and `ts_browser_test` targets automatically discover all CSS in
+  the dependency graph without inverted `used_in` references.
 
 #### Transitive dependencies
 
@@ -151,12 +171,13 @@ ts_binary(
 
 ## `ts_bundle`
 
-Bundles TypeScript / JavaScript sources into a single distribution asset.
+Bundles TypeScript / JavaScript and/or CSS sources into distribution assets.
 
 ```starlark
 ts_bundle(
     name = "app_bundle",
     main = "index.tsx",
+    css_out = "app.min.css",
     deps = [":components"],
     format = "esm",
     minify = True,
@@ -165,20 +186,57 @@ ts_bundle(
 
 ### Arguments
 
-| Argument       | Type   | Default    | Description                                          |
-| :------------- | :----- | :--------- | :--------------------------------------------------- |
-| `name`         | `str`  | (required) | Target name.                                         |
-| `main`         | `str`  | (required) | Entrypoint source file.                              |
-| `out`          | `str`  | `""`       | Output bundle path (defaults to `<name>.bundle.js`). |
-| `format`       | `str`  | `"esm"`    | Bundle format (`"esm"` or `"iife"`).                 |
-| `minify`       | `bool` | `False`    | Whether to minify bundled output.                    |
-| `sourcemap`    | `bool` | `False`    | Whether to generate source maps.                     |
-| `bundler_tool` | `str`  | `""`       | Optional external bundler executable (e.g. esbuild). |
+| Argument              | Type   | Default    | Description                                                                                      |
+| :-------------------- | :----- | :--------- | :----------------------------------------------------------------------------------------------- |
+| `name`                | `str`  | (required) | Target name.                                                                                     |
+| `main`                | `str`  | `""`       | Entrypoint source file (required for JS/TS bundles; optional for CSS-only bundles).              |
+| `out`                 | `str`  | `""`       | Output bundle path (defaults to `<name>.bundle.js` or `<name>.bundle.css`).                      |
+| `css_out`             | `str`  | `""`       | Optional CSS output path; collects, collision-checks, and bundles all CSS from `srcs` and `deps`. |
+| `format`              | `str`  | `"esm"`    | Bundle format (`"esm"` or `"iife"`).                                                             |
+| `minify`              | `bool` | `False`    | Whether to minify bundled output.                                                                |
+| `sourcemap`           | `bool` | `False`    | Whether to generate source maps.                                                                 |
+| `allow_css_overrides` | `bool` | `False`    | When `True`, disables strict cross-file CSS selector/variable collision checking.                |
+| `bundler_tool`        | `str`  | `""`       | Optional external bundler executable (e.g. esbuild).                                             |
 
 With npm packages (`ts_npm_module` dependencies) the bundle is built by
 `deno bundle`, using the pinned esbuild of `esbuild_toolchain`, and
 `bundler_tool` is not used. See
 [Bundling and compiling](usage.md#bundling-and-compiling).
+
+---
+
+## `css_bundle`
+
+Collects all `.css` files from `srcs` and transitive `ts_library` `deps` in
+topological order, verifies that no two distinct files collide on selectors,
+`@keyframes`, or `:root` custom properties, and bundles + minifies them using
+the pinned `esbuild` binary.
+
+```starlark
+css_bundle(
+    name = "dashboard_styles",
+    srcs = ["dashboard.css"],
+    deps = [
+        "//ui/button",
+        "//ui/card",
+    ],
+    out = "dashboard.min.css",
+)
+```
+
+### Arguments
+
+| Argument          | Type   | Default    | Description                                                                       |
+| :---------------- | :----- | :--------- | :-------------------------------------------------------------------------------- |
+| `name`            | `str`  | (required) | Target name.                                                                      |
+| `srcs`            | `list` | `[]`       | Direct `.css` source files for this bundle.                                       |
+| `deps`            | `list` | `[]`       | `ts_library` dependencies whose `.css` files are included in topological order.   |
+| `main`            | `str`  | `""`       | Optional explicit `.css` entry point.                                             |
+| `out`             | `str`  | `""`       | Output stylesheet path (defaults to `<name>.css`).                                |
+| `minify`          | `bool` | `True`     | Whether to minify, strip comments/whitespace, and collapse shorthands (default).  |
+| `sourcemap`       | `bool` | `False`    | Whether to generate a `.css.map` sourcemap.                                       |
+| `allow_overrides` | `bool` | `False`    | When `True`, allows duplicate selectors or `:root` variables across source files. |
+| `flags`           | `list` | `[]`       | Additional flags passed to `esbuild`.                                             |
 
 ---
 

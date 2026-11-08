@@ -1,0 +1,4 @@
+/* Colliding .btn definition in a separate file */
+.btn {
+  color: red;
+}

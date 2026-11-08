@@ -264,3 +264,80 @@ func TestLinkOrCopyFallsBackToCopy(t *testing.T) {
 		t.Errorf("dst = %q, %v, want the content of src", got, err)
 	}
 }
+
+func TestRunFiltersCSSFromDenoCheckAndRecordsCSSFilesInMetadata(t *testing.T) {
+	inWorkDir(t, false)
+	deno, log := fakeDeno(t)
+
+	if err := os.WriteFile("styles.css", []byte(":root { --brand: #123456; }\n.btn { color: var(--brand); }\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	outDir := "out_lib"
+	opts := Options{
+		Deno:       deno,
+		Out:        outDir,
+		Srcs:       []string{"a.ts", "styles.css"},
+		ModuleName: "@ui/button",
+	}
+	if err := Run(opts); err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	callsBytes, _ := os.ReadFile(log)
+	calls := string(callsBytes)
+	if strings.Contains(calls, "styles.css") {
+		t.Errorf("deno check should not receive .css files, got:\n%s", calls)
+	}
+	if !strings.Contains(calls, "a.ts") {
+		t.Errorf("deno check should receive .ts files, got:\n%s", calls)
+	}
+
+	metaBytes, err := os.ReadFile(filepath.Join(outDir, "ts_metadata.json"))
+	if err != nil {
+		t.Fatalf("reading ts_metadata.json: %v", err)
+	}
+	metaStr := string(metaBytes)
+	if !strings.Contains(metaStr, `"css_files"`) || !strings.Contains(metaStr, `"styles.css"`) {
+		t.Errorf("expected css_files with styles.css in ts_metadata.json:\n%s", metaStr)
+	}
+	if !strings.Contains(metaStr, `"entry": "a.ts"`) {
+		t.Errorf("expected TypeScript entry file a.ts to be preferred over styles.css:\n%s", metaStr)
+	}
+}
+
+func TestRunCSSOnlyLibrarySkipsDenoCheckAndRejectsCollision(t *testing.T) {
+	inWorkDir(t, false)
+	deno, log := fakeDeno(t)
+
+	if err := os.WriteFile("tokens.css", []byte(":root { --gap: 8px; }\n.box { padding: var(--gap); }\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	outDir := "out_tokens"
+	if err := Run(Options{
+		Deno:       deno,
+		Out:        outDir,
+		Srcs:       []string{"tokens.css"},
+		ModuleName: "@ui/tokens",
+	}); err != nil {
+		t.Fatalf("Run CSS-only library failed: %v", err)
+	}
+
+	if _, err := os.Stat(log); err == nil {
+		t.Errorf("expected deno check to be skipped for CSS-only library")
+	}
+
+	// Colliding second CSS file in the same library must fail compile
+	if err := os.WriteFile("dup.css", []byte(".box { padding: 16px; }\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	err := Run(Options{
+		Deno:       deno,
+		Out:        "out_dup",
+		Srcs:       []string{"tokens.css", "dup.css"},
+		ModuleName: "@ui/dup",
+	})
+	if err == nil || !strings.Contains(err.Error(), `duplicate CSS selector ".box"`) {
+		t.Fatalf("expected duplicate CSS selector error, got: %v", err)
+	}
+}
+

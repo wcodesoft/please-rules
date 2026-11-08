@@ -64,17 +64,19 @@ func handleBundle(args []string) error {
 		cmd.PrintDefaults()
 	}
 	out := cmd.String("out", "", "Output bundle path")
+	cssOut := cmd.String("css-out", "", "Optional CSS bundle output path alongside JS bundle")
 	main := cmd.String("main", "", "Main entry point file")
 	srcsFlag := cmd.String("srcs", "", "Comma-separated sources")
 	depsFlag := cmd.String("deps", "", "Comma-separated dependency paths")
 	deno := cmd.String("deno", "deno", "Path to deno binary")
 	bundlerTool := cmd.String("bundler-tool", "", "External bundler executable (e.g. esbuild)")
-	esbuildBinary := cmd.String("esbuild-binary", "", "Pinned esbuild executable, used to bundle npm packages")
+	esbuildBinary := cmd.String("esbuild-binary", "", "Pinned esbuild executable, used to bundle npm packages and CSS")
 	esbuildCacheVersion := cmd.String("esbuild-cache-version", "", "Directory esbuild-<version> under DENO_DIR/dl where this Deno looks for esbuild (default: known per Deno version)")
 	moduleName := cmd.String("module-name", "", "Module name alias")
 	format := cmd.String("format", "esm", "Bundle format (esm or iife)")
 	minify := cmd.Bool("minify", false, "Minify bundled output")
 	sourcemap := cmd.Bool("sourcemap", false, "Generate source map")
+	allowCSSOverrides := cmd.Bool("allow-css-overrides", false, "Allow duplicate CSS selectors or variables across files")
 	flags := cmd.String("flags", "", "Additional bundler flags")
 
 	if err := cmd.Parse(args); err != nil {
@@ -96,8 +98,10 @@ func handleBundle(args []string) error {
 
 		EsbuildBinary:       *esbuildBinary,
 		EsbuildCacheVersion: *esbuildCacheVersion,
+		AllowCSSOverrides:   *allowCSSOverrides,
 
 		Out:        *out,
+		CSSOut:     *cssOut,
 		Main:       *main,
 		Srcs:       srcs,
 		Deps:       deps,

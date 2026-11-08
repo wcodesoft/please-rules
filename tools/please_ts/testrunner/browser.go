@@ -36,6 +36,7 @@ func (opts RunOptions) runBrowserTest(resultsFile string) error {
 
 	// 1. Bundle test files for the browser environment
 	bundleOut := filepath.Join(tmpDir, "test_bundle.js")
+	cssBundleOut := filepath.Join(tmpDir, "test_bundle.css")
 	mainSrc := opts.Srcs[0]
 	bundleOpts := bundle.Options{
 		Deno:       opts.Deno,
@@ -59,11 +60,29 @@ func (opts RunOptions) runBrowserTest(resultsFile string) error {
 		return err
 	}
 
+	// If any transitive ts_library dependency or test source includes .css files,
+	// bundle and inject them into the page <head> so computed-style and screenshot tests see them.
+	cssTag := ""
+	cssOnlyOpts := bundle.Options{
+		Deno:          opts.Deno,
+		Out:           cssBundleOut,
+		Srcs:          opts.Srcs,
+		Deps:          opts.Deps,
+		ModuleName:    opts.ModuleName,
+		Minify:        true,
+		EsbuildBinary: opts.EsbuildBinary,
+	}
+	if err := bundle.Run(cssOnlyOpts); err == nil {
+		if cssBytes, readErr := os.ReadFile(cssBundleOut); readErr == nil && len(cssBytes) > 0 {
+			cssTag = "<style>" + string(cssBytes) + "</style>"
+		}
+	}
+
 	profileDir := filepath.Join(tmpDir, "profile")
 	_ = os.MkdirAll(profileDir, 0755)
 
 	htmlPath := filepath.Join(tmpDir, "index.html")
-	_ = os.WriteFile(htmlPath, []byte("<!DOCTYPE html><html><head><meta charset=\"utf-8\"></head><body></body></html>"), 0644)
+	_ = os.WriteFile(htmlPath, []byte("<!DOCTYPE html><html><head><meta charset=\"utf-8\">"+cssTag+"</head><body></body></html>"), 0644)
 
 	// 2. Launch headless Chromium
 	browserArgs := []string{

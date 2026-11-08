@@ -106,3 +106,21 @@ func TestBuildEsbuildArgsFiltersInvalidAliases(t *testing.T) {
 		t.Errorf("expected @scope/components to point to entry file: %s", argsStr)
 	}
 }
+
+func TestBuildEsbuildArgsOmitsFormatForCSSBundles(t *testing.T) {
+	opts := Options{
+		Main:   "app.css",
+		Out:    "app.min.css",
+		Format: "esm",
+		Minify: true,
+	}
+	args := buildEsbuildArgs(opts, nil)
+	argsStr := strings.Join(args, " ")
+	if strings.Contains(argsStr, "--format=") {
+		t.Errorf("--format should be omitted for CSS bundles: %s", argsStr)
+	}
+	if !strings.Contains(argsStr, "--minify") {
+		t.Errorf("expected --minify in CSS bundle args: %s", argsStr)
+	}
+}
+
