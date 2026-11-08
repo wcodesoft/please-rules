@@ -9,6 +9,16 @@ and this project adheres to
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-11-08
+
+### Added
+
+- `css_library` and `css_bundle` rules (`please_ts css compile` and
+  `please_ts css bundle`): compose modular stylesheets through `deps` with
+  automatic diamond-dependency deduplication in topological order, compile-time
+  cross-file collision detection for selectors, `@keyframes`, and `:root` custom
+  properties, and deterministic minification via the pinned `esbuild` toolchain.
+
 ## [0.9.2] - 2026-11-08
 
 ### Changed
