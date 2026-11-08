@@ -1,12 +1,8 @@
 subinclude("//build_defs/ts:ts")
 
-ts_library(
+css_library(
     name = "button",
-    srcs = [
-        "button.css",
-        "button.ts",
-    ],
-    module_name = "@test/css/button",
+    srcs = ["button.css"],
     visibility = ["PUBLIC"],
     deps = ["//test/ts/css/tokens"],
 )

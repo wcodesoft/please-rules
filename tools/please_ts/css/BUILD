@@ -7,7 +7,6 @@ go_library(
         "graph.go",
     ],
     visibility = ["//tools/please_ts/..."],
-    deps = ["//tools/please_ts/importmap"],
 )
 
 go_test(
@@ -16,8 +15,5 @@ go_test(
         "collision_test.go",
         "graph_test.go",
     ],
-    deps = [
-        ":css",
-        "//tools/please_ts/importmap",
-    ],
+    deps = [":css"],
 )

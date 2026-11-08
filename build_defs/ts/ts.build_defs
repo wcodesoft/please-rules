@@ -375,7 +375,7 @@ def ts_library(
         flags: list = None,
         visibility: list = None,
         labels: list = None):
-    """Compiles and type-checks TypeScript / JavaScript files and validates co-located CSS files into a modular library."""
+    """Compiles and type-checks TypeScript / JavaScript files into a modular library."""
     deps = deps or []
     flags = flags or []
 
@@ -464,33 +464,28 @@ def ts_binary(
 
 def ts_bundle(
         name: str,
-        main: str = "",
+        main: str,
         out: str = None,
-        css_out: str = "",
         srcs: list = None,
         deps: list = None,
         module_name: str = "",
         format: str = "esm",
         minify: bool = False,
         sourcemap: bool = False,
-        allow_css_overrides: bool = False,
         bundler_tool: str = "",
         flags: list = None,
         visibility: list = None,
         labels: list = None):
-    """Bundles TypeScript / JavaScript and/or CSS sources into distribution assets."""
+    """Bundles TypeScript / JavaScript sources into a single distribution asset."""
     srcs = srcs or []
     deps = deps or []
     flags = flags or []
-    is_css_main = main.endswith(".css") or (not main and any([s.endswith(".css") for s in srcs]))
-    out_file = out or (f"{name}.bundle.css" if is_css_main else f"{name}.bundle.js")
+    out_file = out or f"{name}.bundle.js"
     pkg = package_name()
+    resolved_main = f"{pkg}/{main}" if not main.startswith(pkg) and not main.startswith("/") else main
 
-    resolved_main = ""
-    if main:
-        resolved_main = f"{pkg}/{main}" if pkg and not main.startswith(pkg) and not main.startswith("/") else main
-        if main not in srcs:
-            srcs = srcs + [main]
+    if main not in srcs:
+        srcs = srcs + [main]
 
     tools = {"TOOL": [_ts_tool()]}
     deno_arg = _deno_tool_arg(tools)
@@ -501,18 +496,15 @@ def ts_bundle(
     esbuild_arg = _esbuild_tool_arg(tools)
 
     resolved_module = _resolve_module_name(name, module_name)
-    out_arg = '--out "$OUTS"' if css_out else '--out "$OUT"'
     bundle_args = [
-        f'--out "{out_file}"' if css_out else out_arg,
-        f'--css-out "{css_out}"' if css_out else "",
-        f'--main "{resolved_main}"' if resolved_main else "",
+        '--out "$OUT"',
+        f'--main "{resolved_main}"',
         '--srcs "${SRCS:-}"',
         '--deps "${DEPS:-}"',
         f'--module-name "{resolved_module}"' if resolved_module else "",
         f'--format "{format}"',
-        "--minify" if minify else "",
-        "--sourcemap" if sourcemap else "",
-        "--allow-css-overrides" if allow_css_overrides else "",
+        '--minify' if minify else "",
+        '--sourcemap' if sourcemap else "",
         f'--bundler-tool "{bundler_tool}"' if bundler_tool else "",
         esbuild_arg,
         deno_arg,
@@ -520,13 +512,11 @@ def ts_bundle(
     ]
     cmd = _join_cmd("$TOOLS_TOOL bundle", bundle_args)
 
-    outs = [out_file, css_out] if css_out else [out_file]
-
     return build_rule(
         name = name,
         srcs = srcs,
         deps = deps,
-        outs = outs,
+        outs = [out_file],
         cmd = cmd,
         needs_transitive_deps = True,
         tools = tools,
@@ -535,11 +525,45 @@ def ts_bundle(
         building_description = f"Bundling TypeScript asset {name}...",
     )
 
+def css_library(
+        name: str,
+        srcs: list,
+        deps: list = None,
+        visibility: list = None,
+        labels: list = None):
+    """Validates and packages modular CSS files and their dependencies for downstream css_library and css_bundle targets."""
+    deps = deps or []
+    tools = {"TOOL": [_ts_tool()]}
+
+    pkg = package_name()
+    lib_id = f"{pkg}:{name}" if pkg else name
+    compile_args = [
+        "compile",
+        '--out "$OUT"',
+        '--srcs "${SRCS:-}"',
+        '--deps "${DEPS:-}"',
+        f'--name "{lib_id}"',
+    ]
+    cmd = _join_cmd("$TOOLS_TOOL css", compile_args)
+
+    return build_rule(
+        name = name,
+        srcs = srcs,
+        deps = deps,
+        exported_deps = deps,
+        outs = [name],
+        cmd = cmd,
+        needs_transitive_deps = True,
+        tools = tools,
+        visibility = visibility,
+        labels = labels or ["ts", "css", "lib"],
+        building_description = f"Compiling CSS library {name}...",
+    )
+
 def css_bundle(
         name: str,
         srcs: list = None,
         deps: list = None,
-        main: str = "",
         out: str = None,
         minify: bool = True,
         sourcemap: bool = False,
@@ -547,20 +571,42 @@ def css_bundle(
         flags: list = None,
         visibility: list = None,
         labels: list = None):
-    """Bundles, checks for cross-file collisions, and minifies CSS from srcs and transitive ts_library deps."""
+    """Bundles, checks for cross-file collisions, and minifies CSS from srcs and transitive css_library deps."""
+    srcs = srcs or []
+    deps = deps or []
+    flags = flags or []
     out_file = out or f"{name}.css"
-    return ts_bundle(
+
+    tools = {"TOOL": [_ts_tool()]}
+    esbuild_arg = _esbuild_tool_arg(tools)
+
+    flags_joined = " ".join(flags) if flags else ""
+    flags_str = f"--flags '{flags_joined}'" if flags else ""
+
+    bundle_args = [
+        "bundle",
+        '--out "$OUT"',
+        '--srcs "${SRCS:-}"',
+        '--deps "${DEPS:-}"',
+        "--minify" if minify else "--minify=false",
+        "--sourcemap" if sourcemap else "",
+        "--allow-overrides" if allow_overrides else "",
+        esbuild_arg,
+        flags_str,
+    ]
+    cmd = _join_cmd("$TOOLS_TOOL css", bundle_args)
+
+    return build_rule(
         name = name,
-        main = main,
-        out = out_file,
         srcs = srcs,
         deps = deps,
-        minify = minify,
-        sourcemap = sourcemap,
-        allow_css_overrides = allow_overrides,
-        flags = flags,
+        outs = [out_file],
+        cmd = cmd,
+        needs_transitive_deps = True,
+        tools = tools,
         visibility = visibility,
         labels = labels or ["ts", "css", "bundle"],
+        building_description = f"Bundling CSS asset {name}...",
     )
 
 def ts_test(

@@ -31,8 +31,7 @@ func isSourceFile(path string) bool {
 		strings.HasSuffix(path, ".tsx") ||
 		strings.HasSuffix(path, ".js") ||
 		strings.HasSuffix(path, ".jsx") ||
-		strings.HasSuffix(path, ".mjs") ||
-		strings.HasSuffix(path, ".css")
+		strings.HasSuffix(path, ".mjs")
 }
 
 func isMetadataFile(path string) bool {

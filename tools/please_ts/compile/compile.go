@@ -10,7 +10,6 @@ import (
 	"sort"
 	"strings"
 
-	"tools/please_ts/css"
 	"tools/please_ts/importmap"
 	"tools/please_ts/npmcache"
 )
@@ -36,37 +35,6 @@ func Run(opts Options) error {
 		return fmt.Errorf("no source files provided for compilation")
 	}
 
-	tsSrcs, cssSrcs := css.SplitSources(opts.Srcs)
-	if len(cssSrcs) > 0 {
-		if err := css.CheckFiles(cssSrcs); err != nil {
-			return err
-		}
-	}
-
-	// 1. Synthesize target-local import map
-	im, err := importmap.Synthesize(opts.ModuleName, opts.Srcs, opts.Deps, ".")
-	if err != nil {
-		return fmt.Errorf("failed synthesizing import map: %w", err)
-	}
-
-	// 2. Run `deno check` on TypeScript/JavaScript sources (skip if library is CSS-only)
-	if len(tsSrcs) > 0 {
-		if err := runDenoCheck(opts, tsSrcs, im); err != nil {
-			return err
-		}
-	}
-
-	// 3. Emit output
-	if opts.Out != "" {
-		if err := emitOutput(opts, im); err != nil {
-			return fmt.Errorf("failed creating output: %w", err)
-		}
-	}
-
-	return nil
-}
-
-func runDenoCheck(opts Options, tsSrcs []string, im *importmap.ImportMap) error {
 	denoBin := opts.Deno
 	if denoBin == "" {
 		denoBin = "deno"
@@ -104,6 +72,12 @@ func runDenoCheck(opts Options, tsSrcs []string, im *importmap.ImportMap) error 
 		}
 	}
 
+	// 1. Synthesize target-local import map
+	importMapPath := ".import_map.json"
+	im, err := importmap.Synthesize(opts.ModuleName, opts.Srcs, opts.Deps, ".")
+	if err != nil {
+		return fmt.Errorf("failed synthesizing import map: %w", err)
+	}
 	if opts.VitestDir != "" && im.Imports["vitest"] == "" {
 		spec, err := vitestSpecifier(opts.VitestDir)
 		if err != nil {
@@ -111,13 +85,12 @@ func runDenoCheck(opts Options, tsSrcs []string, im *importmap.ImportMap) error 
 		}
 		im.Imports["vitest"] = spec
 	}
-
-	importMapPath := ".import_map.json"
 	if err := im.WriteToFile(importMapPath); err != nil {
 		return fmt.Errorf("failed writing import map: %w", err)
 	}
 	defer os.Remove(importMapPath)
 
+	// 2. Run `deno check` with --no-remote and target import map
 	args := []string{
 		"check",
 		"--no-remote",
@@ -130,7 +103,7 @@ func runDenoCheck(opts Options, tsSrcs []string, im *importmap.ImportMap) error 
 		args = append(args, "--cached-only")
 	}
 	args = append(args, opts.Flags...)
-	args = append(args, tsSrcs...)
+	args = append(args, opts.Srcs...)
 
 	cmd := exec.Command(denoBin, args...)
 	cmd.Env = append(os.Environ(), "DENO_DIR="+denoCacheDir)
@@ -140,6 +113,14 @@ func runDenoCheck(opts Options, tsSrcs []string, im *importmap.ImportMap) error 
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("deno check failed: %w", err)
 	}
+
+	// 3. Emit output
+	if opts.Out != "" {
+		if err := emitOutput(opts, im); err != nil {
+			return fmt.Errorf("failed creating output: %w", err)
+		}
+	}
+
 	return nil
 }
 
@@ -164,22 +145,33 @@ func emitOutput(opts Options, im *importmap.ImportMap) error {
 	}
 
 	var files []string
-	var cssFiles []string
 	// Copy source files into outDir preserving structure
 	for _, src := range opts.Srcs {
-		base := filepath.Base(src)
-		destPath := filepath.Join(outDir, base)
+		destPath := filepath.Join(outDir, filepath.Base(src))
 		if err := copyFile(src, destPath); err != nil {
 			return fmt.Errorf("failed copying source %s to %s: %w", src, destPath, err)
 		}
-		files = append(files, base)
-		if css.IsCSSFile(base) {
-			cssFiles = append(cssFiles, base)
-		}
+		files = append(files, filepath.Base(src))
 	}
 
-	// Determine entry point (prefer TypeScript/JavaScript entry over CSS when both exist)
-	entryFile := selectEntryFile(opts.ModuleName, opts.Srcs)
+	// Determine entry point
+	entryFile := ""
+	if len(opts.Srcs) > 0 {
+		cleanName := filepath.Base(opts.ModuleName)
+		if strings.HasPrefix(cleanName, "@") {
+			cleanName = strings.TrimPrefix(cleanName, "@")
+		}
+		for _, s := range opts.Srcs {
+			b := filepath.Base(s)
+			if b == cleanName+".ts" || b == cleanName+".tsx" || b == "index.ts" || b == "mod.ts" {
+				entryFile = b
+				break
+			}
+		}
+		if entryFile == "" {
+			entryFile = filepath.Base(opts.Srcs[0])
+		}
+	}
 
 	// Write ts_metadata.json
 	var imports map[string]string
@@ -187,11 +179,10 @@ func emitOutput(opts Options, im *importmap.ImportMap) error {
 		imports = im.Imports
 	}
 	meta := importmap.ModuleMetadata{
-		Name:     opts.ModuleName,
-		Entry:    entryFile,
-		Imports:  imports,
-		Files:    files,
-		CSSFiles: cssFiles,
+		Name:    opts.ModuleName,
+		Entry:   entryFile,
+		Imports: imports,
+		Files:   files,
 	}
 
 	metaData, err := json.MarshalIndent(meta, "", "  ")
@@ -206,28 +197,6 @@ func emitOutput(opts Options, im *importmap.ImportMap) error {
 		return embedDependencies(".", outDir)
 	}
 	return nil
-}
-
-func selectEntryFile(moduleName string, srcs []string) string {
-	if len(srcs) == 0 {
-		return ""
-	}
-	cleanName := filepath.Base(moduleName)
-	cleanName = strings.TrimPrefix(cleanName, "@")
-
-	for _, s := range srcs {
-		b := filepath.Base(s)
-		if b == cleanName+".ts" || b == cleanName+".tsx" || b == "index.ts" || b == "mod.ts" {
-			return b
-		}
-	}
-	for _, s := range srcs {
-		b := filepath.Base(s)
-		if !css.IsCSSFile(b) {
-			return b
-		}
-	}
-	return filepath.Base(srcs[0])
 }
 
 // embedDependencies copies every module found under root (outside outDir) into outDir, keeping

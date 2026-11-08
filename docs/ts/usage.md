@@ -159,24 +159,23 @@ Run the built executable:
 
 ---
 
-## 5. Co-Located Component CSS & Minified Bundling
+## 5. Modular CSS Libraries & Minified Bundling (`css_library` & `css_bundle`)
 
-You can co-locate `.css` files directly inside `ts_library` targets alongside
-their `.ts` / `.tsx` components (or define CSS-only `ts_library` targets for
-shared design tokens).
+Define modular CSS building blocks with `css_library` and assemble production
+stylesheets with `css_bundle`:
 
 ```starlark
 # ui/tokens/BUILD
-ts_library(
+css_library(
     name = "tokens",
-    srcs = ["tokens.css", "tokens.ts"],
+    srcs = ["tokens.css"],
     visibility = ["PUBLIC"],
 )
 
 # ui/button/BUILD
-ts_library(
+css_library(
     name = "button",
-    srcs = ["button.css", "button.ts"],
+    srcs = ["button.css"],
     deps = ["//ui/tokens"],
     visibility = ["PUBLIC"],
 )
@@ -193,24 +192,9 @@ css_bundle(
 )
 ```
 
-Or emit both the JS bundle and the minified CSS bundle from a single `ts_bundle`
-target using `css_out`:
+### How It Stays Small, Predictable, and Collision-Free
 
-```starlark
-ts_bundle(
-    name = "dashboard_app",
-    main = "app.ts",
-    srcs = ["app.css", "app.ts"],
-    deps = ["//ui/card"],
-    minify = True,
-    out = "dashboard.min.js",
-    css_out = "dashboard.min.css",
-)
-```
-
-### How It stays Small, Predictable, and Collision-Free
-
-1. **Graph-Driven Inclusion (No `used_in` Required)**: Only the `ts_library`
+1. **Graph-Driven Inclusion (No `used_in` Required)**: Only the `css_library`
    targets reachable in the bundle's `deps` graph contribute CSS. Unused
    components are never included.
 2. **Diamond Dependency Deduplication**: Shared libraries (like `//ui/tokens`)
@@ -223,10 +207,6 @@ ts_bundle(
 4. **Deterministic Minification**: The pinned `esbuild` binary strips comments
    and whitespace, collapses shorthand properties (`margin`, `padding`, colors),
    and merges duplicate rules inside a file.
-5. **Automatic `ts_browser_test` Injection**: Any `ts_browser_test` that depends
-   on `ts_library` targets with `.css` files automatically injects the bundled
-   CSS into the headless browser `<head>`, so `expectComputedStyles` and
-   `expectScreenshot` work out of the box.
 
 ---
 

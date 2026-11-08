@@ -5,46 +5,186 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
-
-	"tools/please_ts/importmap"
 )
 
-// IsCSSFile reports whether path has a .css extension.
-func IsCSSFile(path string) bool {
-	return strings.HasSuffix(strings.ToLower(path), ".css")
+// MetadataFile is the JSON metadata file emitted in every css_library output directory.
+const MetadataFile = "css_metadata.json"
+
+// Metadata describes a compiled css_library module and its direct dependencies.
+type Metadata struct {
+	Name  string   `json:"name"`
+	Files []string `json:"files"`
+	Deps  []string `json:"deps,omitempty"`
 }
 
-// SplitSources separates a mixed list of source files into non-CSS (TS/JS) and CSS slices.
-func SplitSources(srcs []string) (tsSrcs, cssSrcs []string) {
-	for _, s := range srcs {
-		if IsCSSFile(s) {
-			cssSrcs = append(cssSrcs, s)
-		} else {
-			tsSrcs = append(tsSrcs, s)
+// CompileOptions holds flags for `please_ts css compile`.
+type CompileOptions struct {
+	Name string
+	Out  string
+	Srcs []string
+	Deps []string
+}
+
+// BundleOptions holds flags for `please_ts css bundle`.
+type BundleOptions struct {
+	Out           string
+	Srcs          []string
+	Deps          []string
+	Minify        bool
+	Sourcemap     bool
+	AllowOverride bool
+	EsbuildBinary string
+	Flags         []string
+}
+
+// Compile validates the CSS sources of a css_library, writes css_metadata.json,
+// and embeds transitive css_library dependencies so downstream targets only need direct deps.
+func Compile(opts CompileOptions) error {
+	if len(opts.Srcs) == 0 {
+		return fmt.Errorf("no CSS source files provided for css_library")
+	}
+	if opts.Out == "" {
+		return fmt.Errorf("output directory must be specified for css_library")
+	}
+
+	if err := CheckFiles(opts.Srcs); err != nil {
+		return err
+	}
+
+	if err := os.MkdirAll(opts.Out, 0755); err != nil {
+		return err
+	}
+
+	var files []string
+	for _, src := range opts.Srcs {
+		base := filepath.Base(src)
+		dst := filepath.Join(opts.Out, base)
+		if err := copyFile(src, dst); err != nil {
+			return fmt.Errorf("copying CSS source %s: %w", src, err)
+		}
+		files = append(files, base)
+	}
+
+	depNames := discoverDirectDepNames(opts.Deps, ".")
+	name := opts.Name
+	if name == "" {
+		name = filepath.Base(opts.Out)
+	}
+
+	meta := Metadata{
+		Name:  name,
+		Files: files,
+		Deps:  depNames,
+	}
+	data, err := json.MarshalIndent(meta, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(opts.Out, MetadataFile), data, 0644); err != nil {
+		return err
+	}
+
+	return embedDependencies(".", opts.Out)
+}
+
+// Bundle collects all transitive css_library files and direct srcs in topological order,
+// checks for cross-file selector/@keyframes/:root variable collisions, and bundles/minifies via esbuild.
+func Bundle(opts BundleOptions) error {
+	if opts.Out == "" {
+		return fmt.Errorf("output path must be specified for css_bundle")
+	}
+
+	graphFiles, err := DiscoverGraphFiles(opts.Deps, opts.Srcs, ".")
+	if err != nil {
+		return err
+	}
+	if len(graphFiles) == 0 {
+		return fmt.Errorf("no CSS files found in srcs or deps for css_bundle %s", opts.Out)
+	}
+
+	if !opts.AllowOverride {
+		if err := CheckFiles(graphFiles); err != nil {
+			return err
 		}
 	}
-	return tsSrcs, cssSrcs
+
+	if err := os.MkdirAll(filepath.Dir(opts.Out), 0755); err != nil {
+		return err
+	}
+
+	entryFile, cleanup, err := writeBundleEntryFile(graphFiles)
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	args := []string{entryFile, "--outfile=" + opts.Out, "--bundle"}
+	if opts.Minify {
+		args = append(args, "--minify")
+	}
+	if opts.Sourcemap {
+		args = append(args, "--sourcemap")
+	}
+	args = append(args, opts.Flags...)
+
+	esbuildBin := opts.EsbuildBinary
+	if esbuildBin == "" {
+		esbuildBin = "esbuild"
+	}
+	cmd := exec.Command(esbuildBin, args...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("esbuild CSS bundle failed: %w", err)
+	}
+	return nil
 }
 
-// DiscoverGraphFiles returns all unique CSS files across the transitive dependency graph
+func writeBundleEntryFile(graphFiles []string) (string, func(), error) {
+	var sb strings.Builder
+	for _, f := range graphFiles {
+		rel := f
+		if !strings.HasPrefix(rel, "./") && !strings.HasPrefix(rel, "../") && !filepath.IsAbs(rel) {
+			rel = "./" + filepath.ToSlash(rel)
+		} else {
+			rel = filepath.ToSlash(rel)
+		}
+		sb.WriteString(fmt.Sprintf("@import %q;\n", rel))
+	}
+
+	tmpFile, err := os.CreateTemp(".", ".please_ts_css_entry_*.css")
+	if err != nil {
+		return "", nil, fmt.Errorf("creating temporary CSS entry: %w", err)
+	}
+	name := tmpFile.Name()
+	if _, err := tmpFile.WriteString(sb.String()); err != nil {
+		_ = tmpFile.Close()
+		_ = os.Remove(name)
+		return "", nil, err
+	}
+	_ = tmpFile.Close()
+	return name, func() { _ = os.Remove(name) }, nil
+}
+
+// DiscoverGraphFiles returns all unique CSS files across transitive css_library dependencies
 // in deterministic topological order (dependencies before dependents), followed by directSrcs.
-// Diamond dependencies (either reached via multiple paths or identical content at canonical module paths)
-// are deduplicated automatically.
 func DiscoverGraphFiles(deps []string, directSrcs []string, workingDir string) ([]string, error) {
 	if workingDir == "" {
 		workingDir = "."
 	}
 
-	mods, err := discoverAllModules(deps, workingDir)
+	mods, err := discoverAllLibraries(deps, workingDir)
 	if err != nil {
 		return nil, err
 	}
 
-	orderedMods := topoSortModules(mods)
+	orderedMods := topoSortLibraries(mods)
 
 	var result []string
 	seenLogical := make(map[string]bool)
@@ -70,17 +210,14 @@ func DiscoverGraphFiles(deps []string, directSrcs []string, workingDir string) (
 	}
 
 	for _, mod := range orderedMods {
-		for _, f := range mod.cssFiles {
-			logical := f
-			if mod.meta.Name != "" {
-				logical = mod.meta.Name + "/" + f
-			}
+		for _, f := range mod.meta.Files {
+			logical := mod.meta.Name + "/" + f
 			addFile(logical, filepath.Join(mod.baseDir, f))
 		}
 	}
 
 	for _, src := range directSrcs {
-		if IsCSSFile(src) {
+		if strings.HasSuffix(strings.ToLower(src), ".css") {
 			addFile(filepath.Clean(src), src)
 		}
 	}
@@ -88,15 +225,13 @@ func DiscoverGraphFiles(deps []string, directSrcs []string, workingDir string) (
 	return result, nil
 }
 
-type discoveredModule struct {
-	key      string
-	meta     importmap.ModuleMetadata
-	baseDir  string
-	cssFiles []string
-	depKeys  []string
+type discoveredLibrary struct {
+	key     string
+	meta    Metadata
+	baseDir string
 }
 
-func discoverAllModules(deps []string, workingDir string) (map[string]*discoveredModule, error) {
+func discoverAllLibraries(deps []string, workingDir string) (map[string]*discoveredLibrary, error) {
 	metaFiles := collectMetadataPaths(deps, workingDir)
 	sort.Strings(metaFiles)
 
@@ -106,15 +241,13 @@ func discoverAllModules(deps []string, workingDir string) (map[string]*discovere
 		return strings.Count(metaFiles[i], string(filepath.Separator)) < strings.Count(metaFiles[j], string(filepath.Separator))
 	})
 
-	byKey := make(map[string]*discoveredModule)
-	byDir := make(map[string]*discoveredModule)
-
+	byKey := make(map[string]*discoveredLibrary)
 	for _, metaPath := range metaFiles {
 		data, err := os.ReadFile(metaPath)
 		if err != nil {
 			continue
 		}
-		var meta importmap.ModuleMetadata
+		var meta Metadata
 		if err := json.Unmarshal(data, &meta); err != nil {
 			return nil, fmt.Errorf("parsing %s: %w", metaPath, err)
 		}
@@ -128,78 +261,34 @@ func discoverAllModules(deps []string, workingDir string) (map[string]*discovere
 			continue
 		}
 
-		cssFiles := extractModuleCSSFiles(meta, baseDir)
-		mod := &discoveredModule{
-			key:      key,
-			meta:     meta,
-			baseDir:  baseDir,
-			cssFiles: cssFiles,
+		sort.Strings(meta.Deps)
+		byKey[key] = &discoveredLibrary{
+			key:     key,
+			meta:    meta,
+			baseDir: baseDir,
 		}
-		byKey[key] = mod
-		byDir[baseDir] = mod
-	}
-
-	// Wire dependency edges from each module's recorded Imports map.
-	for _, mod := range byKey {
-		seenDep := make(map[string]bool)
-		for spec, target := range mod.meta.Imports {
-			depKey := resolveModuleDependencyKey(mod, spec, target, byKey, byDir)
-			if depKey != "" && depKey != mod.key && !seenDep[depKey] {
-				seenDep[depKey] = true
-				mod.depKeys = append(mod.depKeys, depKey)
-			}
-		}
-		sort.Strings(mod.depKeys)
 	}
 
 	return byKey, nil
 }
 
-func resolveModuleDependencyKey(
-	mod *discoveredModule,
-	spec, target string,
-	byKey map[string]*discoveredModule,
-	byDir map[string]*discoveredModule,
-) string {
-	cleanSpec := strings.TrimSuffix(spec, "/")
-	if _, ok := byKey[cleanSpec]; ok {
-		return cleanSpec
-	}
-	cleanTarget := filepath.Clean(strings.TrimPrefix(target, "./"))
-	targetDir := filepath.Dir(cleanTarget)
-	if depMod, ok := byDir[targetDir]; ok {
-		return depMod.key
-	}
-	return ""
-}
-
-func extractModuleCSSFiles(meta importmap.ModuleMetadata, baseDir string) []string {
+func discoverDirectDepNames(deps []string, workingDir string) []string {
 	seen := make(map[string]bool)
-	var cssFiles []string
+	var names []string
 
-	for _, f := range meta.CSSFiles {
-		if IsCSSFile(f) && !seen[f] {
-			seen[f] = true
-			cssFiles = append(cssFiles, f)
+	for _, metaPath := range collectMetadataPaths(deps, workingDir) {
+		data, err := os.ReadFile(metaPath)
+		if err != nil {
+			continue
+		}
+		var meta Metadata
+		if err := json.Unmarshal(data, &meta); err == nil && meta.Name != "" && !seen[meta.Name] {
+			seen[meta.Name] = true
+			names = append(names, meta.Name)
 		}
 	}
-	for _, f := range meta.Files {
-		if IsCSSFile(f) && !seen[f] {
-			seen[f] = true
-			cssFiles = append(cssFiles, f)
-		}
-	}
-	if len(meta.Files) == 0 && len(meta.CSSFiles) == 0 {
-		if entries, err := os.ReadDir(baseDir); err == nil {
-			for _, e := range entries {
-				if !e.IsDir() && IsCSSFile(e.Name()) && !seen[e.Name()] {
-					seen[e.Name()] = true
-					cssFiles = append(cssFiles, e.Name())
-				}
-			}
-		}
-	}
-	return cssFiles
+	sort.Strings(names)
+	return names
 }
 
 func collectMetadataPaths(deps []string, workingDir string) []string {
@@ -219,18 +308,18 @@ func collectMetadataPaths(deps []string, workingDir string) []string {
 		if d == "" {
 			continue
 		}
-		if filepath.Base(d) == "ts_metadata.json" {
+		if filepath.Base(d) == MetadataFile {
 			addPath(d)
 			continue
 		}
-		metaCandidate := filepath.Join(d, "ts_metadata.json")
+		metaCandidate := filepath.Join(d, MetadataFile)
 		if _, err := os.Stat(metaCandidate); err == nil {
 			addPath(metaCandidate)
 		}
 	}
 
 	_ = filepath.WalkDir(workingDir, func(path string, d os.DirEntry, err error) error {
-		if err == nil && !d.IsDir() && d.Name() == "ts_metadata.json" {
+		if err == nil && !d.IsDir() && d.Name() == MetadataFile {
 			addPath(path)
 		}
 		return nil
@@ -239,7 +328,7 @@ func collectMetadataPaths(deps []string, workingDir string) []string {
 	return paths
 }
 
-func topoSortModules(mods map[string]*discoveredModule) []*discoveredModule {
+func topoSortLibraries(mods map[string]*discoveredLibrary) []*discoveredLibrary {
 	keys := make([]string, 0, len(mods))
 	for k := range mods {
 		keys = append(keys, k)
@@ -247,7 +336,7 @@ func topoSortModules(mods map[string]*discoveredModule) []*discoveredModule {
 	sort.Strings(keys)
 
 	visited := make(map[string]bool, len(mods))
-	var ordered []*discoveredModule
+	var ordered []*discoveredLibrary
 
 	var visit func(k string)
 	visit = func(k string) {
@@ -259,7 +348,7 @@ func topoSortModules(mods map[string]*discoveredModule) []*discoveredModule {
 		if !ok {
 			return
 		}
-		for _, depKey := range mod.depKeys {
+		for _, depKey := range mod.meta.Deps {
 			visit(depKey)
 		}
 		ordered = append(ordered, mod)
@@ -269,6 +358,102 @@ func topoSortModules(mods map[string]*discoveredModule) []*discoveredModule {
 		visit(k)
 	}
 	return ordered
+}
+
+func embedDependencies(root, outDir string) error {
+	absOut, err := filepath.Abs(outDir)
+	if err != nil {
+		return err
+	}
+
+	var libDirs []string
+	err = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		abs, absErr := filepath.Abs(path)
+		if absErr != nil {
+			return nil
+		}
+		if d.IsDir() && abs == absOut {
+			return filepath.SkipDir
+		}
+		if !d.IsDir() && d.Name() == MetadataFile {
+			libDirs = append(libDirs, filepath.Dir(path))
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	sort.Strings(libDirs)
+	var outermost []string
+	for _, dir := range libDirs {
+		if n := len(outermost); n > 0 && strings.HasPrefix(dir+string(filepath.Separator), outermost[n-1]+string(filepath.Separator)) {
+			continue
+		}
+		outermost = append(outermost, dir)
+	}
+
+	for _, dir := range outermost {
+		rel, err := filepath.Rel(root, dir)
+		if err != nil {
+			return err
+		}
+		dst := filepath.Join(outDir, rel)
+		if err := copyLibraryFiles(dir, dst); err != nil {
+			return fmt.Errorf("embedding CSS dependency %s: %w", dir, err)
+		}
+	}
+	return nil
+}
+
+func copyLibraryFiles(src, dst string) error {
+	data, err := os.ReadFile(filepath.Join(src, MetadataFile))
+	if err != nil {
+		return err
+	}
+	var meta Metadata
+	if err := json.Unmarshal(data, &meta); err != nil {
+		return err
+	}
+	for _, name := range append([]string{MetadataFile}, meta.Files...) {
+		if err := linkOrCopy(filepath.Join(src, name), filepath.Join(dst, name)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func linkOrCopy(src, dst string) error {
+	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
+		return err
+	}
+	if err := os.Link(src, dst); err == nil {
+		return nil
+	}
+	return copyFile(src, dst)
+}
+
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+
+	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
+		return err
+	}
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	_, err = io.Copy(out, in)
+	return err
 }
 
 func fileContentKey(baseName, path string) (string, error) {

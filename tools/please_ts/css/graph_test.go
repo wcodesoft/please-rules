@@ -1,121 +1,95 @@
 package css
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
-
-	"tools/please_ts/importmap"
 )
 
-func TestSplitSources(t *testing.T) {
-	tsSrcs, cssSrcs := SplitSources([]string{"a.ts", "b.css", "c.tsx", "STYLE.CSS"})
-	if !reflect.DeepEqual(tsSrcs, []string{"a.ts", "c.tsx"}) {
-		t.Errorf("tsSrcs = %v, want [a.ts c.tsx]", tsSrcs)
-	}
-	if !reflect.DeepEqual(cssSrcs, []string{"b.css", "STYLE.CSS"}) {
-		t.Errorf("cssSrcs = %v, want [b.css STYLE.CSS]", cssSrcs)
-	}
-}
-
-func writeModuleFixture(t *testing.T, dir string, meta importmap.ModuleMetadata, files map[string]string) {
-	t.Helper()
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		t.Fatal(err)
-	}
-	data, err := json.MarshalIndent(meta, "", "  ")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "ts_metadata.json"), data, 0644); err != nil {
-		t.Fatal(err)
-	}
-	for name, content := range files {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0644); err != nil {
-			t.Fatal(err)
-		}
-	}
-}
-
-func TestDiscoverGraphFilesOrdersDependenciesAndDeduplicatesDiamonds(t *testing.T) {
+func TestCompileAndDiscoverGraphFilesOrdersDependenciesAndDeduplicatesDiamonds(t *testing.T) {
 	root := t.TempDir()
-
-	// Diamond graph:
-	//   @ui/tokens (tokens.css)
-	//    /      \
-	// @ui/btn   @ui/card
-	//    \      /
-	//    page.css (direct source)
-	tokensDir := filepath.Join(root, "ui", "tokens")
-	writeModuleFixture(t, tokensDir, importmap.ModuleMetadata{
-		Name:     "@ui/tokens",
-		Entry:    "tokens.ts",
-		Files:    []string{"tokens.ts", "tokens.css"},
-		CSSFiles: []string{"tokens.css"},
-	}, map[string]string{
-		"tokens.ts":  "export const t = 1;",
-		"tokens.css": ":root { --gap: 8px; }",
-	})
-
-	btnDir := filepath.Join(root, "ui", "btn")
-	writeModuleFixture(t, btnDir, importmap.ModuleMetadata{
-		Name:     "@ui/btn",
-		Entry:    "btn.ts",
-		Files:    []string{"btn.ts", "btn.css"},
-		CSSFiles: []string{"btn.css"},
-		Imports: map[string]string{
-			"@ui/tokens": "./ui/tokens/tokens.ts",
-		},
-	}, map[string]string{
-		"btn.ts":  "export const b = 1;",
-		"btn.css": ".btn { gap: var(--gap); }",
-	})
-
-	// Also simulate an embedded copy of @ui/tokens inside @ui/btn (as ts_library --embed-deps produces)
-	embeddedTokensDir := filepath.Join(btnDir, "ui", "tokens")
-	writeModuleFixture(t, embeddedTokensDir, importmap.ModuleMetadata{
-		Name:     "@ui/tokens",
-		Entry:    "tokens.ts",
-		Files:    []string{"tokens.ts", "tokens.css"},
-		CSSFiles: []string{"tokens.css"},
-	}, map[string]string{
-		"tokens.ts":  "export const t = 1;",
-		"tokens.css": ":root { --gap: 8px; }",
-	})
-
-	cardDir := filepath.Join(root, "ui", "card")
-	writeModuleFixture(t, cardDir, importmap.ModuleMetadata{
-		Name:     "@ui/card",
-		Entry:    "card.ts",
-		Files:    []string{"card.ts", "card.css"},
-		CSSFiles: []string{"card.css"},
-		Imports: map[string]string{
-			"@ui/tokens": "./ui/tokens/tokens.ts",
-		},
-	}, map[string]string{
-		"card.ts":  "export const c = 1;",
-		"card.css": ".card { gap: var(--gap); }",
-	})
-
-	pageCSS := filepath.Join(root, "page.css")
-	if err := os.WriteFile(pageCSS, []byte(".page { display: grid; }"), 0644); err != nil {
+	old, _ := os.Getwd()
+	if err := os.Chdir(root); err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = os.Chdir(old) })
 
-	got, err := DiscoverGraphFiles([]string{btnDir, cardDir}, []string{pageCSS}, root)
+	// Create source files
+	tokensSrc := filepath.Join(root, "src", "tokens.css")
+	btnSrc := filepath.Join(root, "src", "btn.css")
+	cardSrc := filepath.Join(root, "src", "card.css")
+	pageSrc := filepath.Join(root, "src", "page.css")
+	if err := os.MkdirAll(filepath.Dir(tokensSrc), 0755); err != nil {
+		t.Fatal(err)
+	}
+	_ = os.WriteFile(tokensSrc, []byte(":root { --gap: 8px; }"), 0644)
+	_ = os.WriteFile(btnSrc, []byte(".btn { gap: var(--gap); }"), 0644)
+	_ = os.WriteFile(cardSrc, []byte(".card { gap: var(--gap); }"), 0644)
+	_ = os.WriteFile(pageSrc, []byte(".page { display: grid; }"), 0644)
+
+	// Compile tokens css_library
+	tokensOut := filepath.Join("ui", "tokens")
+	if err := Compile(CompileOptions{
+		Name: "ui/tokens:tokens",
+		Out:  tokensOut,
+		Srcs: []string{tokensSrc},
+	}); err != nil {
+		t.Fatalf("Compile tokens failed: %v", err)
+	}
+
+	// Compile btn css_library depending on tokens
+	btnOut := filepath.Join("ui", "btn")
+	if err := Compile(CompileOptions{
+		Name: "ui/btn:btn",
+		Out:  btnOut,
+		Srcs: []string{btnSrc},
+		Deps: []string{tokensOut},
+	}); err != nil {
+		t.Fatalf("Compile btn failed: %v", err)
+	}
+
+	// Compile card css_library depending on btn and tokens (diamond)
+	cardOut := filepath.Join("ui", "card")
+	if err := Compile(CompileOptions{
+		Name: "ui/card:card",
+		Out:  cardOut,
+		Srcs: []string{cardSrc},
+		Deps: []string{btnOut, tokensOut},
+	}); err != nil {
+		t.Fatalf("Compile card failed: %v", err)
+	}
+
+	got, err := DiscoverGraphFiles([]string{btnOut, cardOut}, []string{pageSrc}, ".")
 	if err != nil {
 		t.Fatalf("DiscoverGraphFiles failed: %v", err)
 	}
 
 	want := []string{
-		filepath.Join(tokensDir, "tokens.css"),
-		filepath.Join(btnDir, "btn.css"),
-		filepath.Join(cardDir, "card.css"),
-		pageCSS,
+		filepath.Join(tokensOut, "tokens.css"),
+		filepath.Join(btnOut, "btn.css"),
+		filepath.Join(cardOut, "card.css"),
+		filepath.Clean(pageSrc),
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("DiscoverGraphFiles =\n  %v\nwant:\n  %v", got, want)
+	}
+}
+
+func TestCompileRejectsIntraLibraryCollisions(t *testing.T) {
+	dir := t.TempDir()
+	a := filepath.Join(dir, "a.css")
+	b := filepath.Join(dir, "b.css")
+	_ = os.WriteFile(a, []byte(".dup { color: red; }"), 0644)
+	_ = os.WriteFile(b, []byte(".dup { color: blue; }"), 0644)
+
+	err := Compile(CompileOptions{
+		Name: "ui:dup",
+		Out:  filepath.Join(dir, "out"),
+		Srcs: []string{a, b},
+	})
+	if err == nil || !strings.Contains(err.Error(), `duplicate CSS selector ".dup"`) {
+		t.Fatalf("expected duplicate CSS selector error, got: %v", err)
 	}
 }
