@@ -97,8 +97,9 @@ func TestWriteVitestConfigMatrix(t *testing.T) {
 		`export default {`,
 		`globals: true`,
 		`"/abs/test1.ts"`,
-		`"find": "^@domain/calc$"`,
-		`"replacement": "/abs/calc.ts"`,
+		`"@domain/calc": "/abs/calc.ts"`,
+		`name: "please-ts-exact-alias"`,
+		`Object.prototype.hasOwnProperty.call(aliases, source)`,
 	}
 	for _, want := range wantSnippets {
 		if !strings.Contains(content, want) {
@@ -107,7 +108,7 @@ func TestWriteVitestConfigMatrix(t *testing.T) {
 	}
 }
 
-func TestWriteVitestConfigNestedAliasOrdering(t *testing.T) {
+func TestWriteVitestConfigNestedAliases(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "vitest.config.mjs")
 	aliases := map[string]string{
 		"@scope/app":                   "/abs/app.ts",
@@ -119,14 +120,18 @@ func TestWriteVitestConfigNestedAliasOrdering(t *testing.T) {
 	data, _ := os.ReadFile(configPath)
 	content := string(data)
 
-	// Exact-match anchors prevent "@scope/app" from capturing the nested name.
-	for _, want := range []string{`"^@scope/app$"`, `"^@scope/app/components/widget$"`} {
+	// Exact map lookup in resolveId prevents "@scope/app" from capturing nested specifiers.
+	for _, want := range []string{
+		`"@scope/app": "/abs/app.ts"`,
+		`"@scope/app/components/widget": "/abs/widget.ts"`,
+		`Object.prototype.hasOwnProperty.call(aliases, source)`,
+	} {
 		if !strings.Contains(content, want) {
 			t.Errorf("config missing %q in:\n%s", want, content)
 		}
 	}
-	if strings.Index(content, "components/widget") > strings.Index(content, `"^@scope/app$"`) {
-		t.Errorf("longer alias should precede shorter alias in:\n%s", content)
+	if strings.Contains(content, "RegExp") {
+		t.Errorf("config should not use RegExp:\n%s", content)
 	}
 }
 

@@ -6,8 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
-	"sort"
 	"strings"
 
 	"tools/please_ts/importmap"
@@ -273,35 +271,18 @@ func buildVitestNpmDependencies(im *importmap.ImportMap) map[string]string {
 	return deps
 }
 
-// aliasEntry is one Vite resolve.alias entry in the generated config.
-type aliasEntry struct {
-	Find        string `json:"find"`
-	Replacement string `json:"replacement"`
-}
-
-// writeVitestConfig writes a Vitest config whose aliases are an ordered array of
-// exact-match entries. A plain object alias prefix-matches ("a/b" is rewritten by
-// the alias "a"), which breaks nested module names such as "@scope/app" and
-// "@scope/app/components/widget"; subpaths are already enumerated by the import map.
+// writeVitestConfig writes a Vitest config with a small Vite plugin that looks up
+// bare specifiers in an exact alias map. A plain resolve.alias object prefix-matches
+// ("a/b" is rewritten by the alias "a"), which breaks nested module names such as
+// "@scope/app" and "@scope/app/components/widget"; subpaths are already enumerated
+// by the import map.
 func writeVitestConfig(configPath string, srcs []string, aliases map[string]string) error {
-	keys := make([]string, 0, len(aliases))
-	for k := range aliases {
-		keys = append(keys, k)
+	if aliases == nil {
+		aliases = map[string]string{}
 	}
-	sort.Slice(keys, func(i, j int) bool {
-		if len(keys[i]) != len(keys[j]) {
-			return len(keys[i]) > len(keys[j])
-		}
-		return keys[i] < keys[j]
-	})
-	entries := make([]aliasEntry, 0, len(keys))
-	for _, k := range keys {
-		entries = append(entries, aliasEntry{Find: "^" + regexp.QuoteMeta(k) + "$", Replacement: aliases[k]})
-	}
-	aliasBytes, _ := json.MarshalIndent(entries, "    ", "  ")
+	aliasBytes, _ := json.MarshalIndent(aliases, "", "  ")
 	srcsBytes, _ := json.Marshal(srcs)
 
-	// "find" is serialized as a string and revived into a RegExp by the config.
 	configContent := fmt.Sprintf(`const aliases = %s;
 
 export default {
@@ -310,9 +291,15 @@ export default {
     include: %s,
     watch: false,
   },
-  resolve: {
-    alias: aliases.map((a) => ({ find: new RegExp(a.find), replacement: a.replacement })),
-  },
+  plugins: [
+    {
+      name: "please-ts-exact-alias",
+      enforce: "pre",
+      resolveId(source) {
+        return Object.prototype.hasOwnProperty.call(aliases, source) ? aliases[source] : null;
+      },
+    },
+  ],
 };
 `, string(aliasBytes), string(srcsBytes))
 
