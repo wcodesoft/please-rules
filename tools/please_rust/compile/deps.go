@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 )
 
@@ -13,7 +12,21 @@ func sanitizeCrateName(name string) string {
 	return strings.ReplaceAll(name, "-", "_")
 }
 
-var hashSuffixRegex = regexp.MustCompile(`-[0-9a-fA-F]{16}$`)
+// stripCrateHashSuffix removes a trailing 16-hex-character crate hash suffix ("-<16 hex>").
+func stripCrateHashSuffix(s string) string {
+	const hashLen = 16
+	if len(s) <= hashLen+1 || s[len(s)-hashLen-1] != '-' {
+		return s
+	}
+	for i := len(s) - hashLen; i < len(s); i++ {
+		c := s[i]
+		isHex := (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
+		if !isHex {
+			return s
+		}
+	}
+	return s[:len(s)-hashLen-1]
+}
 
 // extractCrateName derives the crate name from a library artifact filename.
 func extractCrateName(filename string) string {
@@ -21,7 +34,7 @@ func extractCrateName(filename string) string {
 	ext := filepath.Ext(base)
 	trimmed := strings.TrimSuffix(base, ext)
 	trimmed = strings.TrimPrefix(trimmed, "lib")
-	trimmed = hashSuffixRegex.ReplaceAllString(trimmed, "")
+	trimmed = stripCrateHashSuffix(trimmed)
 	return sanitizeCrateName(trimmed)
 }
 

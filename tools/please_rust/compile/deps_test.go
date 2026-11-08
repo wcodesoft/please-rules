@@ -19,9 +19,13 @@ func TestSanitizeCrateName(t *testing.T) {
 
 func TestExtractCrateName(t *testing.T) {
 	cases := map[string]string{
-		"libtree_sitter_rust.rlib": "tree_sitter_rust",
-		"libfoo-bar.rlib":          "foo_bar",
-		"libtest.so":               "test",
+		"libtree_sitter_rust.rlib":            "tree_sitter_rust",
+		"libfoo-bar.rlib":                     "foo_bar",
+		"libtest.so":                          "test",
+		"libserde-0123456789abcdef.rlib":      "serde",
+		"libmy_crate-ABCDEF0123456789.so":     "my_crate",
+		"libnot-a-hash-0123456789abcdeg.rlib": "not_a_hash_0123456789abcdeg",
+		"libshort-0123456789abcde.rlib":       "short_0123456789abcde",
 	}
 	for in, expected := range cases {
 		if got := extractCrateName(in); got != expected {

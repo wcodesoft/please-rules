@@ -140,3 +140,34 @@ version = "1.0.0"
 		t.Errorf("got %s, want nolib-1.0.0/src/lib.rs", meta.LibSrc)
 	}
 }
+
+func TestBuildCrateMeta_CommentsAndOtherSections(t *testing.T) {
+	tmpDir := t.TempDir()
+	cargoToml := `[package]
+name = "tricky"
+version = "1.0.0"
+# edition = "2018"
+edition = '2021' # inline comment
+
+[lib]
+# path = "wrong.rs"
+path = "src/custom_lib.rs"
+
+[[bin]]
+name = "tricky-bin"
+path = "src/main.rs"
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, "Cargo.toml"), []byte(cargoToml), 0644); err != nil {
+		t.Fatal(err)
+	}
+	meta, err := buildCrateMeta("tricky", "1.0.0", tmpDir, "tricky-1.0.0")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if meta.Edition != "2021" {
+		t.Errorf("edition = %q, want 2021", meta.Edition)
+	}
+	if meta.LibSrc != "tricky-1.0.0/src/custom_lib.rs" {
+		t.Errorf("LibSrc = %q, want tricky-1.0.0/src/custom_lib.rs", meta.LibSrc)
+	}
+}

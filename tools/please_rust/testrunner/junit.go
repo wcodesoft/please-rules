@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 )
@@ -37,11 +36,6 @@ type JUnitFailure struct {
 	Type     string `xml:"type,attr"`
 	Contents string `xml:",chardata"`
 }
-
-var (
-	testLineRegex = regexp.MustCompile(`test\s+([^\s]+)\s+\.\.\.\s+(ok|FAILED|ignored)`)
-	summaryRegex  = regexp.MustCompile(`test result:\s+(ok|FAILED)\.\s+(\d+)\s+passed;\s+(\d+)\s+failed;\s+(\d+)\s+ignored;`)
-)
 
 // DefaultResultsFile is the default JUnit XML output filename.
 const DefaultResultsFile = "test.results"
@@ -78,12 +72,14 @@ func ParseTestOutput(pkgName string, output string, duration time.Duration) *JUn
 }
 
 func parseTestCaseLine(pkgName, line string) (JUnitTestCase, bool) {
-	line = strings.TrimSpace(line)
-	m := testLineRegex.FindStringSubmatch(line)
-	if len(m) < 3 {
+	fields := strings.Fields(line)
+	if len(fields) < 4 || fields[0] != "test" || fields[2] != "..." {
 		return JUnitTestCase{}, false
 	}
-	tName, status := m[1], m[2]
+	tName, status := fields[1], fields[3]
+	if status != "ok" && status != "FAILED" && status != "ignored" {
+		return JUnitTestCase{}, false
+	}
 	tc := JUnitTestCase{
 		Name:      tName,
 		Classname: pkgName,
