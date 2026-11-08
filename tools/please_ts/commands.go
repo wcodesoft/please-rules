@@ -10,6 +10,7 @@ import (
 	"tools/please_ts/binary"
 	"tools/please_ts/bundle"
 	"tools/please_ts/compile"
+	"tools/please_ts/css"
 	"tools/please_ts/npmcache"
 	"tools/please_ts/testrunner"
 	"tools/please_ts/unpack"
@@ -108,6 +109,64 @@ func handleBundle(args []string) error {
 		Flags:      extraFlags,
 	}
 	return bundle.Run(opts)
+}
+
+func handleCSS(args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("expected subcommand for 'please_ts css': 'compile' or 'bundle'")
+	}
+	switch args[0] {
+	case "compile":
+		cmd := flag.NewFlagSet("css compile", flag.ContinueOnError)
+		name := cmd.String("name", "", "CSS library identifier")
+		out := cmd.String("out", "", "Output directory for the compiled CSS library")
+		srcsFlag := cmd.String("srcs", "", "Comma-separated CSS sources")
+		depsFlag := cmd.String("deps", "", "Comma-separated dependency paths")
+		if err := cmd.Parse(args[1:]); err != nil {
+			return err
+		}
+		srcs := compile.ExpandCommaSeparated([]string{*srcsFlag})
+		srcs = append(srcs, cmd.Args()...)
+		deps := compile.ExpandCommaSeparated([]string{*depsFlag})
+		return css.Compile(css.CompileOptions{
+			Name: *name,
+			Out:  *out,
+			Srcs: srcs,
+			Deps: deps,
+		})
+	case "bundle":
+		cmd := flag.NewFlagSet("css bundle", flag.ContinueOnError)
+		out := cmd.String("out", "", "Output CSS bundle path")
+		srcsFlag := cmd.String("srcs", "", "Comma-separated CSS sources")
+		depsFlag := cmd.String("deps", "", "Comma-separated dependency paths")
+		minify := cmd.Bool("minify", true, "Minify bundled CSS")
+		sourcemap := cmd.Bool("sourcemap", false, "Generate CSS source map")
+		allowOverrides := cmd.Bool("allow-overrides", false, "Allow duplicate selectors or variables across CSS files")
+		esbuildBinary := cmd.String("esbuild-binary", "", "Pinned esbuild executable")
+		flags := cmd.String("flags", "", "Additional esbuild flags")
+		if err := cmd.Parse(args[1:]); err != nil {
+			return err
+		}
+		srcs := compile.ExpandCommaSeparated([]string{*srcsFlag})
+		srcs = append(srcs, cmd.Args()...)
+		deps := compile.ExpandCommaSeparated([]string{*depsFlag})
+		var extraFlags []string
+		if *flags != "" {
+			extraFlags = strings.Fields(*flags)
+		}
+		return css.Bundle(css.BundleOptions{
+			Out:           *out,
+			Srcs:          srcs,
+			Deps:          deps,
+			Minify:        *minify,
+			Sourcemap:     *sourcemap,
+			AllowOverride: *allowOverrides,
+			EsbuildBinary: *esbuildBinary,
+			Flags:         extraFlags,
+		})
+	default:
+		return fmt.Errorf("unknown subcommand %q for 'please_ts css' (want 'compile' or 'bundle')", args[0])
+	}
 }
 
 func handleBinary(args []string) error {
@@ -275,6 +334,7 @@ func printUsage(w io.Writer) {
 	fmt.Fprintf(w, "Usage:\n")
 	fmt.Fprintf(w, "  please_ts compile [options] [-- sources...]\n")
 	fmt.Fprintf(w, "  please_ts bundle [options]\n")
+	fmt.Fprintf(w, "  please_ts css compile|bundle [options]\n")
 	fmt.Fprintf(w, "  please_ts binary [options]\n")
 	fmt.Fprintf(w, "  please_ts testrunner [options] [-- sources...]\n")
 	fmt.Fprintf(w, "  please_ts unpack [options]\n")
@@ -292,6 +352,8 @@ func runCommand(args []string) error {
 		return handleCompile(args[1:])
 	case "bundle":
 		return handleBundle(args[1:])
+	case "css":
+		return handleCSS(args[1:])
 	case "binary":
 		return handleBinary(args[1:])
 	case "testrunner":

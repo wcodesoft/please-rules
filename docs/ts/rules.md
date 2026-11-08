@@ -182,6 +182,66 @@ With npm packages (`ts_npm_module` dependencies) the bundle is built by
 
 ---
 
+## `css_library`
+
+Validates and packages modular `.css` files and their transitive `css_library`
+dependencies for downstream `css_library` and `css_bundle` targets.
+
+```starlark
+css_library(
+    name = "button",
+    srcs = ["button.css"],
+    deps = ["//ui/tokens"],
+    visibility = ["PUBLIC"],
+)
+```
+
+### Arguments
+
+| Argument     | Type   | Default    | Description                                       |
+| :----------- | :----- | :--------- | :------------------------------------------------ |
+| `name`       | `str`  | (required) | Target name.                                      |
+| `srcs`       | `list` | (required) | List of `.css` source files.                      |
+| `deps`       | `list` | `[]`       | Dependent `css_library` targets.                  |
+| `visibility` | `list` | `None`     | Visibility specification.                         |
+| `labels`     | `list` | `None`     | Rule labels (defaults to `["ts", "css", "lib"]`). |
+
+---
+
+## `css_bundle`
+
+Collects all `.css` files from `srcs` and transitive `css_library` `deps` in
+topological order, verifies that no two distinct files collide on selectors,
+`@keyframes`, or `:root` custom properties, and bundles + minifies them using
+the pinned `esbuild` binary.
+
+```starlark
+css_bundle(
+    name = "dashboard_styles",
+    srcs = ["dashboard.css"],
+    deps = [
+        "//ui/button",
+        "//ui/card",
+    ],
+    out = "dashboard.min.css",
+)
+```
+
+### Arguments
+
+| Argument          | Type   | Default    | Description                                                                       |
+| :---------------- | :----- | :--------- | :-------------------------------------------------------------------------------- |
+| `name`            | `str`  | (required) | Target name.                                                                      |
+| `srcs`            | `list` | `[]`       | Direct `.css` source files for this bundle.                                       |
+| `deps`            | `list` | `[]`       | `css_library` dependencies whose `.css` files are included in topological order.  |
+| `out`             | `str`  | `""`       | Output stylesheet path (defaults to `<name>.css`).                                |
+| `minify`          | `bool` | `True`     | Whether to minify, strip comments/whitespace, and collapse shorthands (default).  |
+| `sourcemap`       | `bool` | `False`    | Whether to generate a `.css.map` sourcemap.                                       |
+| `allow_overrides` | `bool` | `False`    | When `True`, allows duplicate selectors or `:root` variables across source files. |
+| `flags`           | `list` | `[]`       | Additional flags passed to `esbuild`.                                             |
+
+---
+
 ## `ts_test`
 
 Runs hermetic unit or simulated DOM tests using Deno test runner or Vitest.

@@ -525,6 +525,90 @@ def ts_bundle(
         building_description = f"Bundling TypeScript asset {name}...",
     )
 
+def css_library(
+        name: str,
+        srcs: list,
+        deps: list = None,
+        visibility: list = None,
+        labels: list = None):
+    """Validates and packages modular CSS files and their dependencies for downstream css_library and css_bundle targets."""
+    deps = deps or []
+    tools = {"TOOL": [_ts_tool()]}
+
+    pkg = package_name()
+    lib_id = f"{pkg}:{name}" if pkg else name
+    compile_args = [
+        "compile",
+        '--out "$OUT"',
+        '--srcs "${SRCS:-}"',
+        '--deps "${DEPS:-}"',
+        f'--name "{lib_id}"',
+    ]
+    cmd = _join_cmd("$TOOLS_TOOL css", compile_args)
+
+    return build_rule(
+        name = name,
+        srcs = srcs,
+        deps = deps,
+        exported_deps = deps,
+        outs = [name],
+        cmd = cmd,
+        needs_transitive_deps = True,
+        tools = tools,
+        visibility = visibility,
+        labels = labels or ["ts", "css", "lib"],
+        building_description = f"Compiling CSS library {name}...",
+    )
+
+def css_bundle(
+        name: str,
+        srcs: list = None,
+        deps: list = None,
+        out: str = None,
+        minify: bool = True,
+        sourcemap: bool = False,
+        allow_overrides: bool = False,
+        flags: list = None,
+        visibility: list = None,
+        labels: list = None):
+    """Bundles, checks for cross-file collisions, and minifies CSS from srcs and transitive css_library deps."""
+    srcs = srcs or []
+    deps = deps or []
+    flags = flags or []
+    out_file = out or f"{name}.css"
+
+    tools = {"TOOL": [_ts_tool()]}
+    esbuild_arg = _esbuild_tool_arg(tools)
+
+    flags_joined = " ".join(flags) if flags else ""
+    flags_str = f"--flags '{flags_joined}'" if flags else ""
+
+    bundle_args = [
+        "bundle",
+        '--out "$OUT"',
+        '--srcs "${SRCS:-}"',
+        '--deps "${DEPS:-}"',
+        "--minify" if minify else "--minify=false",
+        "--sourcemap" if sourcemap else "",
+        "--allow-overrides" if allow_overrides else "",
+        esbuild_arg,
+        flags_str,
+    ]
+    cmd = _join_cmd("$TOOLS_TOOL css", bundle_args)
+
+    return build_rule(
+        name = name,
+        srcs = srcs,
+        deps = deps,
+        outs = [out_file],
+        cmd = cmd,
+        needs_transitive_deps = True,
+        tools = tools,
+        visibility = visibility,
+        labels = labels or ["ts", "css", "bundle"],
+        building_description = f"Bundling CSS asset {name}...",
+    )
+
 def ts_test(
         name: str,
         srcs: list,

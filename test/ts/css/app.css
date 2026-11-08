@@ -1,0 +1,5 @@
+/* Page-level layout */
+.dashboard {
+  display: flex;
+  gap: var(--space-sm);
+}

@@ -159,6 +159,57 @@ Run the built executable:
 
 ---
 
+## 5. Modular CSS Libraries & Minified Bundling (`css_library` & `css_bundle`)
+
+Define modular CSS building blocks with `css_library` and assemble production
+stylesheets with `css_bundle`:
+
+```starlark
+# ui/tokens/BUILD
+css_library(
+    name = "tokens",
+    srcs = ["tokens.css"],
+    visibility = ["PUBLIC"],
+)
+
+# ui/button/BUILD
+css_library(
+    name = "button",
+    srcs = ["button.css"],
+    deps = ["//ui/tokens"],
+    visibility = ["PUBLIC"],
+)
+
+# pages/dashboard/BUILD
+css_bundle(
+    name = "dashboard_styles",
+    srcs = ["dashboard.css"],
+    deps = [
+        "//ui/button",
+        "//ui/card",
+    ],
+    out = "dashboard.min.css",
+)
+```
+
+### How It Stays Small, Predictable, and Collision-Free
+
+1. **Graph-Driven Inclusion (No `used_in` Required)**: Only the `css_library`
+   targets reachable in the bundle's `deps` graph contribute CSS. Unused
+   components are never included.
+2. **Diamond Dependency Deduplication**: Shared libraries (like `//ui/tokens`)
+   reached through multiple components are emitted **once** in topological order
+   (`deps` before dependents).
+3. **Compile-Time Cross-File Collision Detection**: If two different `.css`
+   files in the dependency graph define the same selector (in the same `@media`
+   / `@supports` scope), the same `@keyframes` name, or the same `:root` custom
+   property (`--*`), the build fails with the exact file paths and line numbers.
+4. **Deterministic Minification**: The pinned `esbuild` binary strips comments
+   and whitespace, collapses shorthand properties (`margin`, `padding`, colors),
+   and merges duplicate rules inside a file.
+
+---
+
 ## Code Coverage (`plz cover`)
 
 ### Required `[cover]` setting
