@@ -6,7 +6,9 @@ declare const expect: (actual: unknown) => {
 };
 
 Deno.test("co-located ts_library CSS is injected into browser test DOM", () => {
-  document.body.innerHTML = `<main class="dashboard">${renderCard("Metrics")}</main>`;
+  document.body.innerHTML = `<main class="dashboard">${
+    renderCard("Metrics")
+  }</main>`;
   const card = document.querySelector(".card") as HTMLElement;
   const btn = document.querySelector(".btn") as HTMLElement;
   expect(getComputedStyle(card).paddingTop).toBe("8px");

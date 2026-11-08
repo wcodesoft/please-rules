@@ -340,4 +340,3 @@ func TestRunCSSOnlyLibrarySkipsDenoCheckAndRejectsCollision(t *testing.T) {
 		t.Fatalf("expected duplicate CSS selector error, got: %v", err)
 	}
 }
-

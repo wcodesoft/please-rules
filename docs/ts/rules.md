@@ -186,17 +186,17 @@ ts_bundle(
 
 ### Arguments
 
-| Argument              | Type   | Default    | Description                                                                                      |
-| :-------------------- | :----- | :--------- | :----------------------------------------------------------------------------------------------- |
-| `name`                | `str`  | (required) | Target name.                                                                                     |
-| `main`                | `str`  | `""`       | Entrypoint source file (required for JS/TS bundles; optional for CSS-only bundles).              |
-| `out`                 | `str`  | `""`       | Output bundle path (defaults to `<name>.bundle.js` or `<name>.bundle.css`).                      |
+| Argument              | Type   | Default    | Description                                                                                       |
+| :-------------------- | :----- | :--------- | :------------------------------------------------------------------------------------------------ |
+| `name`                | `str`  | (required) | Target name.                                                                                      |
+| `main`                | `str`  | `""`       | Entrypoint source file (required for JS/TS bundles; optional for CSS-only bundles).               |
+| `out`                 | `str`  | `""`       | Output bundle path (defaults to `<name>.bundle.js` or `<name>.bundle.css`).                       |
 | `css_out`             | `str`  | `""`       | Optional CSS output path; collects, collision-checks, and bundles all CSS from `srcs` and `deps`. |
-| `format`              | `str`  | `"esm"`    | Bundle format (`"esm"` or `"iife"`).                                                             |
-| `minify`              | `bool` | `False`    | Whether to minify bundled output.                                                                |
-| `sourcemap`           | `bool` | `False`    | Whether to generate source maps.                                                                 |
-| `allow_css_overrides` | `bool` | `False`    | When `True`, disables strict cross-file CSS selector/variable collision checking.                |
-| `bundler_tool`        | `str`  | `""`       | Optional external bundler executable (e.g. esbuild).                                             |
+| `format`              | `str`  | `"esm"`    | Bundle format (`"esm"` or `"iife"`).                                                              |
+| `minify`              | `bool` | `False`    | Whether to minify bundled output.                                                                 |
+| `sourcemap`           | `bool` | `False`    | Whether to generate source maps.                                                                  |
+| `allow_css_overrides` | `bool` | `False`    | When `True`, disables strict cross-file CSS selector/variable collision checking.                 |
+| `bundler_tool`        | `str`  | `""`       | Optional external bundler executable (e.g. esbuild).                                              |
 
 With npm packages (`ts_npm_module` dependencies) the bundle is built by
 `deno bundle`, using the pinned esbuild of `esbuild_toolchain`, and

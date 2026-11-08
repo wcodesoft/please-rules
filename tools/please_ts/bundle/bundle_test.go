@@ -123,4 +123,3 @@ func TestBuildEsbuildArgsOmitsFormatForCSSBundles(t *testing.T) {
 		t.Errorf("expected --minify in CSS bundle args: %s", argsStr)
 	}
 }
-
