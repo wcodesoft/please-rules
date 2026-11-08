@@ -89,6 +89,32 @@ class TestExtractReleaseNotes(unittest.TestCase):
         self.assertIn(expected_unwrapped, notes)
         self.assertIn("- Simple bullet.", notes)
 
+    def test_code_block_with_heading_and_ordered_lists(self):
+        changelog = """# Changelog
+
+## [0.3.0] - 2026-10-01
+
+1. First ordered item wrapped across
+   two lines.
+2. Second ordered item.
+
+```markdown
+## [0.2.0] - example inside fenced code block
+```
+
+- Trailing bullet after code block.
+
+## [0.2.0] - 2026-09-20
+
+- Older release.
+"""
+        notes = extract_release_notes(changelog, "0.3.0", "TypeScript")
+        self.assertIn("1. First ordered item wrapped across two lines.", notes)
+        self.assertIn("2. Second ordered item.", notes)
+        self.assertIn("## [0.2.0] - example inside fenced code block", notes)
+        self.assertIn("- Trailing bullet after code block.", notes)
+        self.assertNotIn("- Older release.", notes)
+
 
 class TestCliExecution(unittest.TestCase):
     def setUp(self):

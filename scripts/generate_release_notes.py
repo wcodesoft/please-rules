@@ -7,8 +7,18 @@ them cleanly for GitHub Releases without automatic changelog or PR links.
 
 import argparse
 import os
-import re
 import sys
+
+
+def _is_list_item(line: str) -> bool:
+    """Returns True if line begins with a Markdown unordered (-, *, +) or ordered (1.) list marker."""
+    stripped = line.lstrip(" \t")
+    if len(stripped) >= 2 and stripped[0] in "-*+" and stripped[1] in " \t":
+        return True
+    dot = stripped.find(".")
+    if dot > 0 and stripped[:dot].isdigit() and len(stripped) > dot + 1 and stripped[dot + 1] in " \t":
+        return True
+    return False
 
 
 def unwrap_markdown(text: str) -> str:
@@ -42,8 +52,6 @@ def unwrap_markdown(text: str) -> str:
         current_block = []
         current_type = None
 
-    list_marker_re = re.compile(r"^(\s*[-*+]|\s*\d+\.)\s+")
-
     for line in lines:
         if line.strip().startswith("```"):
             flush()
@@ -66,8 +74,7 @@ def unwrap_markdown(text: str) -> str:
             out.append(line)
             continue
 
-        m = list_marker_re.match(line)
-        if m:
+        if _is_list_item(line):
             flush()
             current_type = "list"
             current_block = [line]
@@ -81,6 +88,33 @@ def unwrap_markdown(text: str) -> str:
 
     flush()
     return "\n".join(out)
+
+
+def _extract_version_section(changelog_content: str, clean_version: str) -> str:
+    """Scans changelog_content line by line for the ## [version] section."""
+    target_headers = (f"## [{clean_version}]", f"## [v{clean_version}]")
+    in_section = False
+    in_code_block = False
+    collected = []
+
+    for line in changelog_content.splitlines():
+        if line.strip().startswith("```"):
+            in_code_block = not in_code_block
+
+        if not in_code_block and line.startswith("## ["):
+            if in_section:
+                break
+            if any(
+                line == h or line.startswith(h + " ") or line.startswith(h + "\t")
+                for h in target_headers
+            ):
+                in_section = True
+                continue
+
+        if in_section:
+            collected.append(line)
+
+    return "\n".join(collected).strip()
 
 
 def extract_release_notes(changelog_content: str, version: str, title: str) -> str:
@@ -99,10 +133,7 @@ def extract_release_notes(changelog_content: str, version: str, title: str) -> s
     notes = ""
 
     if changelog_content:
-        pattern = rf"## \[v?{re.escape(clean_version)}\][^\n]*\n(.*?)(?=\n## \[|\Z)"
-        match = re.search(pattern, changelog_content, re.DOTALL)
-        if match:
-            notes = match.group(1).strip()
+        notes = _extract_version_section(changelog_content, clean_version)
 
     if not notes:
         notes = f"Precompiled hermetic binaries and build definitions for {title}."
