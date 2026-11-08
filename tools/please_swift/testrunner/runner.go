@@ -41,22 +41,53 @@ type paramCaseInfo struct {
 	issues    []string
 }
 
-var testCasePassingRe = regexp.MustCompile(`^Test case passing (?:\d+\s+arguments?\s+)?(.+?)\s+to\s+(?:\"[^\"]+\"|.+?)\s+started\.$`)
-
-func extractTestCaseArgs(msg string) string {
-	if m := testCasePassingRe.FindStringSubmatch(msg); len(m) > 1 {
-		return strings.TrimSpace(m[1])
+// stripLeadingArgCount removes a leading "<N> argument " or "<N> arguments " prefix.
+func stripLeadingArgCount(s string) string {
+	s = strings.TrimSpace(s)
+	spaceIdx := strings.IndexByte(s, ' ')
+	if spaceIdx <= 0 {
+		return s
 	}
-	idx := strings.Index(msg, "passing ")
-	if idx != -1 {
-		rest := msg[idx+len("passing "):]
-		if toIdx := strings.LastIndex(rest, " to "); toIdx != -1 {
-			args := rest[:toIdx]
-			args = regexp.MustCompile(`^\d+\s+arguments?\s+`).ReplaceAllString(args, "")
-			return strings.TrimSpace(args)
+	for i := 0; i < spaceIdx; i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return s
 		}
 	}
-	return ""
+	rest := strings.TrimSpace(s[spaceIdx+1:])
+	if after, ok := strings.CutPrefix(rest, "arguments"); ok && len(after) > 0 && (after[0] == ' ' || after[0] == '\t') {
+		return strings.TrimSpace(after)
+	}
+	if after, ok := strings.CutPrefix(rest, "argument"); ok && len(after) > 0 && (after[0] == ' ' || after[0] == '\t') {
+		return strings.TrimSpace(after)
+	}
+	return s
+}
+
+func extractTestCaseArgs(msg string) string {
+	args, _, _ := parseParamCaseStartedLine(msg)
+	return strings.TrimSpace(args)
+}
+
+// parseParamCaseStartedLine parses "Test case passing [N arguments] <args> to <testName> started."
+// (with or without a leading "◇ " symbol).
+func parseParamCaseStartedLine(line string) (args, testName string, ok bool) {
+	s := strings.TrimSpace(line)
+	if after, hasSymbol := strings.CutPrefix(s, "◇"); hasSymbol {
+		s = strings.TrimSpace(after)
+	}
+	idx := strings.Index(s, "passing ")
+	if idx == -1 {
+		return "", "", false
+	}
+	rest := strings.TrimSpace(s[idx+len("passing "):])
+	rest = strings.TrimSuffix(rest, " started.")
+	toIdx := strings.LastIndex(rest, " to ")
+	if toIdx == -1 {
+		return "", "", false
+	}
+	args = stripLeadingArgCount(rest[:toIdx])
+	testName = cleanSwiftTestName(rest[toIdx+len(" to "):])
+	return args, testName, args != "" && testName != ""
 }
 
 func formatSubtestName(testName, args string) string {
@@ -407,12 +438,10 @@ func parseEventStream(path string, output ...string) ([]ParsedTestCase, error) {
 	// Parse issues from output if available
 	issuesByNameAndArgs := make(map[string][]string)
 	if len(output) > 0 && output[0] != "" {
-		paramIssueRe := regexp.MustCompile(`✘\s+Test\s+(.+?)\s+recorded an issue with\s+(?:(?:\d+)\s+arguments?\s+)?(.+?)\s+at\s+(.*)`)
-		for _, m := range paramIssueRe.FindAllStringSubmatch(output[0], -1) {
-			tName := cleanSwiftTestName(m[1])
-			args := strings.TrimSpace(m[2])
-			detail := strings.TrimSpace(m[3])
-			issuesByNameAndArgs[tName+"||"+args] = append(issuesByNameAndArgs[tName+"||"+args], detail)
+		for _, line := range strings.Split(output[0], "\n") {
+			if tName, args, detail, ok := parseParamIssueLine(line); ok {
+				issuesByNameAndArgs[tName+"||"+args] = append(issuesByNameAndArgs[tName+"||"+args], detail)
+			}
 		}
 	}
 
@@ -666,23 +695,201 @@ func isTestRunSummary(raw string) bool {
 	return trimmed == "run" || strings.HasPrefix(trimmed, "run with ") || strings.HasPrefix(trimmed, "run ")
 }
 
+var ansiRegex = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
+
+func parseSuiteLine(line string) (string, bool) {
+	s := strings.TrimSpace(line)
+	if after, ok := strings.CutPrefix(s, "◇"); ok {
+		s = strings.TrimSpace(after)
+	} else if after, ok := strings.CutPrefix(s, "✔"); ok {
+		s = strings.TrimSpace(after)
+	} else {
+		return "", false
+	}
+	rest, ok := strings.CutPrefix(s, "Suite ")
+	if !ok {
+		return "", false
+	}
+	if idx := strings.LastIndex(rest, " started"); idx != -1 {
+		return cleanSwiftTestName(rest[:idx]), true
+	}
+	if idx := strings.LastIndex(rest, " passed"); idx != -1 {
+		return cleanSwiftTestName(rest[:idx]), true
+	}
+	return "", false
+}
+
+// parseParamIssueLine parses "✘ Test <name> recorded an issue with [N arguments] <args> at <detail>".
+func parseParamIssueLine(line string) (testName, args, detail string, ok bool) {
+	s := strings.TrimSpace(line)
+	after, hasPrefix := strings.CutPrefix(s, "✘")
+	if !hasPrefix {
+		return "", "", "", false
+	}
+	rest, hasTest := strings.CutPrefix(strings.TrimSpace(after), "Test ")
+	if !hasTest {
+		return "", "", "", false
+	}
+	rawName, afterIssue, found := strings.Cut(rest, " recorded an issue with ")
+	if !found {
+		return "", "", "", false
+	}
+	atIdx := strings.LastIndex(afterIssue, " at ")
+	if atIdx == -1 {
+		return "", "", "", false
+	}
+	testName = cleanSwiftTestName(rawName)
+	args = stripLeadingArgCount(afterIssue[:atIdx])
+	detail = strings.TrimSpace(afterIssue[atIdx+len(" at "):])
+	return testName, args, detail, testName != "" && args != ""
+}
+
+// parseTestIssueLine parses "✘ Test <name> recorded an issue at <detail>".
+func parseTestIssueLine(line string) (rawName, detail string, ok bool) {
+	s := strings.TrimSpace(line)
+	after, hasPrefix := strings.CutPrefix(s, "✘")
+	if !hasPrefix {
+		return "", "", false
+	}
+	rest, hasTest := strings.CutPrefix(strings.TrimSpace(after), "Test ")
+	if !hasTest {
+		return "", "", false
+	}
+	namePart, detailPart, found := strings.Cut(rest, " recorded an issue at ")
+	if !found {
+		return "", "", false
+	}
+	return strings.TrimSpace(namePart), strings.TrimSpace(detailPart), true
+}
+
+// parseTrailingSeconds extracts a leading float before " seconds" in s (e.g. "0.003 seconds.").
+func parseTrailingSeconds(s string) (float64, bool) {
+	s = strings.TrimSpace(s)
+	secPart, _, ok := strings.Cut(s, " seconds")
+	if !ok {
+		return 0, false
+	}
+	dur, err := strconv.ParseFloat(strings.TrimSpace(secPart), 64)
+	if err != nil {
+		return 0, false
+	}
+	return dur, true
+}
+
+// parseParamOutcomeLine parses "✔/✘ Test <name> with <count> test cases passed/failed after <dur> seconds...".
+func parseParamOutcomeLine(line, symbol, verb string) (testName string, count int, duration float64, ok bool) {
+	s := strings.TrimSpace(line)
+	after, hasSym := strings.CutPrefix(s, symbol)
+	if !hasSym {
+		return "", 0, 0, false
+	}
+	rest, hasTest := strings.CutPrefix(strings.TrimSpace(after), "Test ")
+	if !hasTest {
+		return "", 0, 0, false
+	}
+	marker := " test cases " + verb + " after "
+	beforeMarker, afterMarker, found := strings.Cut(rest, marker)
+	if !found {
+		return "", 0, 0, false
+	}
+	withIdx := strings.LastIndex(beforeMarker, " with ")
+	if withIdx == -1 {
+		return "", 0, 0, false
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(beforeMarker[withIdx+len(" with "):]))
+	if err != nil {
+		return "", 0, 0, false
+	}
+	dur, durOK := parseTrailingSeconds(afterMarker)
+	if !durOK {
+		return "", 0, 0, false
+	}
+	return cleanSwiftTestName(beforeMarker[:withIdx]), n, dur, true
+}
+
+// parseSimpleOutcomeLine parses "✔/✘ Test <name> passed/failed after <dur> seconds...".
+func parseSimpleOutcomeLine(line, symbol, verb string) (rawName string, duration float64, ok bool) {
+	s := strings.TrimSpace(line)
+	after, hasSym := strings.CutPrefix(s, symbol)
+	if !hasSym {
+		return "", 0, false
+	}
+	rest, hasTest := strings.CutPrefix(strings.TrimSpace(after), "Test ")
+	if !hasTest {
+		return "", 0, false
+	}
+	marker := " " + verb + " after "
+	idx := strings.LastIndex(rest, marker)
+	if idx == -1 {
+		return "", 0, false
+	}
+	dur, durOK := parseTrailingSeconds(rest[idx+len(marker):])
+	if !durOK {
+		return "", 0, false
+	}
+	return strings.TrimSpace(rest[:idx]), dur, true
+}
+
+// parseSkippedLine parses "➜ Test <name> skipped[: <reason>]".
+func parseSkippedLine(line string) (rawName, reason string, ok bool) {
+	s := strings.TrimSpace(line)
+	after, hasSym := strings.CutPrefix(s, "➜")
+	if !hasSym {
+		return "", "", false
+	}
+	rest, hasTest := strings.CutPrefix(strings.TrimSpace(after), "Test ")
+	if !hasTest {
+		return "", "", false
+	}
+	idx := strings.LastIndex(rest, " skipped")
+	if idx == -1 {
+		return "", "", false
+	}
+	rawName = strings.TrimSpace(rest[:idx])
+	tail := strings.TrimSpace(rest[idx+len(" skipped"):])
+	if afterColon, hasColon := strings.CutPrefix(tail, ":"); hasColon {
+		reason = strings.Trim(strings.TrimSpace(afterColon), `"`)
+	}
+	if reason == "" {
+		reason = "Test skipped"
+	}
+	return rawName, reason, true
+}
+
+// parseXCTestCaseLine parses "Test Case '-[Suite testMethod]' passed/failed (0.001 seconds)."
+func parseXCTestCaseLine(line, verb string) (suite, name string, duration float64, ok bool) {
+	s := strings.TrimSpace(line)
+	rest, hasPrefix := strings.CutPrefix(s, "Test Case '-[")
+	if !hasPrefix {
+		return "", "", 0, false
+	}
+	target, tail, hasBracket := strings.Cut(rest, fmt.Sprintf("]' %s (", verb))
+	if !hasBracket {
+		return "", "", 0, false
+	}
+	suitePart, methodPart, hasSpace := strings.Cut(strings.TrimSpace(target), " ")
+	if !hasSpace || suitePart == "" || methodPart == "" {
+		return "", "", 0, false
+	}
+	dur, durOK := parseTrailingSeconds(tail)
+	if !durOK {
+		return "", "", 0, false
+	}
+	return suitePart, methodPart, dur, true
+}
+
 func parseTestOutput(output, framework string) []ParsedTestCase {
 	var results []ParsedTestCase
 
-	ansiRegex := regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
 	cleanOutput := ansiRegex.ReplaceAllString(output, "")
+	lines := strings.Split(cleanOutput, "\n")
 
 	// Detect suite name if present (e.g. "◇ Suite Foo started" or "✔ Suite Foo passed")
 	suiteName := "SwiftTesting"
-	suiteRe := regexp.MustCompile(`(?:◇|✔)\s+Suite\s+(.+?)\s+(?:started|passed)`)
-	allSuites := suiteRe.FindAllStringSubmatch(cleanOutput, -1)
 	uniqueSuites := make(map[string]bool)
-	for _, m := range allSuites {
-		if len(m) > 1 {
-			s := cleanSwiftTestName(m[1])
-			if s != "" {
-				uniqueSuites[s] = true
-			}
+	for _, line := range lines {
+		if s, ok := parseSuiteLine(line); ok && s != "" {
+			uniqueSuites[s] = true
 		}
 	}
 	if len(uniqueSuites) == 1 {
@@ -691,57 +898,35 @@ func parseTestOutput(output, framework string) []ParsedTestCase {
 		}
 	}
 
-	// swift-testing format:
-	// ✔ Test <name> passed after X.XXX seconds.
-	// ✘ Test <name> failed after X.XXX seconds with N issues.
-	// ✘ Test <name> recorded an issue at <file>:<line>:<col>: <msg>
-	// ➜ Test <name> skipped: <reason>
-	swiftTestingPassedRe := regexp.MustCompile(`✔\s+Test\s+(.+?)\s+passed after\s+([0-9.]+)\s+seconds`)
-	swiftTestingFailedRe := regexp.MustCompile(`✘\s+Test\s+(.+?)\s+failed after\s+([0-9.]+)\s+seconds`)
-	swiftTestingIssueRe := regexp.MustCompile(`✘\s+Test\s+(.+?)\s+recorded an issue at\s+(.*)`)
-	swiftTestingSkippedRe := regexp.MustCompile(`➜\s+Test\s+(.+?)\s+skipped(?::\s*(.*))?`)
-
-	swiftTestingParamCaseRe := regexp.MustCompile(`◇\s+Test case passing\s+(?:(?:\d+)\s+arguments?\s+)?(.+?)\s+to\s+(.+?)\s+started\.`)
-	swiftTestingParamIssueRe := regexp.MustCompile(`✘\s+Test\s+(.+?)\s+recorded an issue with\s+(?:(?:\d+)\s+arguments?\s+)?(.+?)\s+at\s+(.*)`)
-	swiftTestingParamPassedRe := regexp.MustCompile(`✔\s+Test\s+(.+?)\s+with\s+(\d+)\s+test cases\s+passed after\s+([0-9.]+)\s+seconds`)
-	swiftTestingParamFailedRe := regexp.MustCompile(`✘\s+Test\s+(.+?)\s+with\s+(\d+)\s+test cases\s+failed after\s+([0-9.]+)\s+seconds`)
-
 	type paramCase struct {
 		args string
 	}
 	paramCasesByTest := make(map[string][]paramCase)
-	for _, match := range swiftTestingParamCaseRe.FindAllStringSubmatch(cleanOutput, -1) {
-		args := strings.TrimSpace(match[1])
-		testName := cleanSwiftTestName(match[2])
-		paramCasesByTest[testName] = append(paramCasesByTest[testName], paramCase{args: args})
-	}
-
 	issuesByTestAndArgs := make(map[string][]string)
-	for _, match := range swiftTestingParamIssueRe.FindAllStringSubmatch(cleanOutput, -1) {
-		testName := cleanSwiftTestName(match[1])
-		args := strings.TrimSpace(match[2])
-		detail := strings.TrimSpace(match[3])
-		key := testName + "||" + args
-		issuesByTestAndArgs[key] = append(issuesByTestAndArgs[key], detail)
-	}
-
 	issuesByTest := make(map[string][]string)
-	for _, match := range swiftTestingIssueRe.FindAllStringSubmatch(cleanOutput, -1) {
-		if isTestRunSummary(match[1]) {
-			continue
+
+	for _, line := range lines {
+		if args, testName, ok := parseParamCaseStartedLine(line); ok && strings.HasPrefix(strings.TrimSpace(line), "◇") {
+			paramCasesByTest[testName] = append(paramCasesByTest[testName], paramCase{args: args})
 		}
-		testName := cleanSwiftTestName(match[1])
-		issuesByTest[testName] = append(issuesByTest[testName], match[2])
+		if testName, args, detail, ok := parseParamIssueLine(line); ok {
+			key := testName + "||" + args
+			issuesByTestAndArgs[key] = append(issuesByTestAndArgs[key], detail)
+		}
+		if rawName, detail, ok := parseTestIssueLine(line); ok && !isTestRunSummary(rawName) {
+			testName := cleanSwiftTestName(rawName)
+			issuesByTest[testName] = append(issuesByTest[testName], detail)
+		}
 	}
 
 	// Parameterized passed
 	paramHandledTests := make(map[string]bool)
-	for _, match := range swiftTestingParamPassedRe.FindAllStringSubmatch(cleanOutput, -1) {
-		testName := cleanSwiftTestName(match[1])
-		count, _ := strconv.Atoi(match[2])
-		duration, _ := strconv.ParseFloat(match[3], 64)
+	for _, line := range lines {
+		testName, count, duration, ok := parseParamOutcomeLine(line, "✔", "passed")
+		if !ok {
+			continue
+		}
 		paramHandledTests[testName] = true
-
 		cases := paramCasesByTest[testName]
 		if len(cases) > 0 {
 			subDuration := duration / float64(len(cases))
@@ -767,12 +952,12 @@ func parseTestOutput(output, framework string) []ParsedTestCase {
 	}
 
 	// Parameterized failed
-	for _, match := range swiftTestingParamFailedRe.FindAllStringSubmatch(cleanOutput, -1) {
-		testName := cleanSwiftTestName(match[1])
-		count, _ := strconv.Atoi(match[2])
-		duration, _ := strconv.ParseFloat(match[3], 64)
+	for _, line := range lines {
+		testName, count, duration, ok := parseParamOutcomeLine(line, "✘", "failed")
+		if !ok {
+			continue
+		}
 		paramHandledTests[testName] = true
-
 		cases := paramCasesByTest[testName]
 		if len(cases) > 0 {
 			subDuration := duration / float64(len(cases))
@@ -806,15 +991,15 @@ func parseTestOutput(output, framework string) []ParsedTestCase {
 		}
 	}
 
-	for _, match := range swiftTestingPassedRe.FindAllStringSubmatch(cleanOutput, -1) {
-		if isTestRunSummary(match[1]) || (strings.Contains(match[1], " with ") && strings.Contains(match[1], " test cases")) {
+	for _, line := range lines {
+		rawName, duration, ok := parseSimpleOutcomeLine(line, "✔", "passed")
+		if !ok || isTestRunSummary(rawName) || (strings.Contains(rawName, " with ") && strings.Contains(rawName, " test cases")) {
 			continue
 		}
-		name := cleanSwiftTestName(match[1])
+		name := cleanSwiftTestName(rawName)
 		if paramHandledTests[name] {
 			continue
 		}
-		duration, _ := strconv.ParseFloat(match[2], 64)
 		results = append(results, ParsedTestCase{
 			Suite:    suiteName,
 			Name:     name,
@@ -823,15 +1008,15 @@ func parseTestOutput(output, framework string) []ParsedTestCase {
 		})
 	}
 
-	for _, match := range swiftTestingFailedRe.FindAllStringSubmatch(cleanOutput, -1) {
-		if isTestRunSummary(match[1]) || (strings.Contains(match[1], " with ") && strings.Contains(match[1], " test cases")) {
+	for _, line := range lines {
+		rawName, duration, ok := parseSimpleOutcomeLine(line, "✘", "failed")
+		if !ok || isTestRunSummary(rawName) || (strings.Contains(rawName, " with ") && strings.Contains(rawName, " test cases")) {
 			continue
 		}
-		name := cleanSwiftTestName(match[1])
+		name := cleanSwiftTestName(rawName)
 		if paramHandledTests[name] {
 			continue
 		}
-		duration, _ := strconv.ParseFloat(match[2], 64)
 		issueDetails := strings.Join(issuesByTest[name], "\n")
 		if issueDetails == "" {
 			issueDetails = "Test failed"
@@ -845,15 +1030,12 @@ func parseTestOutput(output, framework string) []ParsedTestCase {
 		})
 	}
 
-	for _, match := range swiftTestingSkippedRe.FindAllStringSubmatch(cleanOutput, -1) {
-		if isTestRunSummary(match[1]) {
+	for _, line := range lines {
+		rawName, reason, ok := parseSkippedLine(line)
+		if !ok || isTestRunSummary(rawName) {
 			continue
 		}
-		name := cleanSwiftTestName(match[1])
-		reason := "Test skipped"
-		if len(match) > 2 && strings.TrimSpace(match[2]) != "" {
-			reason = strings.Trim(strings.TrimSpace(match[2]), `"`)
-		}
+		name := cleanSwiftTestName(rawName)
 		results = append(results, ParsedTestCase{
 			Suite:    suiteName,
 			Name:     name,
@@ -871,28 +1053,26 @@ func parseTestOutput(output, framework string) []ParsedTestCase {
 	// XCTest format fallback:
 	// Test Case '-[Suite.Test testMethod]' passed (0.001 seconds).
 	// Test Case '-[Suite.Test testMethod]' failed (0.002 seconds).
-	xctestPassedRe := regexp.MustCompile(`Test Case '-\[([^ ]+) ([^\]]+)\]' passed \(([0-9.]+) seconds\)`)
-	xctestFailedRe := regexp.MustCompile(`Test Case '-\[([^ ]+) ([^\]]+)\]' failed \(([0-9.]+) seconds\)`)
-
-	for _, match := range xctestPassedRe.FindAllStringSubmatch(cleanOutput, -1) {
-		duration, _ := strconv.ParseFloat(match[3], 64)
-		results = append(results, ParsedTestCase{
-			Suite:    match[1],
-			Name:     match[2],
-			Duration: duration,
-			Passed:   true,
-		})
+	for _, line := range lines {
+		if suite, name, duration, ok := parseXCTestCaseLine(line, "passed"); ok {
+			results = append(results, ParsedTestCase{
+				Suite:    suite,
+				Name:     name,
+				Duration: duration,
+				Passed:   true,
+			})
+		}
 	}
-
-	for _, match := range xctestFailedRe.FindAllStringSubmatch(cleanOutput, -1) {
-		duration, _ := strconv.ParseFloat(match[3], 64)
-		results = append(results, ParsedTestCase{
-			Suite:    match[1],
-			Name:     match[2],
-			Duration: duration,
-			Passed:   false,
-			Failure:  "XCTest failed",
-		})
+	for _, line := range lines {
+		if suite, name, duration, ok := parseXCTestCaseLine(line, "failed"); ok {
+			results = append(results, ParsedTestCase{
+				Suite:    suite,
+				Name:     name,
+				Duration: duration,
+				Passed:   false,
+				Failure:  "XCTest failed",
+			})
+		}
 	}
 
 	return results
