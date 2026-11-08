@@ -9,6 +9,14 @@ and this project adheres to
 
 ## [Unreleased]
 
+## [0.9.2] - 2026-11-08
+
+### Changed
+
+- Replaced regular expression alias entries in the generated Vitest config with
+  an inline Vite `resolveId` plugin that resolves bare specifiers from an exact
+  lookup map.
+
 ## [0.9.1] - 2026-11-07
 
 ### Fixed
