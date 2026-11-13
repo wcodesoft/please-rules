@@ -1,0 +1,5 @@
+/* --row-height-* are set from JavaScript at runtime, so the bundle allows them. */
+.row {
+  height: var(--row-height-compact);
+  color: var(--color-brand);
+}

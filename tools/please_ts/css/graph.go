@@ -39,8 +39,11 @@ type BundleOptions struct {
 	Minify        bool
 	Sourcemap     bool
 	AllowOverride bool
-	EsbuildBinary string
-	Flags         []string
+	// AllowUndefinedVars lists custom properties (or prefixes such as "--chart-*") that are used
+	// with var() but set outside the stylesheets, for example from JavaScript.
+	AllowUndefinedVars []string
+	EsbuildBinary      string
+	Flags              []string
 }
 
 // Compile validates the CSS sources of a css_library, writes css_metadata.json,
@@ -94,7 +97,8 @@ func Compile(opts CompileOptions) error {
 }
 
 // Bundle collects all transitive css_library files and direct srcs in topological order,
-// checks for cross-file selector/@keyframes/:root variable collisions, and bundles/minifies via esbuild.
+// checks for cross-file selector/@keyframes/:root variable collisions and for custom properties that
+// are used with var() but defined nowhere, and bundles/minifies via esbuild.
 func Bundle(opts BundleOptions) error {
 	if opts.Out == "" {
 		return fmt.Errorf("output path must be specified for css_bundle")
@@ -112,6 +116,10 @@ func Bundle(opts BundleOptions) error {
 		if err := CheckFiles(graphFiles); err != nil {
 			return err
 		}
+	}
+
+	if err := CheckVariables(graphFiles, opts.AllowUndefinedVars); err != nil {
+		return err
 	}
 
 	if err := os.MkdirAll(filepath.Dir(opts.Out), 0755); err != nil {

@@ -9,6 +9,20 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Added
+
+- `css_bundle` fails when a custom property is used with `var()` and no fallback
+  but defined in none of the bundle's files, naming the property and every place
+  of use (`file.css:line`). A `var()` whose property is missing makes the
+  browser drop the whole declaration without any error, so the mistake was
+  invisible. A property declared in any rule or registered with `@property`
+  counts as defined, `var(--x, fallback)` is not reported, and
+  `allow_undefined_vars` lists the properties that are set at runtime (exact
+  names or prefixes such as `--chart-*`). The check is on by default: a bundle
+  that relied on a missing property now fails until it defines it, gives it a
+  fallback or lists it. The CSS scanner also reads `@keyframes`, other at-rule
+  blocks and nested rules for `var()` uses and custom property definitions.
+
 ## [0.10.0] - 2026-11-08
 
 ### Added

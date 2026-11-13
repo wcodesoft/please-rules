@@ -568,11 +568,19 @@ def css_bundle(
         minify: bool = True,
         sourcemap: bool = False,
         allow_overrides: bool = False,
+        allow_undefined_vars: list = None,
         flags: list = None,
         visibility: list = None,
         labels: list = None):
-    """Bundles, checks for cross-file collisions, and minifies CSS from srcs and transitive css_library deps."""
+    """Bundles, checks, and minifies CSS from srcs and transitive css_library deps.
+
+    The build fails when two files define the same selector, @keyframes or :root custom property
+    (unless `allow_overrides`), and when a custom property is used with var() and no fallback but
+    defined in none of the files. `allow_undefined_vars` lists the properties that are set outside
+    the stylesheets, for example from JavaScript: exact names (`--x`) or prefixes (`--chart-*`).
+    """
     srcs = srcs or []
+    allow_undefined_vars = allow_undefined_vars or []
     deps = deps or []
     flags = flags or []
     out_file = out or f"{name}.css"
@@ -582,6 +590,7 @@ def css_bundle(
 
     flags_joined = " ".join(flags) if flags else ""
     flags_str = f"--flags '{flags_joined}'" if flags else ""
+    allow_vars_list = ",".join(allow_undefined_vars)
 
     bundle_args = [
         "bundle",
@@ -591,6 +600,7 @@ def css_bundle(
         "--minify" if minify else "--minify=false",
         "--sourcemap" if sourcemap else "",
         "--allow-overrides" if allow_overrides else "",
+        f'--allow-undefined-vars "{allow_vars_list}"' if allow_undefined_vars else "",
         esbuild_arg,
         flags_str,
     ]

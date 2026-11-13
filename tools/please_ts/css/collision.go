@@ -141,6 +141,8 @@ type scanner struct {
 	src  string
 	pos  int
 	line int
+	// vars collects the custom property definitions and var() uses met while scanning.
+	vars Variables
 }
 
 func newScanner(file, src string) *scanner {
@@ -247,7 +249,7 @@ func (s *scanner) handleAtRule(prelude string, startLine int, scopes []string) (
 				Line: startLine,
 			})
 		}
-		if err := s.skipBalancedBlock(); err != nil {
+		if _, err := s.readDeclarationBlock(false, ""); err != nil {
 			return nil, err
 		}
 		return defs, nil
@@ -258,7 +260,12 @@ func (s *scanner) handleAtRule(prelude string, startLine int, scopes []string) (
 
 	default:
 		// @font-face, @page, @property, @counter-style, etc.
-		if err := s.skipBalancedBlock(); err != nil {
+		if strings.HasPrefix(lower, "@property ") {
+			if fields := strings.Fields(prelude); len(fields) >= 2 && strings.HasPrefix(fields[1], "--") {
+				s.vars.Defs = append(s.vars.Defs, VarDef{Name: fields[1], File: s.file, Line: startLine})
+			}
+		}
+		if _, err := s.readDeclarationBlock(false, ""); err != nil {
 			return nil, err
 		}
 		return nil, nil
@@ -295,22 +302,28 @@ func (s *scanner) readDeclarationBlock(extractVars bool, scopeStr string) ([]Def
 		if err != nil {
 			return nil, err
 		}
+		colonIdx := strings.IndexByte(token, ':')
 		if term == '{' {
-			// Nested block inside style rule: skip balanced braces
-			if err := s.skipBalancedBlock(); err != nil {
+			// A custom property whose value is a block (`--x: { ... }`) still defines the property.
+			if colonIdx > 0 && strings.HasPrefix(strings.TrimSpace(token[:colonIdx]), "--") {
+				s.vars.Defs = append(s.vars.Defs, VarDef{Name: strings.TrimSpace(token[:colonIdx]), File: s.file, Line: propLine})
+				if err := s.skipBalancedBlock(); err != nil {
+					return nil, err
+				}
+				continue
+			}
+			// A nested rule: read it like a rule body, so its declarations are seen too.
+			if _, err := s.readDeclarationBlock(false, scopeStr); err != nil {
 				return nil, err
 			}
 			continue
 		}
-		if !extractVars {
-			continue
-		}
-		colonIdx := strings.IndexByte(token, ':')
 		if colonIdx <= 0 {
 			continue
 		}
 		propName := strings.TrimSpace(token[:colonIdx])
-		if strings.HasPrefix(propName, "--") {
+		s.recordVariables(propName, token, colonIdx+1, propLine)
+		if extractVars && strings.HasPrefix(propName, "--") {
 			defs = append(defs, Definition{
 				Kind:  KindVariable,
 				Name:  propName,
