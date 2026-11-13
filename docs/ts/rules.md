@@ -212,8 +212,9 @@ css_library(
 
 Collects all `.css` files from `srcs` and transitive `css_library` `deps` in
 topological order, verifies that no two distinct files collide on selectors,
-`@keyframes`, or `:root` custom properties, and bundles + minifies them using
-the pinned `esbuild` binary.
+`@keyframes`, or `:root` custom properties, verifies that every custom property
+used with `var()` is defined, and bundles + minifies them using the pinned
+`esbuild` binary.
 
 ```starlark
 css_bundle(
@@ -229,18 +230,50 @@ css_bundle(
 
 ### Arguments
 
-| Argument          | Type   | Default    | Description                                                                       |
-| :---------------- | :----- | :--------- | :-------------------------------------------------------------------------------- |
-| `name`            | `str`  | (required) | Target name.                                                                      |
-| `srcs`            | `list` | `[]`       | Direct `.css` source files for this bundle.                                       |
-| `deps`            | `list` | `[]`       | `css_library` dependencies whose `.css` files are included in topological order.  |
-| `out`             | `str`  | `""`       | Output stylesheet path (defaults to `<name>.css`).                                |
-| `minify`          | `bool` | `True`     | Whether to minify, strip comments/whitespace, and collapse shorthands (default).  |
-| `sourcemap`       | `bool` | `False`    | Whether to generate a `.css.map` sourcemap.                                       |
-| `allow_overrides` | `bool` | `False`    | When `True`, allows duplicate selectors or `:root` variables across source files. |
-| `flags`           | `list` | `[]`       | Additional flags passed to `esbuild`.                                             |
+| Argument               | Type   | Default    | Description                                                                                                              |
+| :--------------------- | :----- | :--------- | :----------------------------------------------------------------------------------------------------------------------- |
+| `name`                 | `str`  | (required) | Target name.                                                                                                             |
+| `srcs`                 | `list` | `[]`       | Direct `.css` source files for this bundle.                                                                              |
+| `deps`                 | `list` | `[]`       | `css_library` dependencies whose `.css` files are included in topological order.                                         |
+| `out`                  | `str`  | `""`       | Output stylesheet path (defaults to `<name>.css`).                                                                       |
+| `minify`               | `bool` | `True`     | Whether to minify, strip comments/whitespace, and collapse shorthands (default).                                         |
+| `sourcemap`            | `bool` | `False`    | Whether to generate a `.css.map` sourcemap.                                                                              |
+| `allow_overrides`      | `bool` | `False`    | When `True`, allows duplicate selectors or `:root` variables across source files.                                        |
+| `allow_undefined_vars` | `list` | `[]`       | Custom properties used with `var()` that are set outside the stylesheets: exact names (`--x`) or prefixes (`--chart-*`). |
+| `flags`                | `list` | `[]`       | Additional flags passed to `esbuild`.                                                                                    |
 
 ---
+
+### Undefined custom properties
+
+A `var(--name)` whose property is defined nowhere makes the browser drop the
+whole declaration (a `font-weight: var(--font-weight-medium)` with no such
+property silently renders no weight), and nothing reports it. The bundle fails
+when a custom property is used with `var()` and no fallback but is defined in
+none of the bundle's files, naming the property and each place of use:
+
+```text
+CSS undefined-variable check failed: 1 custom property is used with var() but defined in none of the bundle's files:
+  --font-weight-medium: 4 uses without a fallback
+      payees.css:90
+      payees.css:188
+      ...
+```
+
+- A property counts as defined when any file declares it (`:root`, a theme
+  block, a component rule, nested rules) or registers it with `@property`. The
+  check does not follow the cascade, so it cannot tell that a property is
+  defined in the wrong scope.
+- `var(--x, fallback)` is not reported: the fallback says what is meant when the
+  property is missing. A `var()` inside a fallback is checked on its own.
+- Comments and string contents are ignored; `@keyframes` and nested rules are
+  read.
+- A property set at runtime, for example with
+  `element.style.setProperty("--row-height", ...)`, is listed in
+  `allow_undefined_vars`.
+
+The check runs on the whole bundle and not on each `css_library`, because a
+library may use properties that another library of the bundle defines.
 
 ## `ts_test`
 

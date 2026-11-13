@@ -1,0 +1,5 @@
+.broken {
+  color: var(--brand-missing);
+  margin: var(--soft-missing, 4px);
+  padding: var(--color-brand);
+}
