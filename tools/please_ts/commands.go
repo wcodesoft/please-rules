@@ -142,6 +142,7 @@ func handleCSS(args []string) error {
 		minify := cmd.Bool("minify", true, "Minify bundled CSS")
 		sourcemap := cmd.Bool("sourcemap", false, "Generate CSS source map")
 		allowOverrides := cmd.Bool("allow-overrides", false, "Allow duplicate selectors or variables across CSS files")
+		allowUndefinedVars := cmd.String("allow-undefined-vars", "", "Comma-separated custom properties (or prefixes ending in *) that are used with var() but set outside the stylesheets")
 		esbuildBinary := cmd.String("esbuild-binary", "", "Pinned esbuild executable")
 		flags := cmd.String("flags", "", "Additional esbuild flags")
 		if err := cmd.Parse(args[1:]); err != nil {
@@ -155,14 +156,15 @@ func handleCSS(args []string) error {
 			extraFlags = strings.Fields(*flags)
 		}
 		return css.Bundle(css.BundleOptions{
-			Out:           *out,
-			Srcs:          srcs,
-			Deps:          deps,
-			Minify:        *minify,
-			Sourcemap:     *sourcemap,
-			AllowOverride: *allowOverrides,
-			EsbuildBinary: *esbuildBinary,
-			Flags:         extraFlags,
+			Out:                *out,
+			Srcs:               srcs,
+			Deps:               deps,
+			Minify:             *minify,
+			Sourcemap:          *sourcemap,
+			AllowOverride:      *allowOverrides,
+			AllowUndefinedVars: compile.ExpandCommaSeparated([]string{*allowUndefinedVars}),
+			EsbuildBinary:      *esbuildBinary,
+			Flags:              extraFlags,
 		})
 	default:
 		return fmt.Errorf("unknown subcommand %q for 'please_ts css' (want 'compile' or 'bundle')", args[0])

@@ -5,6 +5,7 @@ go_library(
     srcs = [
         "collision.go",
         "graph.go",
+        "vars.go",
     ],
     visibility = ["//tools/please_ts/..."],
 )
@@ -14,6 +15,7 @@ go_test(
     srcs = [
         "collision_test.go",
         "graph_test.go",
+        "vars_test.go",
     ],
     deps = [":css"],
 )
