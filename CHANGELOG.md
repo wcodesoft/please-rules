@@ -9,6 +9,8 @@ and this project adheres to
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-11-14
+
 ### Added
 
 - `css_bundle` fails when a custom property is used with `var()` and no fallback
