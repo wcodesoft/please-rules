@@ -374,6 +374,7 @@ def ts_library(
         module_name: str = "",
         flags: list = None,
         visibility: list = None,
+        test_only: bool = False,
         labels: list = None):
     """Compiles and type-checks TypeScript / JavaScript files into a modular library."""
     deps = deps or []
@@ -407,6 +408,7 @@ def ts_library(
         needs_transitive_deps = True,
         tools = tools,
         visibility = visibility,
+        test_only = test_only,
         labels = labels or ["ts", "lib"],
         building_description = f"Compiling TypeScript library {name}...",
     )
