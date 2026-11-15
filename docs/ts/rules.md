@@ -94,6 +94,7 @@ ts_library(
 | `deps`        | `list` | `[]`       | Dependent libraries or `ts_module` targets.                                                                                                 |
 | `module_name` | `str`  | `""`       | Optional module alias for bare specifiers. If omitted, automatically derived from `[plugin "ts"] ModulePrefix` and the Please package path. |
 | `flags`       | `list` | `[]`       | Additional flags passed to `deno check`.                                                                                                    |
+| `test_only`   | `bool` | `False`    | If `True`, the library can only be depended on by tests or other `test_only` libraries, and its files are excluded from coverage reports.   |
 
 #### Transitive dependencies
 

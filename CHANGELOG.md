@@ -9,6 +9,13 @@ and this project adheres to
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-11-15
+
+### Added
+
+- `ts_library` accepts `test_only = True` so test-helper and fixture libraries
+  can be restricted to test targets and excluded from Please coverage reports.
+
 ## [0.11.0] - 2026-11-14
 
 ### Added
